@@ -1,3 +1,5 @@
+import { Badge, getBadgeToneFromStatus } from "@/components/ui/Badge";
+
 import { type AuctionStatus, getStatusLabel } from "@/src/modules/ui/domain/marketplace_read_model";
 
 type AuctionStatusBadgeProps = {
@@ -5,5 +7,5 @@ type AuctionStatusBadgeProps = {
 };
 
 export function AuctionStatusBadge({ status }: AuctionStatusBadgeProps) {
-  return <span className={`status-badge status-${status.toLowerCase()}`}>{getStatusLabel(status)}</span>;
+  return <Badge tone={getBadgeToneFromStatus(status)}>{getStatusLabel(status)}</Badge>;
 }
