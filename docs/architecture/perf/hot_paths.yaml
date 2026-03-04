@@ -1,0 +1,19 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-performance"
+schema:
+  entity: "hot_paths"
+  required_fields:
+    - path
+    - method
+    - latency_budget_ms_p95
+    - owner
+  constraints:
+    unique_key:
+      - path
+      - method
+entries:
+  - path: "/api/health"
+    method: "GET"
+    latency_budget_ms_p95: 500
+    owner: "platform-runtime"

@@ -1,0 +1,15 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-web"
+schema:
+  entity: "tier1_pages"
+  required_fields:
+    - route_pattern
+    - locale_scope
+    - canonical_source
+  constraints:
+    derived_from: "page_policy_registry.searchability=SEARCHABLE"
+entries:
+  - route_pattern: "/"
+    locale_scope: ["en", "ru", "ar"]
+    canonical_source: "/"

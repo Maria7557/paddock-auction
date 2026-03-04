@@ -1,0 +1,27 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-web"
+schema:
+  entity: "page_policy_registry"
+  required_fields:
+    - route_pattern
+    - visibility
+    - searchability
+    - rendering_policy
+    - seo_profile
+    - sitemap_inclusion
+    - owner
+  enums:
+    visibility: [PUBLIC, PRIVATE]
+    searchability: [SEARCHABLE, NON_SEARCHABLE]
+    rendering_policy: [SSR_REQUIRED, SSR_FORBIDDEN, SSR_EXCEPTION_AWR]
+    seo_profile: [FULL_SEO, NO_SEO]
+    sitemap_inclusion: [INCLUDE, EXCLUDE]
+entries:
+  - route_pattern: "/"
+    visibility: "PUBLIC"
+    searchability: "SEARCHABLE"
+    rendering_policy: "SSR_REQUIRED"
+    seo_profile: "FULL_SEO"
+    sitemap_inclusion: "INCLUDE"
+    owner: "platform-web"

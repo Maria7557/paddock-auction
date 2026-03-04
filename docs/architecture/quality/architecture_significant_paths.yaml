@@ -1,0 +1,18 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-architecture"
+schema:
+  entity: "architecture_significant_paths"
+  required_fields:
+    - path
+    - impact_scope
+    - docs_update_required
+  constraints:
+    docs_update_required: true
+entries:
+  - path: "prisma/schema.prisma"
+    impact_scope: "data-contract"
+    docs_update_required: true
+  - path: "app/api/**"
+    impact_scope: "runtime-command-surface"
+    docs_update_required: true

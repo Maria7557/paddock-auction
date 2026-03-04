@@ -1,0 +1,12 @@
+version: "1.0"
+last_updated: "2026-03-01T06:52:37Z"
+owner: "platform-finance"
+schema:
+  entity: "critical_financial_modules"
+  required_fields:
+    - module_path
+    - domain
+    - min_branch_coverage_pct
+  constraints:
+    min_branch_coverage_pct: 90
+entries: []

@@ -1,0 +1,42 @@
+{
+  "name": "paddock-auction",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:clean": "tsx scripts/run-clean-db-migrations.ts",
+    "perf:bid-latency": "tsx scripts/run-bid-latency-perf.ts",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:unit": "tsx --test $(find src/modules -type f -name '*.test.ts' | sort)",
+    "test:integration": "tsx --test $(find tests/integration -type f -name '*.test.ts' | sort)",
+    "test:e2e": "tsx --test $(find tests/e2e -type f -name '*.test.ts' | sort)"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.11.1",
+    "dotenv": "^17.3.1",
+    "lucide-react": "^0.576.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "redis": "^5.9.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.15",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "prisma": "^6.11.1",
+    "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

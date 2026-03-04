@@ -1,0 +1,18 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-architecture"
+schema:
+  entity: "table_ownership"
+  required_fields:
+    - table
+    - owning_context
+    - tenant_scope
+    - write_boundary
+  constraints:
+    unique_key:
+      - table
+entries:
+  - table: "User"
+    owning_context: "identity_access"
+    tenant_scope: "global"
+    write_boundary: "identity_access.application"

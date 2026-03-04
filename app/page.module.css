@@ -1,0 +1,238 @@
+.heroSurface {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  padding: 0;
+}
+
+.heroTop {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  align-items: end;
+  gap: 24px;
+  padding: 42px 42px 0;
+}
+
+.heroTextSection {
+  position: relative;
+  z-index: 3;
+  padding-bottom: 34px;
+}
+
+.heroTextSection h1 {
+  margin: 0;
+  font-size: clamp(46px, 5vw, 74px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  max-width: 15ch;
+}
+
+.heroSubtext {
+  margin: 18px 0 0;
+  font-size: clamp(18px, 1.35vw, 26px);
+  line-height: 1.38;
+  color: var(--ink-secondary);
+  max-width: 36ch;
+}
+
+.heroFeatureList {
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.heroFeatureItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(17px, 1.14vw, 32px);
+  line-height: 1.3;
+  color: var(--ink-primary);
+}
+
+.heroFeatureItem svg {
+  flex: 0 0 auto;
+  color: var(--green-600);
+  stroke-width: 2;
+}
+
+.heroActions {
+  margin-top: 30px;
+  margin-bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.heroImageFrame {
+  position: relative;
+  width: 100%;
+  height: 530px;
+  margin-top: 0;
+  overflow: hidden;
+  border-radius: 14px 14px 0 0;
+}
+
+.heroImageFrame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(250, 251, 252, 0.96) 0%,
+    rgba(250, 251, 252, 0.76) 38%,
+    rgba(250, 251, 252, 0.38) 64%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.heroImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 60% 52%;
+}
+
+.heroStats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, #f7f8fa 0%, #f3f5f8 100%);
+  padding: 24px 42px 28px;
+}
+
+.heroMetricItem {
+  padding: 8px 24px;
+}
+
+.heroMetricItem + .heroMetricItem {
+  border-left: 1px solid var(--line-soft);
+}
+
+.heroMetricValue {
+  margin: 0;
+  font-size: clamp(60px, 4.5vw, 92px);
+  line-height: 0.98;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+}
+
+.heroMetricItem:nth-child(1) .heroMetricValue,
+.heroMetricItem:nth-child(3) .heroMetricValue {
+  color: var(--green-600);
+}
+
+.heroMetricLabel {
+  margin: 8px 0 0;
+  font-size: clamp(20px, 1.35vw, 34px);
+  line-height: 1.25;
+  color: var(--ink-primary);
+}
+
+@media (max-width: 1200px) {
+  .heroTop {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+    padding: 34px 30px 0;
+  }
+
+  .heroTextSection h1 {
+    font-size: clamp(40px, 4.6vw, 64px);
+  }
+
+  .heroSubtext {
+    font-size: clamp(16px, 1.5vw, 22px);
+  }
+
+  .heroFeatureItem {
+    font-size: clamp(16px, 1.3vw, 24px);
+  }
+
+  .heroImageFrame {
+    height: 440px;
+  }
+
+  .heroImage {
+    object-position: 62% 52%;
+  }
+
+  .heroStats {
+    padding: 22px 30px 26px;
+  }
+
+  .heroMetricValue {
+    font-size: clamp(52px, 4.4vw, 76px);
+  }
+
+  .heroMetricLabel {
+    font-size: clamp(18px, 1.45vw, 26px);
+  }
+}
+
+@media (max-width: 980px) {
+  .heroTop {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 28px 24px 0;
+  }
+
+  .heroTextSection {
+    padding-bottom: 0;
+  }
+
+  .heroActions {
+    margin-top: 24px;
+  }
+
+  .heroImageFrame {
+    height: 320px;
+    border-radius: 12px;
+  }
+
+  .heroImageFrame::before {
+    background: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.58) 0%,
+      rgba(255, 255, 255, 0.2) 36%,
+      rgba(255, 255, 255, 0.06) 68%,
+      rgba(255, 255, 255, 0) 100%
+    );
+  }
+
+  .heroImage {
+    object-position: 64% center;
+  }
+
+  .heroStats {
+    grid-template-columns: 1fr;
+    padding: 22px 24px 24px;
+    gap: 14px;
+  }
+
+  .heroMetricItem {
+    padding: 0;
+  }
+
+  .heroMetricItem + .heroMetricItem {
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 14px;
+  }
+
+  .heroMetricValue {
+    font-size: clamp(42px, 10vw, 62px);
+  }
+
+  .heroMetricLabel {
+    font-size: clamp(18px, 4.6vw, 24px);
+  }
+}

@@ -1,0 +1,18 @@
+version: "1.0"
+last_updated: "2026-03-01T11:18:00Z"
+owner: "platform-architecture"
+schema:
+  entity: "shared_paths"
+  required_fields:
+    - path
+    - owner_context
+    - allowed_usage
+    - import_boundary
+  constraints:
+    unique_key:
+      - path
+entries:
+  - path: "src/lib"
+    owner_context: "platform_shared"
+    allowed_usage: "shared utilities without domain policy"
+    import_boundary: "read-only by all contexts"
