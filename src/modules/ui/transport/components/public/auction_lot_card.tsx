@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, Camera, Clock3 } from "lucide-react";
+import { CalendarDays, Camera, Clock3, MapPin } from "lucide-react";
 
 import {
   type AuctionLot,
@@ -28,7 +28,6 @@ function resolveLotImage(image: string | undefined): string {
 
 export function AuctionLotCard({ lot }: AuctionLotCardProps) {
   const heroImage = resolveLotImage(lot.images[0]);
-  const buyNowPriceAed = Math.max(lot.currentBidAed + 17000, 235000);
 
   return (
     <article className="lot-card">
@@ -53,8 +52,13 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       <div className="lot-content">
         <h3>{lot.title}</h3>
         <p className="lot-meta-line">
-          {lot.year} • {lot.mileageKm.toLocaleString("en-US")} KM • GCC Spec
+          {lot.year} • {lot.mileageKm.toLocaleString("en-US")} KM
         </p>
+        <p className="lot-location-line">
+          <MapPin className="structural-icon" size={18} aria-hidden="true" />
+          <span>{lot.location}</span>
+        </p>
+        <p className="lot-seller-line">Seller: {lot.seller}</p>
 
         <div className="lot-price-row">
           <div className="lot-price-col lot-price-current-col">
@@ -62,9 +66,9 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
             <p className="lot-price-value">{formatAed(lot.currentBidAed)}</p>
           </div>
 
-          <div className="lot-price-col lot-buy-now-col">
-            <p className="lot-price-label">Buy Now</p>
-            <p className="lot-buy-now-value">{formatAed(buyNowPriceAed)}</p>
+          <div className="lot-price-col lot-step-col">
+            <p className="lot-price-label">Minimum step</p>
+            <p className="lot-step-value">{formatAed(lot.minimumStepAed)}</p>
           </div>
         </div>
 
