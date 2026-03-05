@@ -1,20 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { SqlClient, SqlTransactionRunner } from "@/src/lib/sql_contract";
+import type {
+  SqlClient,
+  SqlQueryResult,
+  SqlRow,
+  SqlTransactionRunner,
+} from "@/src/lib/sql_contract";
 import {
   createUserRepository,
   userRoles,
   userStatuses,
 } from "./user_repository";
 
-type QueryResponder = (sql: string, params: readonly unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+type QueryResponder = (sql: string, params: readonly unknown[]) => Promise<{ rows: SqlRow[] }>;
 
 function createMockTransactionRunner(responder: QueryResponder): SqlTransactionRunner {
   return {
     async transaction<T>(handler: (tx: SqlClient) => Promise<T>): Promise<T> {
       const tx: SqlClient = {
-        query: async (sql: string, params: readonly unknown[] = []) => responder(sql, params),
+        query: async <T extends SqlRow = SqlRow>(
+          sql: string,
+          params: readonly unknown[] = [],
+        ): Promise<SqlQueryResult<T>> => {
+          const result = await responder(sql, params);
+          return {
+            rows: result.rows as T[],
+          };
+        },
       };
 
       return handler(tx);

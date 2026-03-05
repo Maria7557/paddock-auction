@@ -15,6 +15,7 @@ model User {
   status       UserStatus @default(ACTIVE)
   createdAt    DateTime @default(now())
   wallet       Wallet?
+  companies    CompanyUser[]
 }
 
 model Wallet {
@@ -25,6 +26,29 @@ model Wallet {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Company {
+  id                 String        @id @default(uuid())
+  name               String
+  country            String
+  registrationNumber String        @unique
+  status             CompanyStatus @default(PENDING)
+  createdAt          DateTime      @default(now())
+  users              CompanyUser[]
+}
+
+model CompanyUser {
+  id        String          @id @default(uuid())
+  userId    String
+  companyId String
+  role      CompanyUserRole
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
 }
 
 model Vehicle {
@@ -46,4 +70,16 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+}
+
+enum CompanyStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum CompanyUserRole {
+  OWNER
+  MANAGER
+  MEMBER
 }
