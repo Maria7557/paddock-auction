@@ -19,7 +19,7 @@ import {
   createPlaceBidService,
   type PlaceBidCommand,
   type PlaceBidService,
-} from "../application/place_bid_service";
+} from "../bid_service";
 import { prismaSqlTransactionRunner } from "../../../infrastructure/database/prisma_sql_runner";
 
 const bidRequestPayloadSchema = z.object({

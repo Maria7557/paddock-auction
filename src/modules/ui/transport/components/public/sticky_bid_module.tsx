@@ -45,7 +45,7 @@ function mapBidFailure(status: number, errorCode: string | undefined, fallbackMe
     };
   }
 
-  if (status === 409 && errorCode === "NO_DEPOSIT_NO_BID") {
+  if (status === 409 && (errorCode === "NO_DEPOSIT_NO_BID" || errorCode === "DEPOSIT_REQUIRED")) {
     return {
       tone: "warning",
       title: "Deposit required before bid",

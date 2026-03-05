@@ -147,7 +147,7 @@ function createAllowedHandler(
 test("idempotency replay returns exact stored response", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-idem-replay", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-replay", 500);
+    await upsertWallet(db, "company-replay", 6_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -179,7 +179,7 @@ test("idempotency replay returns exact stored response", async () => {
 test("idempotency hash mismatch returns deterministic 409", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-idem-conflict", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-conflict", 500);
+    await upsertWallet(db, "company-conflict", 6_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -401,7 +401,7 @@ test("50+ parallel bids maintain unique monotonic sequence numbers", async () =>
     });
 
     for (let index = 1; index <= bidCountTarget; index += 1) {
-      await upsertWallet(db, `company-seq-${index}`, 1000);
+      await upsertWallet(db, `company-seq-${index}`, 10_000);
     }
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
@@ -462,10 +462,10 @@ test("50+ parallel bids maintain unique monotonic sequence numbers", async () =>
   });
 });
 
-test("insufficient deposit rejects without inserting bid", async () => {
+test("bid without wallet funds is rejected", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-no-deposit", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-no-deposit", 10);
+    await upsertWallet(db, "company-no-deposit", 4_999);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -485,7 +485,8 @@ test("insufficient deposit rejects without inserting bid", async () => {
     );
 
     assert.equal(response.status, 409);
-    assert.equal(response.errorCode, bidErrorCodes.noDepositNoBid);
+    assert.equal(response.errorCode, bidErrorCodes.depositRequired);
+    assert.equal(response.body.error_code, bidErrorCodes.depositRequired);
 
     const bidCount = await db.query<{ count: number }>(
       "SELECT COUNT(*)::int AS count FROM bids WHERE auction_id = $1",
@@ -493,5 +494,118 @@ test("insufficient deposit rejects without inserting bid", async () => {
     );
 
     assert.equal(bidCount.rows[0].count, 0);
+  });
+});
+
+test("first bid creates deposit lock", async () => {
+  await withMigratedDb(async ({ db }) => {
+    await insertAuction(db, { id: "auction-first-lock", currentPrice: 100, minIncrement: 5 });
+    await upsertWallet(db, "company-first-lock", 7_000);
+
+    const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
+    const handler = createAllowedHandler(placeBidService);
+
+    const response = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-first-lock",
+            company_id: "company-first-lock",
+            user_id: "user-first-lock",
+            amount: 120,
+          },
+          "idem-first-lock-1",
+        ),
+      ),
+    );
+
+    assert.equal(response.status, 201);
+
+    const lockRows = await db.query<{ count: number; amount: string }>(
+      `SELECT COUNT(*)::int AS count, MAX(amount)::text AS amount
+       FROM deposit_locks
+       WHERE auction_id = $1
+         AND company_id = $2
+         AND status = 'ACTIVE'`,
+      ["auction-first-lock", "company-first-lock"],
+    );
+
+    assert.equal(lockRows.rows[0].count, 1);
+    assert.equal(Number(lockRows.rows[0].amount), 5_000);
+
+    const walletRows = await db.query<{ available_balance: string; locked_balance: string }>(
+      `SELECT available_balance::text, locked_balance::text
+       FROM deposit_wallets
+       WHERE company_id = $1
+         AND currency = 'USD'`,
+      ["company-first-lock"],
+    );
+
+    assert.equal(Number(walletRows.rows[0].available_balance), 2_000);
+    assert.equal(Number(walletRows.rows[0].locked_balance), 5_000);
+  });
+});
+
+test("second bid by same user does not create additional lock", async () => {
+  await withMigratedDb(async ({ db }) => {
+    await insertAuction(db, { id: "auction-second-lock", currentPrice: 100, minIncrement: 5 });
+    await upsertWallet(db, "company-second-lock", 9_000);
+
+    const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
+    const handler = createAllowedHandler(placeBidService);
+
+    const firstResponse = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-second-lock",
+            company_id: "company-second-lock",
+            user_id: "user-second-lock",
+            amount: 120,
+          },
+          "idem-second-lock-1",
+        ),
+      ),
+    );
+
+    const secondResponse = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-second-lock",
+            company_id: "company-second-lock",
+            user_id: "user-second-lock",
+            amount: 130,
+          },
+          "idem-second-lock-2",
+        ),
+      ),
+    );
+
+    assert.equal(firstResponse.status, 201);
+    assert.equal(secondResponse.status, 201);
+
+    const lockRows = await db.query<{ count: number; amount: string }>(
+      `SELECT COUNT(*)::int AS count, MAX(amount)::text AS amount
+       FROM deposit_locks
+       WHERE auction_id = $1
+         AND company_id = $2
+         AND status = 'ACTIVE'`,
+      ["auction-second-lock", "company-second-lock"],
+    );
+
+    assert.equal(lockRows.rows[0].count, 1);
+    assert.equal(Number(lockRows.rows[0].amount), 5_000);
+
+    const walletRows = await db.query<{ available_balance: string; locked_balance: string }>(
+      `SELECT available_balance::text, locked_balance::text
+       FROM deposit_wallets
+       WHERE company_id = $1
+         AND currency = 'USD'`,
+      ["company-second-lock"],
+    );
+
+    assert.equal(Number(walletRows.rows[0].available_balance), 4_000);
+    assert.equal(Number(walletRows.rows[0].locked_balance), 5_000);
   });
 });

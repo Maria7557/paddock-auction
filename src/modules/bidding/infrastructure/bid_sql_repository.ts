@@ -4,6 +4,7 @@ import { BidContentionConflictError } from "../domain/bid_domain_errors";
 import { bidErrorCodes, isExpectedBidContentionSqlState } from "../domain/bid_error_codes";
 import type { SqlRow, SqlTransactionRunner } from "../../../lib/sql_contract";
 import { toNumber } from "../../../lib/sql_contract";
+import { lockDeposit } from "../../wallet/deposit_service";
 
 type AuctionAndWalletRow = SqlRow & {
   auction_id: unknown;
@@ -25,10 +26,6 @@ type BidRequestRow = SqlRow & {
 type PersistedBidRequestResponseRow = SqlRow & {
   response_status: unknown;
   response_body: unknown;
-};
-
-type LockRow = SqlRow & {
-  amount: unknown;
 };
 
 type InsertedBidRequestRow = SqlRow & {
@@ -102,10 +99,6 @@ function extractSqlState(error: unknown): string | null {
   return null;
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return extractSqlState(error) === "23505";
-}
-
 function computeBidRequestExpiry(occurredAt: Date): Date {
   const expiresAt = new Date(occurredAt);
   expiresAt.setUTCDate(expiresAt.getUTCDate() + 90);
@@ -151,6 +144,8 @@ function createEmptyTimingBreakdown(): BidPathTimingBreakdown {
     bidInsertAuctionUpdateMs: 0,
   };
 }
+
+const FIRST_BID_DEPOSIT_LOCK_AMOUNT = 5000;
 
 export function createBidSqlRepository(
   transactionRunner: SqlTransactionRunner,
@@ -361,124 +356,31 @@ export function createBidSqlRepository(
 
           if (auction.wallet_id === null || auction.wallet_id === undefined) {
             return persistRejected(
-              bidErrorCodes.noDepositNoBid,
+              bidErrorCodes.depositRequired,
               `No deposit wallet found for company ${input.companyId}`,
             );
           }
 
           const walletId = String(auction.wallet_id);
-          const walletAvailableBalance = toNumber(
-            auction.wallet_available_balance,
-            "wallet_available_balance",
-          );
 
-          let activeLockAmount = 0;
-          let requiresLockAmountUpdate = false;
           const depositLockStartedAtMs = Date.now();
-          const loadExistingActiveLock = async (): Promise<LockRow | null> => {
-            const existingLockResult = await tx.query<LockRow>(
-              `SELECT amount
-               FROM deposit_locks
-               WHERE auction_id = $1
-                 AND company_id = $2
-                 AND status = 'ACTIVE'
-               FOR UPDATE`,
-              [input.auctionId, input.companyId],
-            );
-
-            return existingLockResult.rows[0] ?? null;
-          };
-
-          if (walletAvailableBalance >= input.amount) {
-            try {
-              await tx.query(
-                `INSERT INTO deposit_locks (
-                   id,
-                   auction_id,
-                   company_id,
-                   amount,
-                   status,
-                   created_at
-                 ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)
-                `,
-                [
-                  randomUUID(),
-                  input.auctionId,
-                  input.companyId,
-                  input.amount,
-                  input.occurredAt.toISOString(),
-                ],
-              );
-            } catch (error) {
-              if (!isUniqueViolation(error)) {
-                throw error;
-              }
-
-              const existingLock = await loadExistingActiveLock();
-
-              if (!existingLock) {
-                return persistRejected(
-                  bidErrorCodes.idempotencyInProgress,
-                  "Deposit lock is being acquired by another request",
-                );
-              }
-
-              activeLockAmount = toNumber(existingLock.amount, "amount");
-              requiresLockAmountUpdate = activeLockAmount < input.amount;
-            }
-          } else {
-            const existingLock = await loadExistingActiveLock();
-
-            if (!existingLock) {
-              return persistRejected(
-                bidErrorCodes.noDepositNoBid,
-                `Insufficient available deposit: ${walletAvailableBalance.toFixed(2)}`,
-              );
-            }
-
-            activeLockAmount = toNumber(existingLock.amount, "amount");
-            requiresLockAmountUpdate = activeLockAmount < input.amount;
-          }
-
+          const lockDepositResult = await lockDeposit(
+            tx,
+            walletId,
+            input.auctionId,
+            FIRST_BID_DEPOSIT_LOCK_AMOUNT,
+            input.companyId,
+            input.occurredAt,
+          );
           timing.depositLockMs += Date.now() - depositLockStartedAtMs;
 
-          const additionalRequired = Math.max(
-            0,
-            Math.round((input.amount - activeLockAmount) * 100) / 100,
-          );
-
-          if (additionalRequired > 0) {
-            if (walletAvailableBalance < additionalRequired) {
-              return persistRejected(
-                bidErrorCodes.noDepositNoBid,
-                `Insufficient available deposit: ${walletAvailableBalance.toFixed(2)}`,
-              );
-            }
-
-            const walletUpdateStartedAtMs = Date.now();
-            await tx.query(
-              `UPDATE deposit_wallets
-               SET available_balance = available_balance - $2,
-                   locked_balance = locked_balance + $2,
-                   updated_at = CURRENT_TIMESTAMP
-               WHERE id = $1`,
-              [walletId, additionalRequired],
+          if (lockDepositResult.kind === "deposit_required") {
+            return persistRejected(
+              bidErrorCodes.depositRequired,
+              `Insufficient available deposit. Minimum required: ${FIRST_BID_DEPOSIT_LOCK_AMOUNT.toFixed(2)}`,
             );
-            timing.walletUpdateMs += Date.now() - walletUpdateStartedAtMs;
-
-            if (requiresLockAmountUpdate) {
-              const depositLockUpdateStartedAtMs = Date.now();
-              await tx.query(
-                `UPDATE deposit_locks
-                 SET amount = $3
-                 WHERE auction_id = $1
-                   AND company_id = $2
-                   AND status = 'ACTIVE'`,
-                [input.auctionId, input.companyId, input.amount],
-              );
-              timing.depositLockMs += Date.now() - depositLockUpdateStartedAtMs;
-            }
           }
+
           timing.walletLockMutationMs = timing.depositLockMs + timing.walletUpdateMs;
 
           const nextSequenceNo = lastBidSequence + 1;

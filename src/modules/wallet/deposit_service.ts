@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { DomainConflictError, DomainNotFoundError } from "../../lib/domain_errors";
-import type { SqlRow, SqlTransactionRunner } from "../../lib/sql_contract";
+import type { SqlClient, SqlRow, SqlTransactionRunner } from "../../lib/sql_contract";
 import { toNumber } from "../../lib/sql_contract";
 
 export const WALLET_AUCTION_NOT_FOUND_CODE = "WALLET_AUCTION_NOT_FOUND";
@@ -43,6 +43,14 @@ type LedgerRow = SqlRow & {
   id: unknown;
 };
 
+type DepositWalletBalanceRow = SqlRow & {
+  available_balance: unknown;
+};
+
+type DepositLockIdRow = SqlRow & {
+  id: unknown;
+};
+
 export type BurnDepositForDefaultResult = {
   auctionId: string;
   winningBidId: string;
@@ -67,6 +75,31 @@ export type DepositService = {
   releaseLosingDeposits(auctionId: string): Promise<ReleaseLosingDepositsResult>;
 };
 
+export type LockDepositResult =
+  | {
+      kind: "created";
+      lockId: string;
+    }
+  | {
+      kind: "already_exists";
+      lockId: string;
+    }
+  | {
+      kind: "deposit_required";
+    };
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  if (!("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === "23505";
+}
+
 function toNonEmptyString(value: unknown, fieldName: string): string {
   if (typeof value === "string" && value.length > 0) {
     return value;
@@ -84,6 +117,114 @@ function toIntegerAmount(value: number, fieldName: string): number {
   }
 
   return value;
+}
+
+export async function lockDeposit(
+  tx: SqlClient,
+  walletId: string,
+  auctionId: string,
+  amount: number,
+  companyId: string,
+  occurredAt: Date,
+): Promise<LockDepositResult> {
+  const existingLockResult = await tx.query<DepositLockIdRow>(
+    `SELECT id
+     FROM deposit_locks
+     WHERE auction_id = $1
+       AND company_id = $2
+       AND status = 'ACTIVE'
+     FOR UPDATE`,
+    [auctionId, companyId],
+  );
+
+  if (existingLockResult.rows.length > 0) {
+    return {
+      kind: "already_exists",
+      lockId: toNonEmptyString(existingLockResult.rows[0].id, "deposit_locks.id"),
+    };
+  }
+
+  const walletBalanceResult = await tx.query<DepositWalletBalanceRow>(
+    `SELECT available_balance
+     FROM deposit_wallets
+     WHERE id = $1
+     FOR UPDATE`,
+    [walletId],
+  );
+
+  if (walletBalanceResult.rows.length === 0) {
+    return { kind: "deposit_required" };
+  }
+
+  const availableBalance = toNumber(
+    walletBalanceResult.rows[0].available_balance,
+    "deposit_wallets.available_balance",
+  );
+
+  if (availableBalance < amount) {
+    return { kind: "deposit_required" };
+  }
+
+  const createdLockId = randomUUID();
+  try {
+    await tx.query<UpdateRow>(
+      `INSERT INTO deposit_locks (
+         id,
+         auction_id,
+         company_id,
+         amount,
+         status,
+         created_at
+       ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
+      [createdLockId, auctionId, companyId, amount, occurredAt.toISOString()],
+    );
+  } catch (error) {
+    if (!isUniqueViolation(error)) {
+      throw error;
+    }
+
+    const duplicateLockResult = await tx.query<DepositLockIdRow>(
+      `SELECT id
+       FROM deposit_locks
+       WHERE auction_id = $1
+         AND company_id = $2
+         AND status = 'ACTIVE'
+       FOR UPDATE`,
+      [auctionId, companyId],
+    );
+
+    if (duplicateLockResult.rows.length > 0) {
+      return {
+        kind: "already_exists",
+        lockId: toNonEmptyString(duplicateLockResult.rows[0].id, "deposit_locks.id"),
+      };
+    }
+
+    throw error;
+  }
+
+  const walletUpdateResult = await tx.query<UpdateRow>(
+    `UPDATE deposit_wallets
+     SET available_balance = available_balance - $2,
+         locked_balance = locked_balance + $2,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1
+       AND available_balance >= $2
+     RETURNING id`,
+    [walletId, amount],
+  );
+
+  if (walletUpdateResult.rows.length === 0) {
+    throw new DomainConflictError(
+      WALLET_LOCKED_BALANCE_INSUFFICIENT_CODE,
+      `Insufficient deposit wallet balance for wallet ${walletId}`,
+    );
+  }
+
+  return {
+    kind: "created",
+    lockId: createdLockId,
+  };
 }
 
 export function createDepositService(
