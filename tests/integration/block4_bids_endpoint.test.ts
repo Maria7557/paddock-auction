@@ -28,6 +28,8 @@ async function insertAuction(
     currentPrice?: number;
     minIncrement?: number;
     lastBidSequence?: number;
+    startsAt?: string;
+    endsAt?: string;
   },
 ): Promise<void> {
   await db.query(
@@ -50,8 +52,8 @@ async function insertAuction(
       input.currentPrice ?? 100,
       input.minIncrement ?? 5,
       input.lastBidSequence ?? 0,
-      "2026-03-01T00:00:00Z",
-      "2026-03-02T00:00:00Z",
+      input.startsAt ?? "2026-03-01T00:00:00Z",
+      input.endsAt ?? "2026-03-02T00:00:00Z",
     ],
   );
 }
@@ -607,5 +609,89 @@ test("second bid by same user does not create additional lock", async () => {
 
     assert.equal(Number(walletRows.rows[0].available_balance), 4_000);
     assert.equal(Number(walletRows.rows[0].locked_balance), 5_000);
+  });
+});
+
+test("bid in last 2 minutes extends auction end time by 120 seconds", async () => {
+  await withMigratedDb(async ({ db }) => {
+    await insertAuction(db, {
+      id: "auction-anti-snipe-window",
+      currentPrice: 100,
+      minIncrement: 5,
+      startsAt: "2026-03-01T00:00:00Z",
+      endsAt: "2026-03-01T10:01:30Z",
+    });
+    await upsertWallet(db, "company-anti-snipe-window", 9_000);
+
+    const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
+    const handler = createAllowedHandler(placeBidService);
+
+    const response = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-anti-snipe-window",
+            company_id: "company-anti-snipe-window",
+            user_id: "user-anti-snipe-window",
+            amount: 120,
+          },
+          "idem-anti-snipe-window-1",
+        ),
+      ),
+    );
+
+    assert.equal(response.status, 201);
+
+    const auctionRow = await db.query<{ ends_at: string; extension_count: number }>(
+      `SELECT ends_at, extension_count
+       FROM auctions
+       WHERE id = $1`,
+      ["auction-anti-snipe-window"],
+    );
+
+    assert.equal(new Date(auctionRow.rows[0].ends_at).toISOString(), "2026-03-01T10:03:30.000Z");
+    assert.equal(Number(auctionRow.rows[0].extension_count), 1);
+  });
+});
+
+test("bid earlier than last 2 minutes does not extend auction end time", async () => {
+  await withMigratedDb(async ({ db }) => {
+    await insertAuction(db, {
+      id: "auction-anti-snipe-early",
+      currentPrice: 100,
+      minIncrement: 5,
+      startsAt: "2026-03-01T00:00:00Z",
+      endsAt: "2026-03-01T10:05:00Z",
+    });
+    await upsertWallet(db, "company-anti-snipe-early", 9_000);
+
+    const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
+    const handler = createAllowedHandler(placeBidService);
+
+    const response = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-anti-snipe-early",
+            company_id: "company-anti-snipe-early",
+            user_id: "user-anti-snipe-early",
+            amount: 120,
+          },
+          "idem-anti-snipe-early-1",
+        ),
+      ),
+    );
+
+    assert.equal(response.status, 201);
+
+    const auctionRow = await db.query<{ ends_at: string; extension_count: number }>(
+      `SELECT ends_at, extension_count
+       FROM auctions
+       WHERE id = $1`,
+      ["auction-anti-snipe-early"],
+    );
+
+    assert.equal(new Date(auctionRow.rows[0].ends_at).toISOString(), "2026-03-01T10:05:00.000Z");
+    assert.equal(Number(auctionRow.rows[0].extension_count), 0);
   });
 });

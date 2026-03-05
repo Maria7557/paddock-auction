@@ -5,6 +5,7 @@ import { bidErrorCodes, isExpectedBidContentionSqlState } from "../domain/bid_er
 import type { SqlRow, SqlTransactionRunner } from "../../../lib/sql_contract";
 import { toNumber } from "../../../lib/sql_contract";
 import { lockDeposit } from "../../wallet/deposit_service";
+import { applyAntiSnipingExtension } from "../../auction/anti_sniping_service";
 
 type AuctionAndWalletRow = SqlRow & {
   auction_id: unknown;
@@ -13,6 +14,7 @@ type AuctionAndWalletRow = SqlRow & {
   auction_current_price: unknown;
   auction_min_increment: unknown;
   auction_last_bid_sequence: unknown;
+  auction_ends_at: unknown;
   wallet_id: unknown;
   wallet_available_balance: unknown;
 };
@@ -270,6 +272,7 @@ export function createBidSqlRepository(
                a.current_price AS auction_current_price,
                a.min_increment AS auction_min_increment,
                a.last_bid_sequence AS auction_last_bid_sequence,
+               a.ends_at AS auction_ends_at,
                wallet.id AS wallet_id,
                wallet.available_balance AS wallet_available_balance
              FROM auctions AS a
@@ -305,6 +308,7 @@ export function createBidSqlRepository(
           const minIncrement = toNumber(auction.auction_min_increment, "auction_min_increment");
           const currentVersion = toNumber(auction.auction_version, "auction_version");
           const lastBidSequence = toNumber(auction.auction_last_bid_sequence, "auction_last_bid_sequence");
+          const currentEndsAt = new Date(String(auction.auction_ends_at));
 
           const persistRejected = async (
             errorCode: string,
@@ -408,6 +412,12 @@ export function createBidSqlRepository(
             ],
           );
           timing.bidInsertMs = Date.now() - bidInsertStartedAtMs;
+
+          await applyAntiSnipingExtension(tx, {
+            auctionId: input.auctionId,
+            currentEndsAt,
+            occurredAt: input.occurredAt,
+          });
 
           const auctionUpdateStartedAtMs = Date.now();
           await tx.query(
