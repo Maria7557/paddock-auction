@@ -17,7 +17,7 @@ function createRunnerWithTx(tx: SqlClient): SqlTransactionRunner {
   };
 }
 
-test("topUpDeposit increases wallet balance and inserts DEPOSIT_TOPUP ledger", async () => {
+test("topUpWallet increases wallet balance and inserts DEPOSIT_TOPUP ledger", async () => {
   const queries: Array<{ sql: string; params: readonly unknown[] }> = [];
 
   const tx: SqlClient = {
@@ -47,11 +47,7 @@ test("topUpDeposit increases wallet balance and inserts DEPOSIT_TOPUP ledger", a
   };
 
   const service = createWalletService(createRunnerWithTx(tx));
-  const result = await service.topUpDeposit({
-    userId: "user-1",
-    amount: 50,
-    occurredAt: new Date("2026-03-05T10:00:00.000Z"),
-  });
+  const result = await service.topUpWallet("user-1", 50);
 
   assert.equal(result.walletId, "wallet-1");
   assert.equal(result.userId, "user-1");
@@ -62,7 +58,7 @@ test("topUpDeposit increases wallet balance and inserts DEPOSIT_TOPUP ledger", a
   assert.equal(queries[2].params[2], "DEPOSIT_TOPUP");
 });
 
-test("topUpDeposit rejects non-positive or non-integer amount", async () => {
+test("topUpWallet rejects non-positive or non-integer amount", async () => {
   const tx: SqlClient = {
     async query<T extends SqlRow = SqlRow>(): Promise<{ rows: T[] }> {
       return { rows: [] };
@@ -73,11 +69,7 @@ test("topUpDeposit rejects non-positive or non-integer amount", async () => {
 
   await assert.rejects(
     async () => {
-      await service.topUpDeposit({
-        userId: "user-1",
-        amount: 10.5,
-        occurredAt: new Date("2026-03-05T10:00:00.000Z"),
-      });
+      await service.topUpWallet("user-1", 10.5);
     },
     (error: unknown) => {
       assert.ok(error instanceof DomainConflictError);
@@ -87,7 +79,7 @@ test("topUpDeposit rejects non-positive or non-integer amount", async () => {
   );
 });
 
-test("topUpDeposit throws WALLET_NOT_FOUND when wallet does not exist", async () => {
+test("topUpWallet throws WALLET_NOT_FOUND when wallet does not exist", async () => {
   const tx: SqlClient = {
     async query<T extends SqlRow = SqlRow>(sql: string): Promise<{ rows: T[] }> {
       if (sql.includes('FROM "Wallet"') && sql.includes('WHERE "userId" = $1')) {
@@ -102,11 +94,7 @@ test("topUpDeposit throws WALLET_NOT_FOUND when wallet does not exist", async ()
 
   await assert.rejects(
     async () => {
-      await service.topUpDeposit({
-        userId: "user-missing",
-        amount: 100,
-        occurredAt: new Date("2026-03-05T10:00:00.000Z"),
-      });
+      await service.topUpWallet("user-missing", 100);
     },
     (error: unknown) => {
       assert.ok(error instanceof DomainNotFoundError);

@@ -22,11 +22,10 @@ async function parseResponse(
 test("wallet deposit controller rejects missing x-user-id header", async () => {
   const handler = createPostWalletDepositHandler({
     walletService: {
-      topUpDeposit: async () => {
+      topUpWallet: async () => {
         throw new Error("should not be called");
       },
     },
-    now: () => new Date("2026-03-05T10:00:00.000Z"),
   });
 
   const response = await parseResponse(
@@ -49,11 +48,10 @@ test("wallet deposit controller rejects missing x-user-id header", async () => {
 test("wallet deposit controller rejects invalid payload", async () => {
   const handler = createPostWalletDepositHandler({
     walletService: {
-      topUpDeposit: async () => {
+      topUpWallet: async () => {
         throw new Error("should not be called");
       },
     },
-    now: () => new Date("2026-03-05T10:00:00.000Z"),
   });
 
   const response = await parseResponse(
@@ -75,22 +73,23 @@ test("wallet deposit controller rejects invalid payload", async () => {
 });
 
 test("wallet deposit controller returns accepted response on success", async () => {
-  let capturedCommand: unknown;
+  let capturedUserId: string | null = null;
+  let capturedAmount: number | null = null;
 
   const handler = createPostWalletDepositHandler({
     walletService: {
-      topUpDeposit: async (command) => {
-        capturedCommand = command;
+      topUpWallet: async (userId, amount) => {
+        capturedUserId = userId;
+        capturedAmount = amount;
         return {
           walletId: "wallet-1",
-          userId: command.userId,
-          amount: command.amount,
+          userId,
+          amount,
           balance: 500,
           ledgerId: "ledger-1",
         };
       },
     },
-    now: () => new Date("2026-03-05T10:00:00.000Z"),
   });
 
   const response = await parseResponse(
@@ -114,21 +113,17 @@ test("wallet deposit controller returns accepted response on success", async () 
   assert.equal(response.body.amount, 100);
   assert.equal(response.body.balance, 500);
   assert.equal(response.body.ledger_id, "ledger-1");
-  assert.deepEqual(capturedCommand, {
-    userId: "user-1",
-    amount: 100,
-    occurredAt: new Date("2026-03-05T10:00:00.000Z"),
-  });
+  assert.equal(capturedUserId, "user-1");
+  assert.equal(capturedAmount, 100);
 });
 
 test("wallet deposit controller maps domain errors", async () => {
   const handler = createPostWalletDepositHandler({
     walletService: {
-      topUpDeposit: async () => {
+      topUpWallet: async () => {
         throw new DomainNotFoundError(WALLET_NOT_FOUND_CODE, "Wallet not found");
       },
     },
-    now: () => new Date("2026-03-05T10:00:00.000Z"),
   });
 
   const response = await parseResponse(

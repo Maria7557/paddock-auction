@@ -46,8 +46,7 @@ function parseUserId(headers: Headers): string | null {
 }
 
 export type PostWalletDepositHandlerDependencies = {
-  walletService: Pick<WalletService, "topUpDeposit">;
-  now: () => Date;
+  walletService: Pick<WalletService, "topUpWallet">;
 };
 
 export function createPostWalletDepositHandler(
@@ -98,11 +97,7 @@ export function createPostWalletDepositHandler(
 
       const payload: DepositRequestPayload = parsedBody.data;
 
-      const result = await dependencies.walletService.topUpDeposit({
-        userId,
-        amount: payload.amount,
-        occurredAt: dependencies.now(),
-      });
+      const result = await dependencies.walletService.topUpWallet(userId, payload.amount);
 
       return jsonResult({
         status: 200,
@@ -143,5 +138,4 @@ const defaultWalletService = createWalletService(prismaSqlTransactionRunner);
 
 export const postWalletDepositHandler = createPostWalletDepositHandler({
   walletService: defaultWalletService,
-  now: () => new Date(),
 });

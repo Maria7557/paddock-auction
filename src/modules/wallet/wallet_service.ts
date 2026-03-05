@@ -16,13 +16,7 @@ type LedgerRow = SqlRow & {
   id: unknown;
 };
 
-export type TopUpDepositCommand = {
-  userId: string;
-  amount: number;
-  occurredAt: Date;
-};
-
-export type TopUpDepositResult = {
+export type TopUpWalletResult = {
   walletId: string;
   userId: string;
   amount: number;
@@ -31,7 +25,7 @@ export type TopUpDepositResult = {
 };
 
 export type WalletService = {
-  topUpDeposit(command: TopUpDepositCommand): Promise<TopUpDepositResult>;
+  topUpWallet(userId: string, amount: number): Promise<TopUpWalletResult>;
 };
 
 function toNonEmptyString(value: unknown, fieldName: string): string {
@@ -57,8 +51,8 @@ export function createWalletService(
   transactionRunner: SqlTransactionRunner,
 ): WalletService {
   return {
-    async topUpDeposit(command: TopUpDepositCommand): Promise<TopUpDepositResult> {
-      const amount = validateTopUpAmount(command.amount);
+    async topUpWallet(userId: string, rawAmount: number): Promise<TopUpWalletResult> {
+      const amount = validateTopUpAmount(rawAmount);
 
       return transactionRunner.transaction(async (tx) => {
         const walletResult = await tx.query<WalletRow>(
@@ -66,13 +60,13 @@ export function createWalletService(
            FROM "Wallet"
            WHERE "userId" = $1
            FOR UPDATE`,
-          [command.userId],
+          [userId],
         );
 
         if (walletResult.rows.length === 0) {
           throw new DomainNotFoundError(
             WALLET_NOT_FOUND_CODE,
-            `Wallet was not found for user ${command.userId}`,
+            `Wallet was not found for user ${userId}`,
           );
         }
 
@@ -89,7 +83,7 @@ export function createWalletService(
         if (walletUpdateResult.rows.length === 0) {
           throw new DomainNotFoundError(
             WALLET_NOT_FOUND_CODE,
-            `Wallet was not found for user ${command.userId}`,
+            `Wallet was not found for user ${userId}`,
           );
         }
 
@@ -105,7 +99,7 @@ export function createWalletService(
              amount,
              reference,
              "createdAt"
-           ) VALUES ($1, $2, $3::"LedgerType", $4, $5, $6::timestamptz)
+           ) VALUES ($1, $2, $3::"LedgerType", $4, $5, CURRENT_TIMESTAMP)
            RETURNING id`,
           [
             randomUUID(),
@@ -113,7 +107,6 @@ export function createWalletService(
             "DEPOSIT_TOPUP",
             amount,
             null,
-            command.occurredAt.toISOString(),
           ],
         );
 
@@ -121,7 +114,7 @@ export function createWalletService(
 
         return {
           walletId: updatedWalletId,
-          userId: command.userId,
+          userId,
           amount,
           balance: updatedBalance,
           ledgerId,

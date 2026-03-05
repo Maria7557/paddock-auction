@@ -72,7 +72,6 @@ test("wallet deposit endpoint increases balance and writes DEPOSIT_TOPUP ledger 
     const walletService = createWalletService(createPgliteTransactionRunner(db));
     const handler = createPostWalletDepositHandler({
       walletService,
-      now: () => new Date("2026-03-05T11:00:00Z"),
     });
 
     const response = await parseResponse(
@@ -114,7 +113,6 @@ test("wallet deposit endpoint returns WALLET_NOT_FOUND for missing wallet", asyn
     const walletService = createWalletService(createPgliteTransactionRunner(db));
     const handler = createPostWalletDepositHandler({
       walletService,
-      now: () => new Date("2026-03-05T11:00:00Z"),
     });
 
     const response = await parseResponse(
