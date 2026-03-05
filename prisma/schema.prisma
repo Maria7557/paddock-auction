@@ -12,10 +12,39 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
   role      Role     @default(USER)
+  wallet    Wallet?
 }
 
 enum Role {
   USER
   ADMIN
   SUPER_ADMIN
+}
+
+model Wallet {
+  id            String         @id @default(uuid())
+  userId        String         @unique
+  balance       Int            @default(0)
+  lockedBalance Int            @default(0)
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id])
+  ledger        WalletLedger[]
+}
+
+model WalletLedger {
+  id        String     @id @default(uuid())
+  walletId  String
+  type      LedgerType
+  amount    Int
+  reference String?
+  createdAt DateTime   @default(now())
+  wallet    Wallet     @relation(fields: [walletId], references: [id])
+}
+
+enum LedgerType {
+  DEPOSIT_TOPUP
+  DEPOSIT_LOCK
+  DEPOSIT_RELEASE
+  DEPOSIT_BURN
+  WITHDRAWAL
 }

@@ -37,7 +37,7 @@ async function insertAuction(db: PGlite, auctionId: string): Promise<void> {
 
 test("migrations apply successfully on a clean database", async () => {
   await withMigratedDb(async ({ db, appliedMigrations }) => {
-    assert.equal(appliedMigrations.length, 6);
+    assert.equal(appliedMigrations.length, 7);
     assert.deepEqual(appliedMigrations, [
       "20260226072326_init",
       "20260226080650_add_role",
@@ -45,6 +45,7 @@ test("migrations apply successfully on a clean database", async () => {
       "20260301170000_block3_add_ended_state",
       "20260301201500_block4_bid_runtime_columns",
       "20260301233000_block5_billing_webhook_contract",
+      "20260305160000_wallet_system",
     ]);
 
     const auctionsCount = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM auctions");
@@ -99,7 +100,7 @@ test("bid request idempotency key is unique per auction and company", async () =
         "idem-123",
         "hash-1",
         "IN_PROGRESS",
-        "2026-03-03T00:00:00Z",
+        "2030-03-03T00:00:00Z",
       ],
     );
 
@@ -122,7 +123,7 @@ test("bid request idempotency key is unique per auction and company", async () =
             "idem-123",
             "hash-2",
             "IN_PROGRESS",
-            "2026-03-03T00:00:00Z",
+            "2030-03-03T00:00:00Z",
           ],
         );
       },
