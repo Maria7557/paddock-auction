@@ -84,6 +84,26 @@ async function insertWallet(
   );
 }
 
+async function insertUserWallet(
+  db: Awaited<ReturnType<typeof createMigratedTestDb>>["db"],
+  input: { userId: string; walletId: string; balance?: number; lockedBalance?: number },
+): Promise<void> {
+  await db.query(
+    `INSERT INTO "User" (id, email) VALUES ($1, $2)`,
+    [input.userId, `${input.userId}@example.test`],
+  );
+
+  await db.query(
+    `INSERT INTO "Wallet" (
+       id,
+       "userId",
+       balance,
+       "lockedBalance"
+     ) VALUES ($1, $2, $3, $4)`,
+    [input.walletId, input.userId, input.balance ?? 0, input.lockedBalance ?? 0],
+  );
+}
+
 async function insertActiveDepositLock(
   db: Awaited<ReturnType<typeof createMigratedTestDb>>["db"],
   input: {
@@ -454,6 +474,12 @@ test("successful webhook applies payment, deadline, auction and deposit mutation
     });
 
     await insertWallet(db, "company-success-1", { available: 780, locked: 220 });
+    await insertUserWallet(db, {
+      userId: "company-success-1",
+      walletId: "wallet-user-company-success-1",
+      balance: 0,
+      lockedBalance: 0,
+    });
     await insertActiveDepositLock(db, {
       id: "lock-success-1",
       auctionId: "auction-block5-success",
@@ -583,5 +609,17 @@ test("successful webhook applies payment, deadline, auction and deposit mutation
       ["auction-block5-success"],
     );
     assert.equal(financialEventCount.rows[0].count, 2);
+
+    const walletLedgerRows = await db.query<{ type: string; amount: number; reference: string | null }>(
+      `SELECT type, amount, reference
+       FROM "WalletLedger"
+       WHERE "walletId" = $1`,
+      ["wallet-user-company-success-1"],
+    );
+
+    assert.equal(walletLedgerRows.rows.length, 1);
+    assert.equal(walletLedgerRows.rows[0].type, "PAYMENT_RECEIVED");
+    assert.equal(Number(walletLedgerRows.rows[0].amount), 220);
+    assert.equal(walletLedgerRows.rows[0].reference, invoiceId);
   });
 });

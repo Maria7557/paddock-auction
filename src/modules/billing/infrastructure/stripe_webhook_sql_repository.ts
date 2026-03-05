@@ -74,6 +74,10 @@ type WalletRow = SqlRow & {
   currency: unknown;
 };
 
+type UserWalletRow = SqlRow & {
+  id: unknown;
+};
+
 type DepositLockRow = SqlRow & {
   id: unknown;
   amount: unknown;
@@ -90,6 +94,14 @@ type InsertRow = SqlRow & { id: unknown };
 type UpdatedWalletRow = SqlRow & {
   id: unknown;
 };
+
+function toIntegerAmount(value: number, fieldName: string): number {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new Error(`Field ${fieldName} must be an integer amount for wallet ledger operations`);
+  }
+
+  return value;
+}
 
 export function createStripeWebhookRepository(
   transactionRunner: SqlTransactionRunner,
@@ -194,6 +206,17 @@ export function createStripeWebhookRepository(
 
         const auctionId = String(invoice.auction_id);
         const buyerCompanyId = String(invoice.buyer_company_id);
+        const invoiceTotalAmount = toIntegerAmount(toNumber(invoice.total, "total"), "invoice.total");
+
+        const buyerUserWalletResult = await tx.query<UserWalletRow>(
+          `SELECT id
+           FROM "Wallet"
+           WHERE "userId" = $1
+           FOR UPDATE`,
+          [buyerCompanyId],
+        );
+        const buyerUserWalletId =
+          buyerUserWalletResult.rows.length === 0 ? null : String(buyerUserWalletResult.rows[0].id);
 
         const deadlineResult = await tx.query<PaymentDeadlineRow>(
           `SELECT id
@@ -391,7 +414,7 @@ export function createStripeWebhookRepository(
             auctionId,
             buyerCompanyId,
             invoiceId,
-            toNumber(invoice.total, "total"),
+            invoiceTotalAmount,
             String(invoice.currency),
             JSON.stringify({
               stripe_event_id: input.stripeEventId,
@@ -434,6 +457,27 @@ export function createStripeWebhookRepository(
             input.occurredAt.toISOString(),
           ],
         );
+
+        if (buyerUserWalletId !== null) {
+          await tx.query(
+            `INSERT INTO "WalletLedger" (
+               id,
+               "walletId",
+               type,
+               amount,
+               reference,
+               "createdAt"
+             ) VALUES ($1, $2, $3::"LedgerType", $4, $5, $6::timestamptz)`,
+            [
+              randomUUID(),
+              buyerUserWalletId,
+              "PAYMENT_RECEIVED",
+              invoiceTotalAmount,
+              invoiceId,
+              input.occurredAt.toISOString(),
+            ],
+          );
+        }
 
         return {
           kind: "applied",

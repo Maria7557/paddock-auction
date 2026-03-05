@@ -37,7 +37,7 @@ async function insertAuction(db: PGlite, auctionId: string): Promise<void> {
 
 test("migrations apply successfully on a clean database", async () => {
   await withMigratedDb(async ({ db, appliedMigrations }) => {
-    assert.equal(appliedMigrations.length, 7);
+    assert.equal(appliedMigrations.length, 8);
     assert.deepEqual(appliedMigrations, [
       "20260226072326_init",
       "20260226080650_add_role",
@@ -46,6 +46,7 @@ test("migrations apply successfully on a clean database", async () => {
       "20260301201500_block4_bid_runtime_columns",
       "20260301233000_block5_billing_webhook_contract",
       "20260305160000_wallet_system",
+      "20260305210000_add_payment_received_ledger_type",
     ]);
 
     const auctionsCount = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM auctions");
