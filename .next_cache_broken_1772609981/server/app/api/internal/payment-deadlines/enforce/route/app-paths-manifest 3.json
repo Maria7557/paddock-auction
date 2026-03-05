@@ -1,0 +1,3 @@
+{
+  "/api/internal/payment-deadlines/enforce/route": "app/api/internal/payment-deadlines/enforce/route.js"
+}

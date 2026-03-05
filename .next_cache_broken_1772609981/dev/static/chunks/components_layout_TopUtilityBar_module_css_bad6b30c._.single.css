@@ -1,0 +1,103 @@
+/* [project]/components/layout/TopUtilityBar.module.css [app-client] (css) */
+.TopUtilityBar-module__mj_msq__bar {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--line-soft);
+  min-height: 38px;
+  color: var(--ink-secondary);
+  background: #f5f7f6;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  padding: 0 16px;
+  font-size: 12px;
+  display: flex;
+}
+
+.TopUtilityBar-module__mj_msq__left, .TopUtilityBar-module__mj_msq__right {
+  align-items: center;
+  gap: 10px;
+  display: inline-flex;
+}
+
+.TopUtilityBar-module__mj_msq__left {
+  white-space: nowrap;
+}
+
+.TopUtilityBar-module__mj_msq__divider {
+  background: var(--line-strong);
+  width: 1px;
+  height: 12px;
+}
+
+.TopUtilityBar-module__mj_msq__countrySelectWrap {
+  align-items: center;
+  display: inline-flex;
+  position: relative;
+}
+
+.TopUtilityBar-module__mj_msq__countrySelect {
+  appearance: none;
+  border: 1px solid var(--line-soft);
+  color: var(--ink-secondary);
+  background: #fff;
+  border-radius: 999px;
+  height: 26px;
+  padding: 0 26px 0 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.TopUtilityBar-module__mj_msq__countryChevron {
+  pointer-events: none;
+  color: var(--ink-muted);
+  position: absolute;
+  right: 8px;
+}
+
+.TopUtilityBar-module__mj_msq__iconButton {
+  border: 1px solid var(--line-soft);
+  width: 26px;
+  height: 26px;
+  color: var(--ink-secondary);
+  background: #fff;
+  border-radius: 999px;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+}
+
+.TopUtilityBar-module__mj_msq__supportLink {
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.TopUtilityBar-module__mj_msq__supportLink:hover {
+  color: var(--ink-primary);
+}
+
+.TopUtilityBar-module__mj_msq__srOnly {
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  position: absolute;
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .TopUtilityBar-module__mj_msq__bar {
+    flex-wrap: wrap;
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+
+  .TopUtilityBar-module__mj_msq__left, .TopUtilityBar-module__mj_msq__right {
+    flex-wrap: wrap;
+  }
+}
+
+/*# sourceMappingURL=components_layout_TopUtilityBar_module_css_bad6b30c._.single.css.map*/

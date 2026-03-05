@@ -8,14 +8,42 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
-  role      Role     @default(USER)
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole   @default(BUYER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime @default(now())
+  wallet       Wallet?
 }
 
-enum Role {
-  USER
+model Wallet {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  balance       Decimal  @default(0) @db.Decimal(18, 2)
+  lockedBalance Decimal  @default(0) @db.Decimal(18, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Vehicle {
+  id      String @id @default(uuid())
+  brand   String
+  model   String
+  year    Int
+  mileage Int
+  vin     String @unique
+}
+
+enum UserRole {
+  BUYER
+  SELLER
   ADMIN
   SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
 }
