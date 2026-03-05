@@ -29,6 +29,7 @@ model Wallet {
   createdAt     DateTime       @default(now())
   user          User           @relation(fields: [userId], references: [id])
   ledger        WalletLedger[]
+  depositLocks  DepositLock[]
 }
 
 model WalletLedger {
@@ -39,6 +40,24 @@ model WalletLedger {
   reference String?
   createdAt DateTime   @default(now())
   wallet    Wallet     @relation(fields: [walletId], references: [id])
+
+  @@index([walletId], map: "walletledger_wallet_idx")
+}
+
+model DepositLock {
+  id               String            @id @default(uuid())
+  walletId         String            @map("wallet_id")
+  auctionId        String            @map("auction_id")
+  amount           Int
+  status           DepositLockStatus @default(ACTIVE)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  releasedAt       DateTime?         @map("released_at")
+  burnedAt         DateTime?         @map("burned_at")
+  resolutionReason String?           @map("resolution_reason")
+  wallet           Wallet            @relation(fields: [walletId], references: [id])
+
+  @@map("deposit_locks")
+  @@index([walletId], map: "depositlock_wallet_idx")
 }
 
 enum LedgerType {
@@ -48,4 +67,10 @@ enum LedgerType {
   DEPOSIT_BURN
   PAYMENT_RECEIVED
   WITHDRAWAL
+}
+
+enum DepositLockStatus {
+  ACTIVE
+  RELEASED
+  BURNED
 }

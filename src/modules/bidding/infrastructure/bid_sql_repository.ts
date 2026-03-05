@@ -7,7 +7,7 @@ import { toNumber } from "../../../lib/sql_contract";
 import { lockDeposit } from "../../wallet/deposit_service";
 import { applyAntiSnipingExtension } from "../../auction/anti_sniping_service";
 
-type AuctionAndWalletRow = SqlRow & {
+type AuctionRow = SqlRow & {
   auction_id: unknown;
   auction_state: unknown;
   auction_version: unknown;
@@ -15,8 +15,10 @@ type AuctionAndWalletRow = SqlRow & {
   auction_min_increment: unknown;
   auction_last_bid_sequence: unknown;
   auction_ends_at: unknown;
-  wallet_id: unknown;
-  wallet_available_balance: unknown;
+};
+
+type WalletRow = SqlRow & {
+  id: unknown;
 };
 
 type BidRequestRow = SqlRow & {
@@ -264,7 +266,7 @@ export function createBidSqlRepository(
           await tx.query("SELECT pg_advisory_xact_lock(hashtext($1), 0)", [input.auctionId]);
           timing.advisoryLockWaitMs = Date.now() - advisoryLockStartedAtMs;
 
-          const auctionResult = await tx.query<AuctionAndWalletRow>(
+          const auctionResult = await tx.query<AuctionRow>(
             `SELECT
                a.id AS auction_id,
                a.state AS auction_state,
@@ -272,20 +274,11 @@ export function createBidSqlRepository(
                a.current_price AS auction_current_price,
                a.min_increment AS auction_min_increment,
                a.last_bid_sequence AS auction_last_bid_sequence,
-               a.ends_at AS auction_ends_at,
-               wallet.id AS wallet_id,
-               wallet.available_balance AS wallet_available_balance
+               a.ends_at AS auction_ends_at
              FROM auctions AS a
-             LEFT JOIN LATERAL (
-               SELECT id, available_balance
-               FROM deposit_wallets
-               WHERE company_id = $2
-                 AND currency = $3
-               FOR UPDATE
-             ) AS wallet ON TRUE
              WHERE a.id = $1
              FOR UPDATE OF a`,
-            [input.auctionId, input.companyId, "USD"],
+            [input.auctionId],
           );
           const lockWaitMs = timing.advisoryLockWaitMs;
 
@@ -358,14 +351,22 @@ export function createBidSqlRepository(
             );
           }
 
-          if (auction.wallet_id === null || auction.wallet_id === undefined) {
+          const walletResult = await tx.query<WalletRow>(
+            `SELECT id
+             FROM "Wallet"
+             WHERE "userId" = $1
+             FOR UPDATE`,
+            [input.userId],
+          );
+
+          if (walletResult.rows.length === 0) {
             return persistRejected(
               bidErrorCodes.depositRequired,
-              `No deposit wallet found for company ${input.companyId}`,
+              `No wallet found for user ${input.userId}`,
             );
           }
 
-          const walletId = String(auction.wallet_id);
+          const walletId = String(walletResult.rows[0].id);
 
           const depositLockStartedAtMs = Date.now();
           const lockDepositResult = await lockDeposit(
@@ -373,7 +374,6 @@ export function createBidSqlRepository(
             walletId,
             input.auctionId,
             FIRST_BID_DEPOSIT_LOCK_AMOUNT,
-            input.companyId,
             input.occurredAt,
           );
           timing.depositLockMs += Date.now() - depositLockStartedAtMs;

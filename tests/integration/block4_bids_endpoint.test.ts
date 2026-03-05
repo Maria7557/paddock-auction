@@ -5,6 +5,7 @@ import { createPlaceBidService, type PlaceBidService } from "../../src/modules/b
 import { BidContentionConflictError } from "../../src/modules/bidding/domain/bid_domain_errors";
 import { bidErrorCodes } from "../../src/modules/bidding/domain/bid_error_codes";
 import { createPostBidHandler } from "../../src/modules/bidding/transport/post_bid_handler";
+import { createWalletService } from "../../src/modules/wallet/wallet_service";
 import { createPgliteTransactionRunner } from "./helpers/pglite_sql_runner";
 import { createMigratedTestDb } from "./helpers/migration_harness";
 
@@ -60,19 +61,28 @@ async function insertAuction(
 
 async function upsertWallet(
   db: Awaited<ReturnType<typeof createMigratedTestDb>>["db"],
-  companyId: string,
-  availableBalance: number,
+  userId: string,
+  balance: number,
 ): Promise<void> {
   await db.query(
-    `INSERT INTO deposit_wallets (
+    `INSERT INTO "User" (
        id,
-       company_id,
-       currency,
-       available_balance,
-       locked_balance,
-       pending_withdrawal_balance
-     ) VALUES ($1, $2, 'USD', $3, 0, 0)`,
-    [`wallet-${companyId}`, companyId, availableBalance],
+       email
+     ) VALUES ($1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [userId, `${userId}@example.test`],
+  );
+
+  await db.query(
+    `INSERT INTO "Wallet" (
+       id,
+       "userId",
+       balance,
+       "lockedBalance"
+     ) VALUES ($1, $2, $3, 0)
+     ON CONFLICT ("userId")
+     DO UPDATE SET balance = EXCLUDED.balance`,
+    [`wallet-${userId}`, userId, balance],
   );
 }
 
@@ -149,7 +159,7 @@ function createAllowedHandler(
 test("idempotency replay returns exact stored response", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-idem-replay", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-replay", 6_000);
+    await upsertWallet(db, "user-replay", 6_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -181,7 +191,7 @@ test("idempotency replay returns exact stored response", async () => {
 test("idempotency hash mismatch returns deterministic 409", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-idem-conflict", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-conflict", 6_000);
+    await upsertWallet(db, "user-conflict", 6_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -403,7 +413,7 @@ test("50+ parallel bids maintain unique monotonic sequence numbers", async () =>
     });
 
     for (let index = 1; index <= bidCountTarget; index += 1) {
-      await upsertWallet(db, `company-seq-${index}`, 10_000);
+      await upsertWallet(db, `user-seq-${index}`, 10_000);
     }
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
@@ -467,7 +477,7 @@ test("50+ parallel bids maintain unique monotonic sequence numbers", async () =>
 test("bid without wallet funds is rejected", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-no-deposit", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-no-deposit", 4_999);
+    await upsertWallet(db, "user-no-deposit", 4_999);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -499,10 +509,50 @@ test("bid without wallet funds is rejected", async () => {
   });
 });
 
+test("top-up funds are usable for bidding deposit lock", async () => {
+  await withMigratedDb(async ({ db }) => {
+    await insertAuction(db, { id: "auction-topup-deposit", currentPrice: 100, minIncrement: 5 });
+    await upsertWallet(db, "user-topup-deposit", 0);
+
+    const transactionRunner = createPgliteTransactionRunner(db);
+    const walletService = createWalletService(transactionRunner);
+    await walletService.topUpWallet("user-topup-deposit", 6_000);
+
+    const placeBidService = createPlaceBidService(transactionRunner, 250);
+    const handler = createAllowedHandler(placeBidService);
+
+    const response = await parseResponse(
+      await handler(
+        buildRequest(
+          {
+            auction_id: "auction-topup-deposit",
+            company_id: "company-topup-deposit",
+            user_id: "user-topup-deposit",
+            amount: 150,
+          },
+          "idem-topup-deposit",
+        ),
+      ),
+    );
+
+    assert.equal(response.status, 201);
+
+    const walletRow = await db.query<{ balance: number; lockedBalance: number }>(
+      `SELECT balance, "lockedBalance"
+       FROM "Wallet"
+       WHERE "userId" = $1`,
+      ["user-topup-deposit"],
+    );
+
+    assert.equal(Number(walletRow.rows[0].balance), 1_000);
+    assert.equal(Number(walletRow.rows[0].lockedBalance), 5_000);
+  });
+});
+
 test("first bid creates deposit lock", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-first-lock", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-first-lock", 7_000);
+    await upsertWallet(db, "user-first-lock", 7_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -527,31 +577,43 @@ test("first bid creates deposit lock", async () => {
       `SELECT COUNT(*)::int AS count, MAX(amount)::text AS amount
        FROM deposit_locks
        WHERE auction_id = $1
-         AND company_id = $2
+         AND wallet_id = $2
          AND status = 'ACTIVE'`,
-      ["auction-first-lock", "company-first-lock"],
+      ["auction-first-lock", "wallet-user-first-lock"],
     );
 
     assert.equal(lockRows.rows[0].count, 1);
     assert.equal(Number(lockRows.rows[0].amount), 5_000);
 
-    const walletRows = await db.query<{ available_balance: string; locked_balance: string }>(
-      `SELECT available_balance::text, locked_balance::text
-       FROM deposit_wallets
-       WHERE company_id = $1
-         AND currency = 'USD'`,
-      ["company-first-lock"],
+    const walletRows = await db.query<{ balance: number; lockedBalance: number }>(
+      `SELECT balance, "lockedBalance"
+       FROM "Wallet"
+       WHERE "userId" = $1`,
+      ["user-first-lock"],
     );
 
-    assert.equal(Number(walletRows.rows[0].available_balance), 2_000);
-    assert.equal(Number(walletRows.rows[0].locked_balance), 5_000);
+    assert.equal(Number(walletRows.rows[0].balance), 2_000);
+    assert.equal(Number(walletRows.rows[0].lockedBalance), 5_000);
+
+    const walletLedgerRows = await db.query<{ type: string; amount: number; reference: string }>(
+      `SELECT type, amount, reference
+       FROM "WalletLedger"
+       WHERE "walletId" = $1
+         AND type = 'DEPOSIT_LOCK'`,
+      ["wallet-user-first-lock"],
+    );
+    assert.equal(walletLedgerRows.rows.length, 1);
+    assert.equal(walletLedgerRows.rows[0].type, "DEPOSIT_LOCK");
+    assert.equal(Number(walletLedgerRows.rows[0].amount), 5_000);
+    assert.ok(typeof walletLedgerRows.rows[0].reference === "string");
+    assert.ok(walletLedgerRows.rows[0].reference.length > 0);
   });
 });
 
 test("second bid by same user does not create additional lock", async () => {
   await withMigratedDb(async ({ db }) => {
     await insertAuction(db, { id: "auction-second-lock", currentPrice: 100, minIncrement: 5 });
-    await upsertWallet(db, "company-second-lock", 9_000);
+    await upsertWallet(db, "user-second-lock", 9_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -591,24 +653,23 @@ test("second bid by same user does not create additional lock", async () => {
       `SELECT COUNT(*)::int AS count, MAX(amount)::text AS amount
        FROM deposit_locks
        WHERE auction_id = $1
-         AND company_id = $2
+         AND wallet_id = $2
          AND status = 'ACTIVE'`,
-      ["auction-second-lock", "company-second-lock"],
+      ["auction-second-lock", "wallet-user-second-lock"],
     );
 
     assert.equal(lockRows.rows[0].count, 1);
     assert.equal(Number(lockRows.rows[0].amount), 5_000);
 
-    const walletRows = await db.query<{ available_balance: string; locked_balance: string }>(
-      `SELECT available_balance::text, locked_balance::text
-       FROM deposit_wallets
-       WHERE company_id = $1
-         AND currency = 'USD'`,
-      ["company-second-lock"],
+    const walletRows = await db.query<{ balance: number; lockedBalance: number }>(
+      `SELECT balance, "lockedBalance"
+       FROM "Wallet"
+       WHERE "userId" = $1`,
+      ["user-second-lock"],
     );
 
-    assert.equal(Number(walletRows.rows[0].available_balance), 4_000);
-    assert.equal(Number(walletRows.rows[0].locked_balance), 5_000);
+    assert.equal(Number(walletRows.rows[0].balance), 4_000);
+    assert.equal(Number(walletRows.rows[0].lockedBalance), 5_000);
   });
 });
 
@@ -621,7 +682,7 @@ test("bid in last 2 minutes extends auction end time by 120 seconds", async () =
       startsAt: "2026-03-01T00:00:00Z",
       endsAt: "2026-03-01T10:01:30Z",
     });
-    await upsertWallet(db, "company-anti-snipe-window", 9_000);
+    await upsertWallet(db, "user-anti-snipe-window", 9_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);
@@ -663,7 +724,7 @@ test("bid earlier than last 2 minutes does not extend auction end time", async (
       startsAt: "2026-03-01T00:00:00Z",
       endsAt: "2026-03-01T10:05:00Z",
     });
-    await upsertWallet(db, "company-anti-snipe-early", 9_000);
+    await upsertWallet(db, "user-anti-snipe-early", 9_000);
 
     const placeBidService = createPlaceBidService(createPgliteTransactionRunner(db), 250);
     const handler = createAllowedHandler(placeBidService);

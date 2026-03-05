@@ -123,35 +123,30 @@ async function insertWalletAndActiveLock(
   db: Awaited<ReturnType<typeof createMigratedTestDb>>["db"],
   input: {
     companyId: string;
-    availableBalance: number;
-    lockedBalance: number;
+    walletId: string;
     auctionId: string;
     lockId: string;
     lockAmount: number;
   },
 ): Promise<void> {
   await db.query(
-    `INSERT INTO deposit_wallets (
-       id,
-       company_id,
-       currency,
-       available_balance,
-       locked_balance,
-       pending_withdrawal_balance
-     ) VALUES ($1, $2, 'USD', $3, $4, 0)`,
-    [`wallet-${input.companyId}`, input.companyId, input.availableBalance, input.lockedBalance],
-  );
-
-  await db.query(
     `INSERT INTO deposit_locks (
        id,
        auction_id,
+       wallet_id,
        company_id,
        amount,
        status,
        created_at
-     ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
-    [input.lockId, input.auctionId, input.companyId, input.lockAmount, "2026-03-01T12:00:00Z"],
+     ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6::timestamptz)`,
+    [
+      input.lockId,
+      input.auctionId,
+      input.walletId,
+      input.companyId,
+      input.lockAmount,
+      "2026-03-01T12:00:00Z",
+    ],
   );
 }
 
@@ -227,14 +222,6 @@ test("default-and-burn happens once", async () => {
       deadlineId: "deadline-block6-default-1",
     });
 
-    await insertWalletAndActiveLock(db, {
-      companyId: "buyer-default-1",
-      availableBalance: 780,
-      lockedBalance: 220,
-      auctionId: "auction-block6-default-1",
-      lockId: "lock-block6-default-1",
-      lockAmount: 220,
-    });
     await insertWinningBidderWalletAndBid(db, {
       auctionId: "auction-block6-default-1",
       companyId: "buyer-default-1",
@@ -242,6 +229,13 @@ test("default-and-burn happens once", async () => {
       bidId: "bid-block6-default-1",
       amount: 220,
       lockedBalance: 220,
+    });
+    await insertWalletAndActiveLock(db, {
+      companyId: "buyer-default-1",
+      walletId: "wallet-winner-default-1",
+      auctionId: "auction-block6-default-1",
+      lockId: "lock-block6-default-1",
+      lockAmount: 220,
     });
 
     const service = createPaymentDeadlineEnforcementService(createPgliteTransactionRunner(db));
@@ -279,13 +273,6 @@ test("default-and-burn happens once", async () => {
       ["lock-block6-default-1"],
     );
     assert.equal(lockRow.rows[0].status, "BURNED");
-
-    const walletRow = await db.query<{ available_balance: string; locked_balance: string }>(
-      "SELECT available_balance, locked_balance FROM deposit_wallets WHERE company_id = $1 AND currency = 'USD'",
-      ["buyer-default-1"],
-    );
-    assert.equal(Number(walletRow.rows[0].available_balance), 780);
-    assert.equal(Number(walletRow.rows[0].locked_balance), 0);
 
     const transitionCount = await db.query<{ count: number }>(
       `SELECT COUNT(*)::int AS count
@@ -349,14 +336,6 @@ test("rerun is idempotent and does not double-burn", async () => {
       deadlineId: "deadline-block6-rerun-1",
     });
 
-    await insertWalletAndActiveLock(db, {
-      companyId: "buyer-rerun-1",
-      availableBalance: 610,
-      lockedBalance: 190,
-      auctionId: "auction-block6-rerun-1",
-      lockId: "lock-block6-rerun-1",
-      lockAmount: 190,
-    });
     await insertWinningBidderWalletAndBid(db, {
       auctionId: "auction-block6-rerun-1",
       companyId: "buyer-rerun-1",
@@ -364,6 +343,13 @@ test("rerun is idempotent and does not double-burn", async () => {
       bidId: "bid-block6-rerun-1",
       amount: 190,
       lockedBalance: 190,
+    });
+    await insertWalletAndActiveLock(db, {
+      companyId: "buyer-rerun-1",
+      walletId: "wallet-winner-rerun-1",
+      auctionId: "auction-block6-rerun-1",
+      lockId: "lock-block6-rerun-1",
+      lockAmount: 190,
     });
 
     const service = createPaymentDeadlineEnforcementService(createPgliteTransactionRunner(db));
@@ -480,14 +466,6 @@ test("wallet balance never goes negative on burn path", async () => {
       deadlineId: "deadline-block6-wallet-1",
     });
 
-    await insertWalletAndActiveLock(db, {
-      companyId: "buyer-wallet-1",
-      availableBalance: 0,
-      lockedBalance: 100,
-      auctionId: "auction-block6-wallet-1",
-      lockId: "lock-block6-wallet-1",
-      lockAmount: 100,
-    });
     await insertWinningBidderWalletAndBid(db, {
       auctionId: "auction-block6-wallet-1",
       companyId: "buyer-wallet-1",
@@ -495,6 +473,13 @@ test("wallet balance never goes negative on burn path", async () => {
       bidId: "bid-block6-wallet-1",
       amount: 100,
       lockedBalance: 100,
+    });
+    await insertWalletAndActiveLock(db, {
+      companyId: "buyer-wallet-1",
+      walletId: "wallet-winner-wallet-1",
+      auctionId: "auction-block6-wallet-1",
+      lockId: "lock-block6-wallet-1",
+      lockAmount: 100,
     });
 
     const service = createPaymentDeadlineEnforcementService(createPgliteTransactionRunner(db));
@@ -506,15 +491,17 @@ test("wallet balance never goes negative on burn path", async () => {
 
     assert.equal(result.defaultedCount, 1);
 
-    const walletRow = await db.query<{ available_balance: string; locked_balance: string }>(
-      "SELECT available_balance, locked_balance FROM deposit_wallets WHERE company_id = $1 AND currency = 'USD'",
-      ["buyer-wallet-1"],
+    const walletRow = await db.query<{ balance: number; lockedBalance: number }>(
+      `SELECT balance, "lockedBalance"
+       FROM "Wallet"
+       WHERE "userId" = $1`,
+      ["winner-wallet-1"],
     );
 
-    assert.ok(Number(walletRow.rows[0].available_balance) >= 0);
-    assert.ok(Number(walletRow.rows[0].locked_balance) >= 0);
-    assert.equal(Number(walletRow.rows[0].available_balance), 0);
-    assert.equal(Number(walletRow.rows[0].locked_balance), 0);
+    assert.ok(Number(walletRow.rows[0].balance) >= 0);
+    assert.ok(Number(walletRow.rows[0].lockedBalance) >= 0);
+    assert.equal(Number(walletRow.rows[0].balance), 0);
+    assert.equal(Number(walletRow.rows[0].lockedBalance), 0);
 
     const winnerWalletRow = await db.query<{ lockedBalance: number }>(
       `SELECT "lockedBalance"
@@ -547,15 +534,6 @@ test("default burn is transactional when winner wallet lock is insufficient", as
       deadlineId: "deadline-block6-wallet-fail-1",
     });
 
-    await insertWalletAndActiveLock(db, {
-      companyId: "buyer-wallet-fail-1",
-      availableBalance: 500,
-      lockedBalance: 150,
-      auctionId: "auction-block6-wallet-fail-1",
-      lockId: "lock-block6-wallet-fail-1",
-      lockAmount: 150,
-    });
-
     await insertWinningBidderWalletAndBid(db, {
       auctionId: "auction-block6-wallet-fail-1",
       companyId: "buyer-wallet-fail-1",
@@ -563,6 +541,13 @@ test("default burn is transactional when winner wallet lock is insufficient", as
       bidId: "bid-block6-wallet-fail-1",
       amount: 150,
       lockedBalance: 10,
+    });
+    await insertWalletAndActiveLock(db, {
+      companyId: "buyer-wallet-fail-1",
+      walletId: "wallet-winner-wallet-fail-1",
+      auctionId: "auction-block6-wallet-fail-1",
+      lockId: "lock-block6-wallet-fail-1",
+      lockAmount: 150,
     });
 
     const service = createPaymentDeadlineEnforcementService(createPgliteTransactionRunner(db));
@@ -600,12 +585,6 @@ test("default burn is transactional when winner wallet lock is insufficient", as
       ["lock-block6-wallet-fail-1"],
     );
     assert.equal(lockRow.rows[0].status, "ACTIVE");
-
-    const companyWalletRow = await db.query<{ locked_balance: string }>(
-      "SELECT locked_balance FROM deposit_wallets WHERE company_id = $1 AND currency = 'USD'",
-      ["buyer-wallet-fail-1"],
-    );
-    assert.equal(Number(companyWalletRow.rows[0].locked_balance), 150);
 
     const winnerWalletRow = await db.query<{ lockedBalance: number }>(
       `SELECT "lockedBalance"

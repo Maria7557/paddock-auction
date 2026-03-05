@@ -73,18 +73,6 @@ async function seedDefaultedAuction(
   );
 
   await db.query(
-    `INSERT INTO deposit_locks (
-       id,
-       auction_id,
-       company_id,
-       amount,
-       status,
-       created_at
-     ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
-    [input.lockId, input.auctionId, input.companyId, input.amount, "2026-03-01T12:05:00Z"],
-  );
-
-  await db.query(
     `INSERT INTO "User" (
        id,
        email
@@ -100,6 +88,26 @@ async function seedDefaultedAuction(
        "lockedBalance"
      ) VALUES ($1, $2, 0, $3)`,
     [`wallet-${input.userId}`, input.userId, input.walletLockedBalance],
+  );
+
+  await db.query(
+    `INSERT INTO deposit_locks (
+       id,
+       auction_id,
+       wallet_id,
+       company_id,
+       amount,
+       status,
+       created_at
+     ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6::timestamptz)`,
+    [
+      input.lockId,
+      input.auctionId,
+      `wallet-${input.userId}`,
+      input.companyId,
+      input.amount,
+      "2026-03-01T12:05:00Z",
+    ],
   );
 }
 
@@ -177,18 +185,6 @@ async function seedAuctionForRelease(
     );
 
     await db.query(
-      `INSERT INTO deposit_locks (
-         id,
-         auction_id,
-         company_id,
-         amount,
-         status,
-         created_at
-       ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
-      [bidder.lockId, input.auctionId, bidder.companyId, bidder.amount, "2026-03-01T12:05:00Z"],
-    );
-
-    await db.query(
       `INSERT INTO "User" (
          id,
          email
@@ -208,6 +204,26 @@ async function seedAuctionForRelease(
         bidder.userId,
         bidder.balance ?? 0,
         bidder.lockedBalance ?? bidder.amount,
+      ],
+    );
+
+    await db.query(
+      `INSERT INTO deposit_locks (
+         id,
+         auction_id,
+         wallet_id,
+         company_id,
+         amount,
+         status,
+         created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6::timestamptz)`,
+      [
+        bidder.lockId,
+        input.auctionId,
+        `wallet-${bidder.userId}`,
+        bidder.companyId,
+        bidder.amount,
+        "2026-03-01T12:05:00Z",
       ],
     );
   }

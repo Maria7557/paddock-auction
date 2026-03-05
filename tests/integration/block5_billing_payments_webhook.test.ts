@@ -66,18 +66,28 @@ async function insertWallet(
   input: { available: number; locked?: number; currency?: string },
 ): Promise<void> {
   await db.query(
-    `INSERT INTO deposit_wallets (
+    `INSERT INTO "User" (
        id,
-       company_id,
-       currency,
-       available_balance,
-       locked_balance,
-       pending_withdrawal_balance
-     ) VALUES ($1, $2, $3, $4, $5, 0)`,
+       email
+     ) VALUES ($1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [companyId, `${companyId}@example.test`],
+  );
+
+  await db.query(
+    `INSERT INTO "Wallet" (
+       id,
+       "userId",
+       balance,
+       "lockedBalance"
+     ) VALUES ($1, $2, $3, $4)
+     ON CONFLICT ("userId")
+     DO UPDATE SET
+       balance = EXCLUDED.balance,
+       "lockedBalance" = EXCLUDED."lockedBalance"`,
     [
       `wallet-${companyId}`,
       companyId,
-      input.currency ?? "USD",
       input.available,
       input.locked ?? 0,
     ],
@@ -110,6 +120,7 @@ async function insertActiveDepositLock(
     id: string;
     auctionId: string;
     companyId: string;
+    walletId: string;
     amount: number;
   },
 ): Promise<void> {
@@ -117,12 +128,20 @@ async function insertActiveDepositLock(
     `INSERT INTO deposit_locks (
        id,
        auction_id,
+       wallet_id,
        company_id,
        amount,
        status,
        created_at
-     ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
-    [input.id, input.auctionId, input.companyId, input.amount, "2026-03-01T12:00:00Z"],
+     ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6::timestamptz)`,
+    [
+      input.id,
+      input.auctionId,
+      input.walletId,
+      input.companyId,
+      input.amount,
+      "2026-03-01T12:00:00Z",
+    ],
   );
 }
 
@@ -316,6 +335,7 @@ test("duplicate webhook delivery is a safe no-op", async () => {
       id: "lock-dup-1",
       auctionId: "auction-block5-dup",
       companyId: "company-dup-1",
+      walletId: "wallet-company-dup-1",
       amount: 200,
     });
 
@@ -390,6 +410,7 @@ test("out-of-order success webhook is no-op when invoice is not ISSUED", async (
       id: "lock-ignored-1",
       auctionId: "auction-block5-ignored",
       companyId: "company-ignored-1",
+      walletId: "wallet-company-ignored-1",
       amount: 150,
     });
 
@@ -474,16 +495,11 @@ test("successful webhook applies payment, deadline, auction and deposit mutation
     });
 
     await insertWallet(db, "company-success-1", { available: 780, locked: 220 });
-    await insertUserWallet(db, {
-      userId: "company-success-1",
-      walletId: "wallet-user-company-success-1",
-      balance: 0,
-      lockedBalance: 0,
-    });
     await insertActiveDepositLock(db, {
       id: "lock-success-1",
       auctionId: "auction-block5-success",
       companyId: "company-success-1",
+      walletId: "wallet-company-success-1",
       amount: 220,
     });
 
@@ -584,12 +600,14 @@ test("successful webhook applies payment, deadline, auction and deposit mutation
     );
     assert.equal(lockRow.rows[0].status, "RELEASED");
 
-    const walletRow = await db.query<{ available_balance: string; locked_balance: string }>(
-      "SELECT available_balance, locked_balance FROM deposit_wallets WHERE company_id = $1 AND currency = 'USD'",
+    const walletRow = await db.query<{ balance: number; lockedBalance: number }>(
+      `SELECT balance, "lockedBalance"
+       FROM "Wallet"
+       WHERE "userId" = $1`,
       ["company-success-1"],
     );
-    assert.equal(Number(walletRow.rows[0].available_balance), 1000);
-    assert.equal(Number(walletRow.rows[0].locked_balance), 0);
+    assert.equal(Number(walletRow.rows[0].balance), 1000);
+    assert.equal(Number(walletRow.rows[0].lockedBalance), 0);
 
     const transitionCount = await db.query<{ count: number }>(
       `SELECT COUNT(*)::int AS count
@@ -614,7 +632,7 @@ test("successful webhook applies payment, deadline, auction and deposit mutation
       `SELECT type, amount, reference
        FROM "WalletLedger"
        WHERE "walletId" = $1`,
-      ["wallet-user-company-success-1"],
+      ["wallet-company-success-1"],
     );
 
     assert.equal(walletLedgerRows.rows.length, 1);

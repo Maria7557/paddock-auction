@@ -27,12 +27,17 @@ type BidRow = SqlRow & {
 
 type DepositLockRow = SqlRow & {
   id: unknown;
-  company_id: unknown;
+  wallet_id: unknown;
   amount: unknown;
 };
 
 type WalletRow = SqlRow & {
   id: unknown;
+};
+
+type WalletBalanceRow = SqlRow & {
+  id: unknown;
+  balance: unknown;
 };
 
 type UpdateRow = SqlRow & {
@@ -41,10 +46,6 @@ type UpdateRow = SqlRow & {
 
 type LedgerRow = SqlRow & {
   id: unknown;
-};
-
-type DepositWalletBalanceRow = SqlRow & {
-  available_balance: unknown;
 };
 
 type DepositLockIdRow = SqlRow & {
@@ -124,17 +125,16 @@ export async function lockDeposit(
   walletId: string,
   auctionId: string,
   amount: number,
-  companyId: string,
   occurredAt: Date,
 ): Promise<LockDepositResult> {
   const existingLockResult = await tx.query<DepositLockIdRow>(
     `SELECT id
      FROM deposit_locks
      WHERE auction_id = $1
-       AND company_id = $2
+       AND wallet_id = $2
        AND status = 'ACTIVE'
      FOR UPDATE`,
-    [auctionId, companyId],
+    [auctionId, walletId],
   );
 
   if (existingLockResult.rows.length > 0) {
@@ -144,9 +144,9 @@ export async function lockDeposit(
     };
   }
 
-  const walletBalanceResult = await tx.query<DepositWalletBalanceRow>(
-    `SELECT available_balance
-     FROM deposit_wallets
+  const walletBalanceResult = await tx.query<WalletBalanceRow>(
+    `SELECT id, balance
+     FROM "Wallet"
      WHERE id = $1
      FOR UPDATE`,
     [walletId],
@@ -157,8 +157,8 @@ export async function lockDeposit(
   }
 
   const availableBalance = toNumber(
-    walletBalanceResult.rows[0].available_balance,
-    "deposit_wallets.available_balance",
+    walletBalanceResult.rows[0].balance,
+    "Wallet.balance",
   );
 
   if (availableBalance < amount) {
@@ -171,12 +171,12 @@ export async function lockDeposit(
       `INSERT INTO deposit_locks (
          id,
          auction_id,
-         company_id,
+         wallet_id,
          amount,
          status,
          created_at
        ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)`,
-      [createdLockId, auctionId, companyId, amount, occurredAt.toISOString()],
+      [createdLockId, auctionId, walletId, amount, occurredAt.toISOString()],
     );
   } catch (error) {
     if (!isUniqueViolation(error)) {
@@ -187,10 +187,10 @@ export async function lockDeposit(
       `SELECT id
        FROM deposit_locks
        WHERE auction_id = $1
-         AND company_id = $2
+         AND wallet_id = $2
          AND status = 'ACTIVE'
        FOR UPDATE`,
-      [auctionId, companyId],
+      [auctionId, walletId],
     );
 
     if (duplicateLockResult.rows.length > 0) {
@@ -204,12 +204,11 @@ export async function lockDeposit(
   }
 
   const walletUpdateResult = await tx.query<UpdateRow>(
-    `UPDATE deposit_wallets
-     SET available_balance = available_balance - $2,
-         locked_balance = locked_balance + $2,
-         updated_at = CURRENT_TIMESTAMP
+    `UPDATE "Wallet"
+     SET balance = balance - $2,
+         "lockedBalance" = "lockedBalance" + $2
      WHERE id = $1
-       AND available_balance >= $2
+       AND balance >= $2
      RETURNING id`,
     [walletId, amount],
   );
@@ -217,9 +216,21 @@ export async function lockDeposit(
   if (walletUpdateResult.rows.length === 0) {
     throw new DomainConflictError(
       WALLET_LOCKED_BALANCE_INSUFFICIENT_CODE,
-      `Insufficient deposit wallet balance for wallet ${walletId}`,
+      `Insufficient wallet balance for wallet ${walletId}`,
     );
   }
+
+  await tx.query<LedgerRow>(
+    `INSERT INTO "WalletLedger" (
+       id,
+       "walletId",
+       type,
+       amount,
+       reference,
+       "createdAt"
+     ) VALUES ($1, $2, $3::"LedgerType", $4, $5, $6::timestamptz)`,
+    [randomUUID(), walletId, "DEPOSIT_LOCK", amount, createdLockId, occurredAt.toISOString()],
+  );
 
   return {
     kind: "created",
@@ -293,37 +304,6 @@ export function createDepositService(
         const winningUserId = toNonEmptyString(winningBid.user_id, "bids.user_id");
         const companyId = toNonEmptyString(winningBid.company_id, "bids.company_id");
 
-        const lockResult = await tx.query<DepositLockRow>(
-          `SELECT id, amount
-           FROM deposit_locks
-           WHERE auction_id = $1
-             AND company_id = $2
-             AND status = 'ACTIVE'
-           FOR UPDATE`,
-          [auctionId, companyId],
-        );
-
-        if (lockResult.rows.length === 0) {
-          throw new DomainNotFoundError(
-            WALLET_DEPOSIT_LOCK_NOT_FOUND_CODE,
-            `Active deposit lock was not found for auction ${auctionId} and company ${companyId}`,
-          );
-        }
-
-        const lock = lockResult.rows[0];
-        const lockId = toNonEmptyString(lock.id, "deposit_locks.id");
-        const burnedAmount = toIntegerAmount(toNumber(lock.amount, "deposit_locks.amount"), "deposit_locks.amount");
-
-        await tx.query<UpdateRow>(
-          `UPDATE deposit_locks
-           SET status = 'BURNED',
-               burned_at = $2::timestamptz,
-               resolution_reason = COALESCE(resolution_reason, 'PAYMENT_DEFAULTED_DEADLINE')
-           WHERE id = $1
-           RETURNING id`,
-          [lockId, occurredAt.toISOString()],
-        );
-
         const walletResult = await tx.query<WalletRow>(
           `SELECT id
            FROM "Wallet"
@@ -340,6 +320,37 @@ export function createDepositService(
         }
 
         const walletId = toNonEmptyString(walletResult.rows[0].id, "Wallet.id");
+
+        const lockResult = await tx.query<DepositLockRow>(
+          `SELECT id, amount
+           FROM deposit_locks
+           WHERE auction_id = $1
+             AND wallet_id = $2
+             AND status = 'ACTIVE'
+           FOR UPDATE`,
+          [auctionId, walletId],
+        );
+
+        if (lockResult.rows.length === 0) {
+          throw new DomainNotFoundError(
+            WALLET_DEPOSIT_LOCK_NOT_FOUND_CODE,
+            `Active deposit lock was not found for auction ${auctionId} and wallet ${walletId}`,
+          );
+        }
+
+        const lock = lockResult.rows[0];
+        const lockId = toNonEmptyString(lock.id, "deposit_locks.id");
+        const burnedAmount = toIntegerAmount(toNumber(lock.amount, "deposit_locks.amount"), "deposit_locks.amount");
+
+        await tx.query<UpdateRow>(
+          `UPDATE deposit_locks
+           SET status = 'BURNED',
+               burned_at = $2::timestamptz,
+               resolution_reason = COALESCE(resolution_reason, 'PAYMENT_DEFAULTED_DEADLINE')
+           WHERE id = $1
+           RETURNING id`,
+          [lockId, occurredAt.toISOString()],
+        );
 
         const walletUpdateResult = await tx.query<UpdateRow>(
           `UPDATE "Wallet"
@@ -443,62 +454,44 @@ export function createDepositService(
           winningBidResult.rows[0].company_id,
           "winning_bid.company_id",
         );
+        const winningUserId = toNonEmptyString(winningBidResult.rows[0].user_id, "winning_bid.user_id");
+
+        const winningWalletResult = await tx.query<WalletRow>(
+          `SELECT id
+           FROM "Wallet"
+           WHERE "userId" = $1
+           FOR UPDATE`,
+          [winningUserId],
+        );
+
+        if (winningWalletResult.rows.length === 0) {
+          throw new DomainNotFoundError(
+            WALLET_NOT_FOUND_CODE,
+            `Wallet was not found for winning user ${winningUserId}`,
+          );
+        }
+
+        const winningWalletId = toNonEmptyString(winningWalletResult.rows[0].id, "Wallet.id");
 
         const losingLocksResult = await tx.query<DepositLockRow>(
-          `SELECT id, company_id, amount
+          `SELECT id, wallet_id, amount
            FROM deposit_locks
            WHERE auction_id = $1
              AND status = 'ACTIVE'
-             AND company_id <> $2
+             AND wallet_id <> $2
            FOR UPDATE`,
-          [auctionId, winningCompanyId],
+          [auctionId, winningWalletId],
         );
 
         const releasedLockIds: string[] = [];
 
         for (const losingLock of losingLocksResult.rows) {
           const lockId = toNonEmptyString(losingLock.id, "deposit_locks.id");
-          const companyId = toNonEmptyString(losingLock.company_id, "deposit_locks.company_id");
+          const walletId = toNonEmptyString(losingLock.wallet_id, "deposit_locks.wallet_id");
           const releaseAmount = toIntegerAmount(
             toNumber(losingLock.amount, "deposit_locks.amount"),
             "deposit_locks.amount",
           );
-
-          const losingBidderResult = await tx.query<BidRow>(
-            `SELECT user_id
-             FROM bids
-             WHERE auction_id = $1
-               AND company_id = $2
-             ORDER BY sequence_no DESC
-             LIMIT 1
-             FOR UPDATE`,
-            [auctionId, companyId],
-          );
-
-          if (losingBidderResult.rows.length === 0) {
-            throw new DomainNotFoundError(
-              WALLET_LOSING_BID_NOT_FOUND_CODE,
-              `Losing bidder was not found for auction ${auctionId} and company ${companyId}`,
-            );
-          }
-
-          const losingUserId = toNonEmptyString(losingBidderResult.rows[0].user_id, "losing_bid.user_id");
-          const walletResult = await tx.query<WalletRow>(
-            `SELECT id
-             FROM "Wallet"
-             WHERE "userId" = $1
-             FOR UPDATE`,
-            [losingUserId],
-          );
-
-          if (walletResult.rows.length === 0) {
-            throw new DomainNotFoundError(
-              WALLET_NOT_FOUND_CODE,
-              `Wallet was not found for losing user ${losingUserId}`,
-            );
-          }
-
-          const walletId = toNonEmptyString(walletResult.rows[0].id, "Wallet.id");
 
           const walletUpdateResult = await tx.query<UpdateRow>(
             `UPDATE "Wallet"
@@ -513,7 +506,7 @@ export function createDepositService(
           if (walletUpdateResult.rows.length === 0) {
             throw new DomainConflictError(
               WALLET_LOCKED_BALANCE_INSUFFICIENT_CODE,
-              `Insufficient wallet locked balance for losing user ${losingUserId}`,
+              `Insufficient wallet locked balance for wallet ${walletId}`,
             );
           }
 

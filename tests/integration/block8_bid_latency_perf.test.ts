@@ -54,15 +54,21 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
 
     for (let index = 1; index <= requestCount; index += 1) {
       await db.query(
-        `INSERT INTO deposit_wallets (
+        `INSERT INTO "User" (
            id,
-           company_id,
-           currency,
-           available_balance,
-           locked_balance,
-           pending_withdrawal_balance
-         ) VALUES ($1, $2, 'USD', $3, 0, 0)`,
-        [`wallet-perf-test-${index}`, `company-perf-test-${index}`, 10_000],
+           email
+         ) VALUES ($1, $2)`,
+        [`user-perf-test-${index}`, `user-perf-test-${index}@example.test`],
+      );
+
+      await db.query(
+        `INSERT INTO "Wallet" (
+           id,
+           "userId",
+           balance,
+           "lockedBalance"
+         ) VALUES ($1, $2, $3, 0)`,
+        [`wallet-perf-test-${index}`, `user-perf-test-${index}`, 10_000],
       );
     }
 

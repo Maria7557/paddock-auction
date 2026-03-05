@@ -33,13 +33,8 @@ type AuctionRow = SqlRow & {
 
 type DepositLockRow = SqlRow & {
   id: unknown;
+  wallet_id: unknown;
   amount: unknown;
-};
-
-type WalletRow = SqlRow & {
-  id: unknown;
-  available_balance: unknown;
-  locked_balance: unknown;
 };
 
 type WinningBidRow = SqlRow & {
@@ -245,19 +240,70 @@ export function createPaymentDeadlineEnforcementRepository(
           );
         }
 
+        let burnedLockId: string | null = null;
+
+        const highestBidId =
+          auction.highest_bid_id === null || auction.highest_bid_id === undefined
+            ? null
+            : String(auction.highest_bid_id);
+
+        const winningBidderResult = highestBidId
+          ? await tx.query<WinningBidRow>(
+              `SELECT user_id
+               FROM bids
+               WHERE id = $1
+                 AND auction_id = $2
+                 AND company_id = $3
+               FOR UPDATE`,
+              [highestBidId, auctionId, companyId],
+            )
+          : await tx.query<WinningBidRow>(
+              `SELECT user_id
+               FROM bids
+               WHERE auction_id = $1
+                 AND company_id = $2
+               ORDER BY sequence_no DESC
+               LIMIT 1
+               FOR UPDATE`,
+              [auctionId, companyId],
+            );
+
+        if (winningBidderResult.rows.length === 0) {
+          throw new DomainConflictError(
+            billingErrorCodes.internalError,
+            `Winning bid was not found for auction ${auctionId} and company ${companyId}`,
+          );
+        }
+
+        const winnerUserId = toStringValue(winningBidderResult.rows[0].user_id, "winning_bid.user_id");
+        const winnerWalletResult = await tx.query<WinnerWalletRow>(
+          `SELECT id
+           FROM "Wallet"
+           WHERE "userId" = $1
+           FOR UPDATE`,
+          [winnerUserId],
+        );
+
+        if (winnerWalletResult.rows.length === 0) {
+          throw new DomainConflictError(
+            billingErrorCodes.internalError,
+            `Winner wallet was not found for user ${winnerUserId}`,
+          );
+        }
+
+        const winnerWalletId = toStringValue(winnerWalletResult.rows[0].id, "winner_wallet.id");
         const lockResult = await tx.query<DepositLockRow>(
           `SELECT
              id,
+             wallet_id,
              amount
            FROM deposit_locks
            WHERE auction_id = $1
-             AND company_id = $2
+             AND wallet_id = $2
              AND status = 'ACTIVE'
            FOR UPDATE`,
-          [auctionId, companyId],
+          [auctionId, winnerWalletId],
         );
-
-        let burnedLockId: string | null = null;
 
         if (lockResult.rows.length > 0) {
           const activeLock = lockResult.rows[0];
@@ -265,104 +311,6 @@ export function createPaymentDeadlineEnforcementRepository(
           const lockAmount = toNumber(activeLock.amount, "deposit_lock.amount");
           const winnerWalletLockAmount = toLedgerIntegerAmount(lockAmount, "deposit_lock.amount");
 
-          const walletResult = await tx.query<WalletRow>(
-            `SELECT
-               id,
-               available_balance,
-               locked_balance
-             FROM deposit_wallets
-             WHERE company_id = $1
-               AND currency = $2
-             FOR UPDATE`,
-            [companyId, toStringValue(invoice.currency, "invoice.currency")],
-          );
-
-          if (walletResult.rows.length === 0) {
-            throw new DomainConflictError(
-              billingErrorCodes.invoiceNotFound,
-              `Wallet for company ${companyId} was not found during deadline enforcement`,
-            );
-          }
-
-          const wallet = walletResult.rows[0];
-          const walletId = toStringValue(wallet.id, "wallet.id");
-
-          const walletBurnResult = await tx.query<UpdateRow>(
-            `UPDATE deposit_wallets
-             SET locked_balance = locked_balance - $2,
-                 updated_at = $3::timestamptz
-             WHERE id = $1
-               AND locked_balance >= $2
-             RETURNING id`,
-            [walletId, lockAmount, input.occurredAt.toISOString()],
-          );
-
-          if (walletBurnResult.rows.length === 0) {
-            throw new DomainConflictError(
-              billingErrorCodes.internalError,
-              `Insufficient locked balance to burn winner deposit lock ${burnedLockId}`,
-            );
-          }
-
-          await tx.query(
-            `UPDATE deposit_locks
-             SET status = 'BURNED',
-                 burned_at = $2::timestamptz,
-                 resolution_reason = COALESCE(resolution_reason, 'PAYMENT_DEFAULTED_DEADLINE')
-             WHERE id = $1`,
-            [burnedLockId, input.occurredAt.toISOString()],
-          );
-
-          const highestBidId =
-            auction.highest_bid_id === null || auction.highest_bid_id === undefined
-              ? null
-              : String(auction.highest_bid_id);
-
-          const winningBidderResult = highestBidId
-            ? await tx.query<WinningBidRow>(
-                `SELECT user_id
-                 FROM bids
-                 WHERE id = $1
-                   AND auction_id = $2
-                   AND company_id = $3
-                 FOR UPDATE`,
-                [highestBidId, auctionId, companyId],
-              )
-            : await tx.query<WinningBidRow>(
-                `SELECT user_id
-                 FROM bids
-                 WHERE auction_id = $1
-                   AND company_id = $2
-                 ORDER BY sequence_no DESC
-                 LIMIT 1
-                 FOR UPDATE`,
-                [auctionId, companyId],
-              );
-
-          if (winningBidderResult.rows.length === 0) {
-            throw new DomainConflictError(
-              billingErrorCodes.internalError,
-              `Winning bid was not found for auction ${auctionId} and company ${companyId}`,
-            );
-          }
-
-          const winnerUserId = toStringValue(winningBidderResult.rows[0].user_id, "winning_bid.user_id");
-          const winnerWalletResult = await tx.query<WinnerWalletRow>(
-            `SELECT id
-             FROM "Wallet"
-             WHERE "userId" = $1
-             FOR UPDATE`,
-            [winnerUserId],
-          );
-
-          if (winnerWalletResult.rows.length === 0) {
-            throw new DomainConflictError(
-              billingErrorCodes.internalError,
-              `Winner wallet was not found for user ${winnerUserId}`,
-            );
-          }
-
-          const winnerWalletId = toStringValue(winnerWalletResult.rows[0].id, "winner_wallet.id");
           const winnerWalletBurnResult = await tx.query<UpdateRow>(
             `UPDATE "Wallet"
              SET "lockedBalance" = "lockedBalance" - $2
@@ -378,6 +326,15 @@ export function createPaymentDeadlineEnforcementRepository(
               `Insufficient winner wallet locked balance for user ${winnerUserId}`,
             );
           }
+
+          await tx.query(
+            `UPDATE deposit_locks
+             SET status = 'BURNED',
+                 burned_at = $2::timestamptz,
+                 resolution_reason = COALESCE(resolution_reason, 'PAYMENT_DEFAULTED_DEADLINE')
+             WHERE id = $1`,
+            [burnedLockId, input.occurredAt.toISOString()],
+          );
 
           await tx.query(
             `INSERT INTO "WalletLedger" (
