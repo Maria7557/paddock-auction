@@ -105,10 +105,12 @@ export function createPaymentIntentRepository(
 
         const invoice = invoiceResult.rows[0];
 
-        if (String(invoice.status) !== "ISSUED") {
+        const invoiceStatus = String(invoice.status);
+
+        if (invoiceStatus !== "ISSUED" && invoiceStatus !== "PENDING") {
           throw new DomainConflictError(
             billingErrorCodes.invoiceNotIssued,
-            `Invoice ${input.invoiceId} is not in ISSUED status`,
+            `Invoice ${input.invoiceId} is not in PENDING status`,
           );
         }
 
