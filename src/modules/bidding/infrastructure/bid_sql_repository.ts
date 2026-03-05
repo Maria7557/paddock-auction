@@ -5,26 +5,21 @@ import { bidErrorCodes, isExpectedBidContentionSqlState } from "../domain/bid_er
 import type { SqlRow, SqlTransactionRunner } from "../../../lib/sql_contract";
 import { toNumber } from "../../../lib/sql_contract";
 
-type AuctionRow = SqlRow & {
-  id: unknown;
-  state: unknown;
-  version: unknown;
-  current_price: unknown;
-  min_increment: unknown;
-  last_bid_sequence: unknown;
+type AuctionAndWalletRow = SqlRow & {
+  auction_id: unknown;
+  auction_state: unknown;
+  auction_version: unknown;
+  auction_current_price: unknown;
+  auction_min_increment: unknown;
+  auction_last_bid_sequence: unknown;
+  wallet_id: unknown;
+  wallet_available_balance: unknown;
 };
 
 type BidRequestRow = SqlRow & {
-  id: unknown;
   request_hash: unknown;
-  status: unknown;
   response_status: unknown;
   response_body: unknown;
-};
-
-type BidRow = SqlRow & {
-  id: unknown;
-  sequence_no: unknown;
 };
 
 type PersistedBidRequestResponseRow = SqlRow & {
@@ -32,21 +27,11 @@ type PersistedBidRequestResponseRow = SqlRow & {
   response_body: unknown;
 };
 
-type WalletRow = SqlRow & {
-  id: unknown;
-  available_balance: unknown;
-};
-
 type LockRow = SqlRow & {
-  id: unknown;
   amount: unknown;
 };
 
 type InsertedBidRequestRow = SqlRow & {
-  id: unknown;
-};
-
-type InsertedLockRow = SqlRow & {
   id: unknown;
 };
 
@@ -63,7 +48,11 @@ export type PlaceBidStorageInput = {
 export type BidPathTimingBreakdown = {
   advisoryLockWaitMs: number;
   dbTransactionMs: number;
+  depositLockMs: number;
+  walletUpdateMs: number;
+  bidInsertMs: number;
   walletLockMutationMs: number;
+  auctionUpdateMs: number;
   bidInsertAuctionUpdateMs: number;
 };
 
@@ -154,7 +143,11 @@ function createEmptyTimingBreakdown(): BidPathTimingBreakdown {
   return {
     advisoryLockWaitMs: 0,
     dbTransactionMs: 0,
+    depositLockMs: 0,
+    walletUpdateMs: 0,
+    bidInsertMs: 0,
     walletLockMutationMs: 0,
+    auctionUpdateMs: 0,
     bidInsertAuctionUpdateMs: 0,
   };
 }
@@ -206,7 +199,7 @@ export function createBidSqlRepository(
 
           if (insertedBidRequestResult.rows.length === 0) {
             const existingBidRequestResult = await tx.query<BidRequestRow>(
-              `SELECT id, request_hash, status, response_status, response_body
+              `SELECT request_hash, response_status, response_body
                FROM bid_requests
                WHERE auction_id = $1
                  AND company_id = $2
@@ -274,18 +267,27 @@ export function createBidSqlRepository(
           await tx.query("SELECT pg_advisory_xact_lock(hashtext($1), 0)", [input.auctionId]);
           timing.advisoryLockWaitMs = Date.now() - advisoryLockStartedAtMs;
 
-          const auctionResult = await tx.query<AuctionRow>(
+          const auctionResult = await tx.query<AuctionAndWalletRow>(
             `SELECT
-               id,
-               state,
-               version,
-               current_price,
-               min_increment,
-               last_bid_sequence
-             FROM auctions
-             WHERE id = $1
-             FOR UPDATE`,
-            [input.auctionId],
+               a.id AS auction_id,
+               a.state AS auction_state,
+               a.version AS auction_version,
+               a.current_price AS auction_current_price,
+               a.min_increment AS auction_min_increment,
+               a.last_bid_sequence AS auction_last_bid_sequence,
+               wallet.id AS wallet_id,
+               wallet.available_balance AS wallet_available_balance
+             FROM auctions AS a
+             LEFT JOIN LATERAL (
+               SELECT id, available_balance
+               FROM deposit_wallets
+               WHERE company_id = $2
+                 AND currency = $3
+               FOR UPDATE
+             ) AS wallet ON TRUE
+             WHERE a.id = $1
+             FOR UPDATE OF a`,
+            [input.auctionId, input.companyId, "USD"],
           );
           const lockWaitMs = timing.advisoryLockWaitMs;
 
@@ -304,10 +306,10 @@ export function createBidSqlRepository(
           }
 
           const auction = auctionResult.rows[0];
-          const currentPrice = toNumber(auction.current_price, "current_price");
-          const minIncrement = toNumber(auction.min_increment, "min_increment");
-          const currentVersion = toNumber(auction.version, "version");
-          const lastBidSequence = toNumber(auction.last_bid_sequence, "last_bid_sequence");
+          const currentPrice = toNumber(auction.auction_current_price, "auction_current_price");
+          const minIncrement = toNumber(auction.auction_min_increment, "auction_min_increment");
+          const currentVersion = toNumber(auction.auction_version, "auction_version");
+          const lastBidSequence = toNumber(auction.auction_last_bid_sequence, "auction_last_bid_sequence");
 
           const persistRejected = async (
             errorCode: string,
@@ -341,7 +343,7 @@ export function createBidSqlRepository(
             };
           };
 
-          if (String(auction.state) !== "LIVE") {
+          if (String(auction.auction_state) !== "LIVE") {
             return persistRejected(
               bidErrorCodes.auctionNotLive,
               `Auction ${input.auctionId} is not live`,
@@ -357,31 +359,25 @@ export function createBidSqlRepository(
             );
           }
 
-          const walletMutationStartedAtMs = Date.now();
-          const walletResult = await tx.query<WalletRow>(
-            `SELECT id, available_balance
-             FROM deposit_wallets
-             WHERE company_id = $1 AND currency = $2
-             FOR UPDATE`,
-            [input.companyId, "USD"],
-          );
-
-          if (walletResult.rows.length === 0) {
+          if (auction.wallet_id === null || auction.wallet_id === undefined) {
             return persistRejected(
               bidErrorCodes.noDepositNoBid,
               `No deposit wallet found for company ${input.companyId}`,
             );
           }
 
-          const wallet = walletResult.rows[0];
-          const walletId = String(wallet.id);
-          const walletAvailableBalance = toNumber(wallet.available_balance, "available_balance");
+          const walletId = String(auction.wallet_id);
+          const walletAvailableBalance = toNumber(
+            auction.wallet_available_balance,
+            "wallet_available_balance",
+          );
 
           let activeLockAmount = 0;
           let requiresLockAmountUpdate = false;
+          const depositLockStartedAtMs = Date.now();
           const loadExistingActiveLock = async (): Promise<LockRow | null> => {
             const existingLockResult = await tx.query<LockRow>(
-              `SELECT id, amount
+              `SELECT amount
                FROM deposit_locks
                WHERE auction_id = $1
                  AND company_id = $2
@@ -395,7 +391,7 @@ export function createBidSqlRepository(
 
           if (walletAvailableBalance >= input.amount) {
             try {
-              await tx.query<InsertedLockRow>(
+              await tx.query(
                 `INSERT INTO deposit_locks (
                    id,
                    auction_id,
@@ -404,7 +400,7 @@ export function createBidSqlRepository(
                    status,
                    created_at
                  ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5::timestamptz)
-                 RETURNING id`,
+                `,
                 [
                   randomUUID(),
                   input.auctionId,
@@ -444,6 +440,8 @@ export function createBidSqlRepository(
             requiresLockAmountUpdate = activeLockAmount < input.amount;
           }
 
+          timing.depositLockMs += Date.now() - depositLockStartedAtMs;
+
           const additionalRequired = Math.max(
             0,
             Math.round((input.amount - activeLockAmount) * 100) / 100,
@@ -457,6 +455,7 @@ export function createBidSqlRepository(
               );
             }
 
+            const walletUpdateStartedAtMs = Date.now();
             await tx.query(
               `UPDATE deposit_wallets
                SET available_balance = available_balance - $2,
@@ -465,8 +464,10 @@ export function createBidSqlRepository(
                WHERE id = $1`,
               [walletId, additionalRequired],
             );
+            timing.walletUpdateMs += Date.now() - walletUpdateStartedAtMs;
 
             if (requiresLockAmountUpdate) {
+              const depositLockUpdateStartedAtMs = Date.now();
               await tx.query(
                 `UPDATE deposit_locks
                  SET amount = $3
@@ -475,14 +476,15 @@ export function createBidSqlRepository(
                    AND status = 'ACTIVE'`,
                 [input.auctionId, input.companyId, input.amount],
               );
+              timing.depositLockMs += Date.now() - depositLockUpdateStartedAtMs;
             }
           }
-          timing.walletLockMutationMs = Date.now() - walletMutationStartedAtMs;
+          timing.walletLockMutationMs = timing.depositLockMs + timing.walletUpdateMs;
 
           const nextSequenceNo = lastBidSequence + 1;
-          const bidPersistStartedAtMs = Date.now();
-
-          const bidInsertResult = await tx.query<BidRow>(
+          const bidId = randomUUID();
+          const bidInsertStartedAtMs = Date.now();
+          await tx.query(
             `INSERT INTO bids (
                id,
                auction_id,
@@ -492,9 +494,9 @@ export function createBidSqlRepository(
                sequence_no,
                created_at
              ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
-             RETURNING id, sequence_no`,
+            `,
             [
-              randomUUID(),
+              bidId,
               input.auctionId,
               input.companyId,
               input.userId,
@@ -503,9 +505,9 @@ export function createBidSqlRepository(
               input.occurredAt.toISOString(),
             ],
           );
+          timing.bidInsertMs = Date.now() - bidInsertStartedAtMs;
 
-          const bidId = String(bidInsertResult.rows[0].id);
-
+          const auctionUpdateStartedAtMs = Date.now();
           await tx.query(
             `UPDATE auctions
              SET highest_bid_id = $2,
@@ -523,7 +525,8 @@ export function createBidSqlRepository(
               input.occurredAt.toISOString(),
             ],
           );
-          timing.bidInsertAuctionUpdateMs = Date.now() - bidPersistStartedAtMs;
+          timing.auctionUpdateMs = Date.now() - auctionUpdateStartedAtMs;
+          timing.bidInsertAuctionUpdateMs = timing.bidInsertMs + timing.auctionUpdateMs;
 
           const responseBody = {
             result: "accepted",
@@ -554,7 +557,6 @@ export function createBidSqlRepository(
               bidRequestExpiresAt.toISOString(),
             ],
           );
-
           const persistedResponse = persistedResponseResult.rows[0];
 
           return {
