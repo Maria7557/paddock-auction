@@ -91,6 +91,7 @@ export const config = {
     "/api/auctions",
     "/api/bids/:path*",
     "/api/seller/:path*",
+    "/api/buyer/:path*",
     "/api/wallet/:path*",
     "/api/admin/:path*",
   ],
