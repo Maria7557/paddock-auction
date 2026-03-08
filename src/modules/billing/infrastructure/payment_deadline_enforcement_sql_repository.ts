@@ -28,17 +28,21 @@ type AuctionRow = SqlRow & {
   id: unknown;
   state: unknown;
   version: unknown;
+  highest_bid_id: unknown;
 };
 
 type DepositLockRow = SqlRow & {
   id: unknown;
+  wallet_id: unknown;
   amount: unknown;
 };
 
-type WalletRow = SqlRow & {
+type WinningBidRow = SqlRow & {
+  user_id: unknown;
+};
+
+type WinnerWalletRow = SqlRow & {
   id: unknown;
-  available_balance: unknown;
-  locked_balance: unknown;
 };
 
 type UpdateRow = SqlRow & {
@@ -66,6 +70,19 @@ function toStringValue(value: unknown, fieldName: string): string {
   }
 
   throw new Error(`Field ${fieldName} must be a non-empty string. Received: ${String(value)}`);
+}
+
+function toLedgerIntegerAmount(amount: number, fieldName: string): number {
+  const rounded = Math.round(amount);
+
+  if (Math.abs(amount - rounded) > Number.EPSILON) {
+    throw new DomainConflictError(
+      billingErrorCodes.internalError,
+      `Field ${fieldName} must be an integer amount for wallet ledger operations`,
+    );
+  }
+
+  return rounded;
 }
 
 export function createPaymentDeadlineEnforcementRepository(
@@ -174,7 +191,8 @@ export function createPaymentDeadlineEnforcementRepository(
           `SELECT
              id,
              state,
-             version
+             version,
+             highest_bid_id
            FROM auctions
            WHERE id = $1
            FOR UPDATE`,
@@ -222,61 +240,90 @@ export function createPaymentDeadlineEnforcementRepository(
           );
         }
 
+        let burnedLockId: string | null = null;
+
+        const highestBidId =
+          auction.highest_bid_id === null || auction.highest_bid_id === undefined
+            ? null
+            : String(auction.highest_bid_id);
+
+        const winningBidderResult = highestBidId
+          ? await tx.query<WinningBidRow>(
+              `SELECT user_id
+               FROM bids
+               WHERE id = $1
+                 AND auction_id = $2
+                 AND company_id = $3
+               FOR UPDATE`,
+              [highestBidId, auctionId, companyId],
+            )
+          : await tx.query<WinningBidRow>(
+              `SELECT user_id
+               FROM bids
+               WHERE auction_id = $1
+                 AND company_id = $2
+               ORDER BY sequence_no DESC
+               LIMIT 1
+               FOR UPDATE`,
+              [auctionId, companyId],
+            );
+
+        if (winningBidderResult.rows.length === 0) {
+          throw new DomainConflictError(
+            billingErrorCodes.internalError,
+            `Winning bid was not found for auction ${auctionId} and company ${companyId}`,
+          );
+        }
+
+        const winnerUserId = toStringValue(winningBidderResult.rows[0].user_id, "winning_bid.user_id");
+        const winnerWalletResult = await tx.query<WinnerWalletRow>(
+          `SELECT id
+           FROM "Wallet"
+           WHERE "userId" = $1
+           FOR UPDATE`,
+          [winnerUserId],
+        );
+
+        if (winnerWalletResult.rows.length === 0) {
+          throw new DomainConflictError(
+            billingErrorCodes.internalError,
+            `Winner wallet was not found for user ${winnerUserId}`,
+          );
+        }
+
+        const winnerWalletId = toStringValue(winnerWalletResult.rows[0].id, "winner_wallet.id");
         const lockResult = await tx.query<DepositLockRow>(
           `SELECT
              id,
+             wallet_id,
              amount
            FROM deposit_locks
            WHERE auction_id = $1
-             AND company_id = $2
+             AND wallet_id = $2
              AND status = 'ACTIVE'
            FOR UPDATE`,
-          [auctionId, companyId],
+          [auctionId, winnerWalletId],
         );
-
-        let burnedLockId: string | null = null;
 
         if (lockResult.rows.length > 0) {
           const activeLock = lockResult.rows[0];
           burnedLockId = toStringValue(activeLock.id, "deposit_lock.id");
           const lockAmount = toNumber(activeLock.amount, "deposit_lock.amount");
+          const winnerWalletLockAmount = toLedgerIntegerAmount(lockAmount, "deposit_lock.amount");
 
-          const walletResult = await tx.query<WalletRow>(
-            `SELECT
-               id,
-               available_balance,
-               locked_balance
-             FROM deposit_wallets
-             WHERE company_id = $1
-               AND currency = $2
-             FOR UPDATE`,
-            [companyId, toStringValue(invoice.currency, "invoice.currency")],
-          );
-
-          if (walletResult.rows.length === 0) {
-            throw new DomainConflictError(
-              billingErrorCodes.invoiceNotFound,
-              `Wallet for company ${companyId} was not found during deadline enforcement`,
-            );
-          }
-
-          const wallet = walletResult.rows[0];
-          const walletId = toStringValue(wallet.id, "wallet.id");
-
-          const walletBurnResult = await tx.query<UpdateRow>(
-            `UPDATE deposit_wallets
-             SET locked_balance = locked_balance - $2,
-                 updated_at = $3::timestamptz
+          const winnerWalletBurnResult = await tx.query<UpdateRow>(
+            `UPDATE "Wallet"
+             SET "lockedBalance" = "lockedBalance" - $2
              WHERE id = $1
-               AND locked_balance >= $2
+               AND "lockedBalance" >= $2
              RETURNING id`,
-            [walletId, lockAmount, input.occurredAt.toISOString()],
+            [winnerWalletId, winnerWalletLockAmount],
           );
 
-          if (walletBurnResult.rows.length === 0) {
+          if (winnerWalletBurnResult.rows.length === 0) {
             throw new DomainConflictError(
               billingErrorCodes.internalError,
-              `Insufficient locked balance to burn winner deposit lock ${burnedLockId}`,
+              `Insufficient winner wallet locked balance for user ${winnerUserId}`,
             );
           }
 
@@ -287,6 +334,25 @@ export function createPaymentDeadlineEnforcementRepository(
                  resolution_reason = COALESCE(resolution_reason, 'PAYMENT_DEFAULTED_DEADLINE')
              WHERE id = $1`,
             [burnedLockId, input.occurredAt.toISOString()],
+          );
+
+          await tx.query(
+            `INSERT INTO "WalletLedger" (
+               id,
+               "walletId",
+               type,
+               amount,
+               reference,
+               "createdAt"
+             ) VALUES ($1, $2, $3::"LedgerType", $4, $5, $6::timestamptz)`,
+            [
+              randomUUID(),
+              winnerWalletId,
+              "DEPOSIT_BURN",
+              winnerWalletLockAmount,
+              burnedLockId,
+              input.occurredAt.toISOString(),
+            ],
           );
 
           await tx.query(

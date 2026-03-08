@@ -1,4 +1,5 @@
 export const bidErrorCodes = {
+  unauthenticated: "UNAUTHENTICATED",
   missingIdempotencyKey: "MISSING_IDEMPOTENCY_KEY",
   invalidPayload: "INVALID_BID_PAYLOAD",
   biddingDisabled: "BIDDING_DISABLED",
@@ -8,6 +9,7 @@ export const bidErrorCodes = {
   auctionNotLive: "AUCTION_NOT_LIVE",
   bidAmountTooLow: "BID_AMOUNT_TOO_LOW",
   noDepositNoBid: "NO_DEPOSIT_NO_BID",
+  depositRequired: "DEPOSIT_REQUIRED",
   bidContentionConflict: "BID_CONTENTION_CONFLICT",
   bidFloodProtected: "BID_FLOOD_PROTECTED",
   internalError: "INTERNAL_ERROR",

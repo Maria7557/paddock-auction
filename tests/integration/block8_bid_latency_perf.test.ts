@@ -23,6 +23,7 @@ function quantile(values: number[], percentile: number): number {
 
 test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakdown", async () => {
   const requestCount = 300;
+  const maxConcurrentRequests = 64;
   const migratedDb = await createMigratedTestDb();
 
   try {
@@ -53,15 +54,21 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
 
     for (let index = 1; index <= requestCount; index += 1) {
       await db.query(
-        `INSERT INTO deposit_wallets (
+        `INSERT INTO "User" (
            id,
-           company_id,
-           currency,
-           available_balance,
-           locked_balance,
-           pending_withdrawal_balance
-         ) VALUES ($1, $2, 'USD', $3, 0, 0)`,
-        [`wallet-perf-test-${index}`, `company-perf-test-${index}`, 10_000],
+           email
+         ) VALUES ($1, $2)`,
+        [`user-perf-test-${index}`, `user-perf-test-${index}@example.test`],
+      );
+
+      await db.query(
+        `INSERT INTO "Wallet" (
+           id,
+           "userId",
+           balance,
+           "lockedBalance"
+         ) VALUES ($1, $2, $3, 0)`,
+        [`wallet-perf-test-${index}`, `user-perf-test-${index}`, 10_000],
       );
     }
 
@@ -70,6 +77,9 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
     const rateLimitCheckMs: number[] = [];
     const advisoryLockWaitMs: number[] = [];
     const dbTransactionMs: number[] = [];
+    const depositLockMs: number[] = [];
+    const walletUpdateMs: number[] = [];
+    const bidInsertMs: number[] = [];
     const walletLockMutationMs: number[] = [];
     const bidInsertAuctionUpdateMs: number[] = [];
 
@@ -79,6 +89,9 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
           const result = await placeBidService.placeBid(command);
           advisoryLockWaitMs.push(result.timing.advisoryLockWaitMs);
           dbTransactionMs.push(result.timing.dbTransactionMs);
+          depositLockMs.push(result.timing.depositLockMs);
+          walletUpdateMs.push(result.timing.walletUpdateMs);
+          bidInsertMs.push(result.timing.bidInsertMs);
           walletLockMutationMs.push(result.timing.walletLockMutationMs);
           bidInsertAuctionUpdateMs.push(result.timing.bidInsertAuctionUpdateMs);
           return result;
@@ -122,30 +135,38 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
       now: () => new Date("2026-03-01T10:00:00Z"),
     });
 
-    const responses = await Promise.all(
-      Array.from({ length: requestCount }, (_, index) => index + 1).map(async (n) => {
-        const request = new Request("https://example.com/api/bids", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "idempotency-key": `idem-perf-test-${n}`,
-            "x-forwarded-for": "198.51.100.15",
-          },
-          body: JSON.stringify({
-            auction_id: "auction-perf-test",
-            company_id: `company-perf-test-${n}`,
-            user_id: `user-perf-test-${n}`,
-            amount: 101 + n,
-          }),
-        });
+    const runRequest = async (n: number): Promise<number> => {
+      const request = new Request("https://example.com/api/bids", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `idem-perf-test-${n}`,
+          "x-forwarded-for": "198.51.100.15",
+        },
+        body: JSON.stringify({
+          auction_id: "auction-perf-test",
+          company_id: `company-perf-test-${n}`,
+          user_id: `user-perf-test-${n}`,
+          amount: 101 + n,
+        }),
+      });
 
-        const startedAt = performance.now();
-        const response = await handler(request);
-        const endedAt = performance.now();
-        endpointLatencyMs.push(endedAt - startedAt);
-        return response.status;
-      }),
-    );
+      const startedAt = performance.now();
+      const response = await handler(request);
+      const endedAt = performance.now();
+      endpointLatencyMs.push(endedAt - startedAt);
+      return response.status;
+    };
+
+    const responses: number[] = [];
+    for (let offset = 0; offset < requestCount; offset += maxConcurrentRequests) {
+      const batch = Array.from(
+        { length: Math.min(maxConcurrentRequests, requestCount - offset) },
+        (_, index) => offset + index + 1,
+      );
+      const batchResponses = await Promise.all(batch.map(async (n) => runRequest(n)));
+      responses.push(...batchResponses);
+    }
 
     for (const status of responses) {
       assert.equal(status, 201);
@@ -155,6 +176,9 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
     assert.equal(rateLimitCheckMs.length, requestCount);
     assert.equal(advisoryLockWaitMs.length, requestCount);
     assert.equal(dbTransactionMs.length, requestCount);
+    assert.equal(depositLockMs.length, requestCount);
+    assert.equal(walletUpdateMs.length, requestCount);
+    assert.equal(bidInsertMs.length, requestCount);
     assert.equal(walletLockMutationMs.length, requestCount);
     assert.equal(bidInsertAuctionUpdateMs.length, requestCount);
 
@@ -167,6 +191,7 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
         {
           metric: "bid_latency_perf_snapshot",
           requests: requestCount,
+          max_concurrent_requests: maxConcurrentRequests,
           endpoint_ms: {
             p50: endpointP50,
             p95: endpointP95,
@@ -187,6 +212,21 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
             p95: quantile(dbTransactionMs, 0.95),
             p99: quantile(dbTransactionMs, 0.99),
           },
+          deposit_lock_ms: {
+            p50: quantile(depositLockMs, 0.5),
+            p95: quantile(depositLockMs, 0.95),
+            p99: quantile(depositLockMs, 0.99),
+          },
+          wallet_update_ms: {
+            p50: quantile(walletUpdateMs, 0.5),
+            p95: quantile(walletUpdateMs, 0.95),
+            p99: quantile(walletUpdateMs, 0.99),
+          },
+          bid_insert_ms: {
+            p50: quantile(bidInsertMs, 0.5),
+            p95: quantile(bidInsertMs, 0.95),
+            p99: quantile(bidInsertMs, 0.99),
+          },
           wallet_lock_mutation_ms: {
             p50: quantile(walletLockMutationMs, 0.5),
             p95: quantile(walletLockMutationMs, 0.95),
@@ -205,6 +245,7 @@ test("bid endpoint perf scenario reports p50/p95/p99 and component timing breakd
 
     assert.ok(endpointP95 > 0);
     assert.ok(endpointP95 < 5_000);
+    assert.ok(endpointP99 < 6_000);
   } finally {
     await migratedDb.cleanup();
   }

@@ -77,6 +77,7 @@ export function createPostPaymentIntentHandler(
           invoice_id: result.invoiceId,
           payment_id: result.paymentId,
           stripe_payment_intent_id: result.stripePaymentIntentId,
+          clientSecret: result.clientSecret,
           client_secret: result.clientSecret,
           amount: result.amount,
           currency: result.currency,

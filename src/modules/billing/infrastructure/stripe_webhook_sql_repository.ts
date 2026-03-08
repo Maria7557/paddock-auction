@@ -69,13 +69,18 @@ type PaymentDeadlineRow = SqlRow & {
   id: unknown;
 };
 
-type WalletRow = SqlRow & {
+type UserWalletRow = SqlRow & {
   id: unknown;
-  currency: unknown;
+};
+
+type BidRow = SqlRow & {
+  user_id: unknown;
+  company_id: unknown;
 };
 
 type DepositLockRow = SqlRow & {
   id: unknown;
+  wallet_id: unknown;
   amount: unknown;
 };
 
@@ -83,6 +88,7 @@ type AuctionRow = SqlRow & {
   id: unknown;
   state: unknown;
   version: unknown;
+  highest_bid_id: unknown;
 };
 
 type InsertRow = SqlRow & { id: unknown };
@@ -90,6 +96,72 @@ type InsertRow = SqlRow & { id: unknown };
 type UpdatedWalletRow = SqlRow & {
   id: unknown;
 };
+
+function toIntegerAmount(value: number, fieldName: string): number {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new Error(`Field ${fieldName} must be an integer amount for wallet ledger operations`);
+  }
+
+  return value;
+}
+
+async function ensureUserWallet(
+  tx: {
+    query<T extends SqlRow = SqlRow>(sql: string, params?: readonly unknown[]): Promise<{ rows: T[] }>;
+  },
+  userId: string,
+): Promise<string> {
+  const existingWalletResult = await tx.query<UserWalletRow>(
+    `SELECT id
+     FROM "Wallet"
+     WHERE "userId" = $1
+     FOR UPDATE`,
+    [userId],
+  );
+
+  if (existingWalletResult.rows.length > 0) {
+    return String(existingWalletResult.rows[0].id);
+  }
+
+  await tx.query(
+    `INSERT INTO "User" (id, email)
+     VALUES ($1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [userId, `${userId}@wallet.local`],
+  );
+
+  const walletId = randomUUID();
+  const insertedWalletResult = await tx.query<UserWalletRow>(
+    `INSERT INTO "Wallet" (
+       id,
+       "userId",
+       balance,
+       "lockedBalance",
+       "createdAt"
+     ) VALUES ($1, $2, 0, 0, CURRENT_TIMESTAMP)
+     ON CONFLICT ("userId") DO NOTHING
+     RETURNING id`,
+    [walletId, userId],
+  );
+
+  if (insertedWalletResult.rows.length > 0) {
+    return String(insertedWalletResult.rows[0].id);
+  }
+
+  const reloadedWalletResult = await tx.query<UserWalletRow>(
+    `SELECT id
+     FROM "Wallet"
+     WHERE "userId" = $1
+     FOR UPDATE`,
+    [userId],
+  );
+
+  if (reloadedWalletResult.rows.length === 0) {
+    throw new Error(`Wallet could not be created or loaded for user ${userId}`);
+  }
+
+  return String(reloadedWalletResult.rows[0].id);
+}
 
 export function createStripeWebhookRepository(
   transactionRunner: SqlTransactionRunner,
@@ -194,6 +266,7 @@ export function createStripeWebhookRepository(
 
         const auctionId = String(invoice.auction_id);
         const buyerCompanyId = String(invoice.buyer_company_id);
+        const invoiceTotalAmount = toIntegerAmount(toNumber(invoice.total, "total"), "invoice.total");
 
         const deadlineResult = await tx.query<PaymentDeadlineRow>(
           `SELECT id
@@ -214,55 +287,12 @@ export function createStripeWebhookRepository(
 
         const paymentDeadlineId = String(deadlineResult.rows[0].id);
 
-        const walletResult = await tx.query<WalletRow>(
-          `SELECT
-             id,
-             currency
-           FROM deposit_wallets
-           WHERE company_id = $1
-             AND currency = $2
-           FOR UPDATE`,
-          [buyerCompanyId, String(invoice.currency)],
-        );
-
-        if (walletResult.rows.length === 0) {
-          return {
-            kind: "ignored",
-            reason: "buyer_wallet_not_found",
-          };
-        }
-
-        const wallet = walletResult.rows[0];
-        const walletId = String(wallet.id);
-
-        const lockResult = await tx.query<DepositLockRow>(
-          `SELECT
-             id,
-             amount
-           FROM deposit_locks
-           WHERE auction_id = $1
-             AND company_id = $2
-             AND status = 'ACTIVE'
-           FOR UPDATE`,
-          [auctionId, buyerCompanyId],
-        );
-
-        if (lockResult.rows.length === 0) {
-          return {
-            kind: "ignored",
-            reason: "winner_deposit_lock_not_found",
-          };
-        }
-
-        const depositLock = lockResult.rows[0];
-        const depositLockId = String(depositLock.id);
-        const depositAmount = toNumber(depositLock.amount, "amount");
-
         const auctionResult = await tx.query<AuctionRow>(
           `SELECT
              id,
              state,
-             version
+             version,
+             highest_bid_id
            FROM auctions
            WHERE id = $1
            FOR UPDATE`,
@@ -288,18 +318,104 @@ export function createStripeWebhookRepository(
 
         assertAuctionTransitionAllowed("PAYMENT_PENDING", "PAID");
 
-        const walletUpdateResult = await tx.query<UpdatedWalletRow>(
-          `UPDATE deposit_wallets
-           SET available_balance = available_balance + $2,
-               locked_balance = locked_balance - $2,
-               updated_at = $3::timestamptz
-           WHERE id = $1
-             AND locked_balance >= $2
-           RETURNING id`,
-          [walletId, depositAmount, input.occurredAt.toISOString()],
+        let winnerWalletId: string | null = null;
+        const highestBidId =
+          auction.highest_bid_id === null || auction.highest_bid_id === undefined
+            ? null
+            : String(auction.highest_bid_id);
+
+        if (highestBidId !== null) {
+          const winningBidResult = await tx.query<BidRow>(
+            `SELECT user_id, company_id
+             FROM bids
+             WHERE id = $1
+               AND auction_id = $2
+             FOR UPDATE`,
+            [highestBidId, auctionId],
+          );
+
+          if (winningBidResult.rows.length > 0) {
+            const winningBid = winningBidResult.rows[0];
+            const winningCompanyId = String(winningBid.company_id);
+
+            if (winningCompanyId !== buyerCompanyId) {
+              return {
+                kind: "ignored",
+                reason: "winner_deposit_lock_not_found",
+              };
+            }
+
+            const winningUserId = String(winningBid.user_id);
+            const winningWalletResult = await tx.query<UserWalletRow>(
+              `SELECT id
+               FROM "Wallet"
+               WHERE "userId" = $1
+               FOR UPDATE`,
+              [winningUserId],
+            );
+
+            if (winningWalletResult.rows.length > 0) {
+              winnerWalletId = String(winningWalletResult.rows[0].id);
+            }
+          }
+        }
+
+        if (winnerWalletId === null) {
+          const fallbackWalletResult = await tx.query<UserWalletRow>(
+            `SELECT id
+             FROM "Wallet"
+             WHERE "userId" = $1
+             FOR UPDATE`,
+            [buyerCompanyId],
+          );
+
+          if (fallbackWalletResult.rows.length > 0) {
+            winnerWalletId = String(fallbackWalletResult.rows[0].id);
+          }
+        }
+
+        if (winnerWalletId === null) {
+          return {
+            kind: "ignored",
+            reason: "winner_deposit_lock_not_found",
+          };
+        }
+
+        const lockResult = await tx.query<DepositLockRow>(
+          `SELECT
+             id,
+             wallet_id,
+             amount
+           FROM deposit_locks
+           WHERE auction_id = $1
+             AND wallet_id = $2
+             AND status = 'ACTIVE'
+           FOR UPDATE`,
+          [auctionId, winnerWalletId],
         );
 
-        if (walletUpdateResult.rows.length === 0) {
+        if (lockResult.rows.length === 0) {
+          return {
+            kind: "ignored",
+            reason: "winner_deposit_lock_not_found",
+          };
+        }
+
+        const depositLock = lockResult.rows[0];
+        const depositLockId = String(depositLock.id);
+        const depositAmount = toIntegerAmount(toNumber(depositLock.amount, "amount"), "deposit_lock.amount");
+
+        const winnerWalletUpdateResult = await tx.query<UpdatedWalletRow>(
+          `UPDATE "Wallet"
+           SET balance = balance + $2,
+               "lockedBalance" = "lockedBalance" - $2
+           WHERE id = $1
+             AND "lockedBalance" >= $2
+           RETURNING id`,
+          [winnerWalletId, depositAmount],
+        );
+
+        if (winnerWalletUpdateResult.rows.length === 0) {
           return {
             kind: "ignored",
             reason: "wallet_locked_balance_insufficient",
@@ -391,7 +507,7 @@ export function createStripeWebhookRepository(
             auctionId,
             buyerCompanyId,
             invoiceId,
-            toNumber(invoice.total, "total"),
+            invoiceTotalAmount,
             String(invoice.currency),
             JSON.stringify({
               stripe_event_id: input.stripeEventId,
@@ -426,11 +542,31 @@ export function createStripeWebhookRepository(
             invoiceId,
             paymentId,
             depositAmount,
-            String(wallet.currency),
+            String(invoice.currency),
             JSON.stringify({
               stripe_event_id: input.stripeEventId,
               lock_resolution: "RELEASED",
             }),
+            input.occurredAt.toISOString(),
+          ],
+        );
+
+        const buyerUserWalletId = await ensureUserWallet(tx, buyerCompanyId);
+        await tx.query(
+          `INSERT INTO "WalletLedger" (
+             id,
+             "walletId",
+             type,
+             amount,
+             reference,
+             "createdAt"
+           ) VALUES ($1, $2, $3::"LedgerType", $4, $5, $6::timestamptz)`,
+          [
+            randomUUID(),
+            buyerUserWalletId,
+            "PAYMENT_RECEIVED",
+            invoiceTotalAmount,
+            invoiceId,
             input.occurredAt.toISOString(),
           ],
         );

@@ -32,7 +32,11 @@ function buildSuccessResult(): PlaceBidStorageResult {
     timing: {
       advisoryLockWaitMs: 2,
       dbTransactionMs: 4,
+      depositLockMs: 1,
+      walletUpdateMs: 0,
+      bidInsertMs: 1,
       walletLockMutationMs: 1,
+      auctionUpdateMs: 0,
       bidInsertAuctionUpdateMs: 1,
     },
   };

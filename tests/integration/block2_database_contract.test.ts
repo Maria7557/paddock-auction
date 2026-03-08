@@ -37,7 +37,7 @@ async function insertAuction(db: PGlite, auctionId: string): Promise<void> {
 
 test("migrations apply successfully on a clean database", async () => {
   await withMigratedDb(async ({ db, appliedMigrations }) => {
-    assert.equal(appliedMigrations.length, 6);
+    assert.equal(appliedMigrations.length, 9);
     assert.deepEqual(appliedMigrations, [
       "20260226072326_init",
       "20260226080650_add_role",
@@ -45,6 +45,9 @@ test("migrations apply successfully on a clean database", async () => {
       "20260301170000_block3_add_ended_state",
       "20260301201500_block4_bid_runtime_columns",
       "20260301233000_block5_billing_webhook_contract",
+      "20260305160000_wallet_system",
+      "20260305210000_add_payment_received_ledger_type",
+      "20260306090000_financial_core_wallet_unification",
     ]);
 
     const auctionsCount = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM auctions");
@@ -99,7 +102,7 @@ test("bid request idempotency key is unique per auction and company", async () =
         "idem-123",
         "hash-1",
         "IN_PROGRESS",
-        "2026-03-03T00:00:00Z",
+        "2030-03-03T00:00:00Z",
       ],
     );
 
@@ -122,7 +125,7 @@ test("bid request idempotency key is unique per auction and company", async () =
             "idem-123",
             "hash-2",
             "IN_PROGRESS",
-            "2026-03-03T00:00:00Z",
+            "2030-03-03T00:00:00Z",
           ],
         );
       },
@@ -278,6 +281,35 @@ test("append-only tables reject update and delete operations", async () => {
     await assert.rejects(
       async () => {
         await db.query("DELETE FROM financial_events WHERE id = $1", ["financial-event-1"]);
+      },
+      /append-only/i,
+    );
+
+    await db.query(
+      `INSERT INTO "User" (id, email) VALUES ($1, $2)`,
+      ["wallet-ledger-user-1", "wallet-ledger-user-1@example.test"],
+    );
+    await db.query(
+      `INSERT INTO "Wallet" (id, "userId", balance, "lockedBalance")
+       VALUES ($1, $2, 100, 0)`,
+      ["wallet-ledger-1", "wallet-ledger-user-1"],
+    );
+    await db.query(
+      `INSERT INTO "WalletLedger" (id, "walletId", type, amount, reference)
+       VALUES ($1, $2, 'DEPOSIT_TOPUP', 100, $3)`,
+      ["wallet-ledger-entry-1", "wallet-ledger-1", "seed"],
+    );
+
+    await assert.rejects(
+      async () => {
+        await db.query(`UPDATE "WalletLedger" SET amount = 99 WHERE id = $1`, ["wallet-ledger-entry-1"]);
+      },
+      /append-only/i,
+    );
+
+    await assert.rejects(
+      async () => {
+        await db.query(`DELETE FROM "WalletLedger" WHERE id = $1`, ["wallet-ledger-entry-1"]);
       },
       /append-only/i,
     );

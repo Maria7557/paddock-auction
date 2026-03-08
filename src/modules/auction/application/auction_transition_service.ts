@@ -28,6 +28,8 @@ export type AuctionTransitionCommandResult = {
   transitionId: string;
 };
 
+export type AuctionLifecycleTransitionCommand = Omit<AuctionTransitionCommand, "toState">;
+
 export async function transitionAuctionState(
   repository: AuctionTransitionRepository,
   command: AuctionTransitionCommand,
@@ -62,14 +64,70 @@ export async function transitionAuctionState(
   });
 }
 
+export async function startAuction(
+  repository: AuctionTransitionRepository,
+  command: AuctionLifecycleTransitionCommand,
+): Promise<AuctionTransitionCommandResult> {
+  return transitionAuctionState(repository, {
+    ...command,
+    toState: "LIVE",
+  });
+}
+
+export async function closeAuction(
+  repository: AuctionTransitionRepository,
+  command: AuctionLifecycleTransitionCommand,
+): Promise<AuctionTransitionCommandResult> {
+  return transitionAuctionState(repository, {
+    ...command,
+    toState: "ENDED",
+  });
+}
+
+export async function markPaymentPending(
+  repository: AuctionTransitionRepository,
+  command: AuctionLifecycleTransitionCommand,
+): Promise<AuctionTransitionCommandResult> {
+  return transitionAuctionState(repository, {
+    ...command,
+    toState: "PAYMENT_PENDING",
+  });
+}
+
+export async function markDefaulted(
+  repository: AuctionTransitionRepository,
+  command: AuctionLifecycleTransitionCommand,
+): Promise<AuctionTransitionCommandResult> {
+  return transitionAuctionState(repository, {
+    ...command,
+    toState: "DEFAULTED",
+  });
+}
+
 export function createAuctionTransitionService(transactionRunner: SqlTransactionRunner): {
   transitionAuctionState: (command: AuctionTransitionCommand) => Promise<AuctionTransitionCommandResult>;
+  startAuction: (command: AuctionLifecycleTransitionCommand) => Promise<AuctionTransitionCommandResult>;
+  closeAuction: (command: AuctionLifecycleTransitionCommand) => Promise<AuctionTransitionCommandResult>;
+  markPaymentPending: (command: AuctionLifecycleTransitionCommand) => Promise<AuctionTransitionCommandResult>;
+  markDefaulted: (command: AuctionLifecycleTransitionCommand) => Promise<AuctionTransitionCommandResult>;
 } {
   const repository = createAuctionTransitionRepository(transactionRunner);
 
   return {
     transitionAuctionState: async (command: AuctionTransitionCommand) => {
       return transitionAuctionState(repository, command);
+    },
+    startAuction: async (command: AuctionLifecycleTransitionCommand) => {
+      return startAuction(repository, command);
+    },
+    closeAuction: async (command: AuctionLifecycleTransitionCommand) => {
+      return closeAuction(repository, command);
+    },
+    markPaymentPending: async (command: AuctionLifecycleTransitionCommand) => {
+      return markPaymentPending(repository, command);
+    },
+    markDefaulted: async (command: AuctionLifecycleTransitionCommand) => {
+      return markDefaulted(repository, command);
     },
   };
 }
