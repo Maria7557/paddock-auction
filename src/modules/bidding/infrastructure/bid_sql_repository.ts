@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { BidContentionConflictError } from "../domain/bid_domain_errors";
 import { bidErrorCodes, isExpectedBidContentionSqlState } from "../domain/bid_error_codes";
+import { calculateMinimumAcceptedBidAmount } from "../domain/bid_validation";
 import type { SqlRow, SqlTransactionRunner } from "../../../lib/sql_contract";
 import { toNumber } from "../../../lib/sql_contract";
 import { lockDeposit } from "../../wallet/deposit_service";
@@ -131,6 +132,7 @@ function parseStoredResponseBody(value: unknown): Record<string, unknown> {
 
 function buildRejectedResponse(errorCode: string, message: string): Record<string, unknown> {
   return {
+    error: errorCode,
     error_code: errorCode,
     message,
   };
@@ -342,7 +344,7 @@ export function createBidSqlRepository(
             );
           }
 
-          const minimumAcceptedAmount = Math.round((currentPrice + minIncrement) * 100) / 100;
+          const minimumAcceptedAmount = calculateMinimumAcceptedBidAmount(currentPrice, minIncrement);
 
           if (input.amount < minimumAcceptedAmount) {
             return persistRejected(
@@ -441,6 +443,8 @@ export function createBidSqlRepository(
           timing.bidInsertAuctionUpdateMs = timing.bidInsertMs + timing.auctionUpdateMs;
 
           const responseBody = {
+            success: true,
+            newBid: Number(input.amount.toFixed(2)),
             result: "accepted",
             bid_id: bidId,
             auction_id: input.auctionId,

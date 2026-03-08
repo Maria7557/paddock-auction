@@ -1,4 +1,5 @@
 export const bidErrorCodes = {
+  unauthenticated: "UNAUTHENTICATED",
   missingIdempotencyKey: "MISSING_IDEMPOTENCY_KEY",
   invalidPayload: "INVALID_BID_PAYLOAD",
   biddingDisabled: "BIDDING_DISABLED",

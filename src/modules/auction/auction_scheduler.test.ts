@@ -29,7 +29,7 @@ test("startDueAuctions transitions due SCHEDULED auctions to LIVE", async () => 
 
         if (selectCalls === 1) {
           return {
-            rows: [{ id: "auction-start-1", version: 2 }] as T[],
+            rows: [{ id: "auction-start-1", version: 2 }] as unknown as T[],
           };
         }
 
@@ -80,7 +80,7 @@ test("closeDueAuctions transitions due LIVE auctions to ENDED and sets closed_at
 
         if (selectCalls === 1) {
           return {
-            rows: [{ id: "auction-close-1", version: 0 }] as T[],
+            rows: [{ id: "auction-close-1", version: 0 }] as unknown as T[],
           };
         }
 

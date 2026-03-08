@@ -27,19 +27,19 @@ test("withdrawWallet decreases wallet balance and inserts WITHDRAWAL ledger", as
 
       if (sql.includes('FROM "Wallet"') && sql.includes('WHERE "userId" = $1')) {
         return {
-          rows: [{ id: "wallet-1", balance: 200 }] as T[],
+          rows: [{ id: "wallet-1", balance: 200 }] as unknown as T[],
         };
       }
 
       if (sql.startsWith('UPDATE "Wallet"')) {
         return {
-          rows: [{ id: "wallet-1", balance: 150 }] as T[],
+          rows: [{ id: "wallet-1", balance: 150 }] as unknown as T[],
         };
       }
 
       if (sql.startsWith('INSERT INTO "WalletLedger"')) {
         return {
-          rows: [{ id: "ledger-1" }] as T[],
+          rows: [{ id: "ledger-1" }] as unknown as T[],
         };
       }
 
@@ -64,7 +64,7 @@ test("withdrawWallet rejects amount larger than balance", async () => {
     async query<T extends SqlRow = SqlRow>(sql: string): Promise<{ rows: T[] }> {
       if (sql.includes('FROM "Wallet"') && sql.includes('WHERE "userId" = $1')) {
         return {
-          rows: [{ id: "wallet-1", balance: 25 }] as T[],
+          rows: [{ id: "wallet-1", balance: 25 }] as unknown as T[],
         };
       }
 

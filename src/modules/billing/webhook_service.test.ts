@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { StripeWebhookProcessInput } from "./infrastructure/stripe_webhook_sql_repository";
 import { billingErrorCodes } from "./domain/billing_error_codes";
 import { createBillingWebhookService } from "./webhook_service";
 
@@ -54,7 +55,7 @@ test("handleWebhook rejects webhook when signature verification fails", async ()
 });
 
 test("handleWebhook processes payment_intent.succeeded and returns applied response", async () => {
-  let processInput: Record<string, unknown> | null = null;
+  let processInput: StripeWebhookProcessInput | null = null;
 
   const service = createBillingWebhookService({
     stripeWebhookService: {
@@ -99,8 +100,9 @@ test("handleWebhook processes payment_intent.succeeded and returns applied respo
   assert.equal(response.body.invoice_id, "invoice-webhook-service-1");
 
   assert.ok(processInput);
-  assert.equal(processInput?.stripeEventId, "evt_success_service_1");
-  assert.equal(processInput?.eventType, "payment_intent.succeeded");
-  assert.equal(processInput?.paymentIntentId, "pi_service_1");
-  assert.equal(processInput?.stripeChargeId, "ch_service_1");
+  const capturedInput = processInput as StripeWebhookProcessInput;
+  assert.equal(capturedInput.stripeEventId, "evt_success_service_1");
+  assert.equal(capturedInput.eventType, "payment_intent.succeeded");
+  assert.equal(capturedInput.paymentIntentId, "pi_service_1");
+  assert.equal(capturedInput.stripeChargeId, "ch_service_1");
 });

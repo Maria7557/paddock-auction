@@ -34,7 +34,7 @@ test("applyAntiSnipingExtension extends auction by 120 seconds when bid is in fi
 
       if (sql.startsWith("UPDATE auctions")) {
         return {
-          rows: [{ ends_at: "2026-03-07T10:03:30.000Z" }] as T[],
+          rows: [{ ends_at: "2026-03-07T10:03:30.000Z" }] as unknown as T[],
         };
       }
 

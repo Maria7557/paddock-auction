@@ -240,9 +240,9 @@ function defaultScheduleTask(
   cronExpression: string,
   handler: () => void | Promise<void>,
 ): ScheduledCronTask {
-  const task = cron.schedule(cronExpression, () => {
+  const task = cron.createTask(cronExpression, () => {
     void Promise.resolve(handler());
-  }, { scheduled: false });
+  });
 
   return {
     start: () => task.start(),

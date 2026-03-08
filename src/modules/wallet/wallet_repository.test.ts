@@ -1,30 +1,58 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Wallet, WalletLedger } from "@prisma/client";
+import { Prisma, type Wallet, type WalletLedger } from "@prisma/client";
 
 import { createWalletRepository, type WalletRepositoryClient } from "./wallet_repository";
 
-function buildWallet(overrides: Partial<Wallet> = {}): Wallet {
+type WalletOverrides = Partial<Omit<Wallet, "balance" | "lockedBalance">> & {
+  balance?: Prisma.Decimal | number | string;
+  lockedBalance?: Prisma.Decimal | number | string;
+};
+
+type WalletLedgerOverrides = Partial<Omit<WalletLedger, "amount">> & {
+  amount?: Prisma.Decimal | number | string;
+};
+
+function toDecimal(value: Prisma.Decimal | number | string): Prisma.Decimal {
+  if (value instanceof Prisma.Decimal) {
+    return value;
+  }
+
+  return new Prisma.Decimal(value);
+}
+
+function buildWallet(overrides: WalletOverrides = {}): Wallet {
+  const {
+    balance,
+    lockedBalance,
+    createdAt,
+    updatedAt,
+    ...rest
+  } = overrides;
+
   return {
     id: "wallet-1",
     userId: "user-1",
-    balance: 100,
-    lockedBalance: 20,
-    createdAt: new Date("2026-03-05T10:00:00.000Z"),
-    ...overrides,
+    balance: toDecimal(balance ?? 100),
+    lockedBalance: toDecimal(lockedBalance ?? 20),
+    createdAt: createdAt ?? new Date("2026-03-05T10:00:00.000Z"),
+    updatedAt: updatedAt ?? new Date("2026-03-05T10:00:00.000Z"),
+    ...rest,
   };
 }
 
-function buildLedger(overrides: Partial<WalletLedger> = {}): WalletLedger {
+function buildLedger(overrides: WalletLedgerOverrides = {}): WalletLedger {
+  const { amount, createdAt, ...rest } = overrides;
+
   return {
     id: "ledger-1",
     walletId: "wallet-1",
     type: "DEPOSIT_TOPUP",
-    amount: 100,
+    amount: toDecimal(amount ?? 100),
     reference: null,
-    createdAt: new Date("2026-03-05T10:01:00.000Z"),
-    ...overrides,
+    createdAt: createdAt ?? new Date("2026-03-05T10:01:00.000Z"),
+    ...rest,
   };
 }
 
@@ -114,7 +142,7 @@ test("addLedgerEntry writes ledger row and normalizes missing reference to null"
 
   assert.equal(ledger.walletId, "wallet-ledger");
   assert.equal(ledger.type, "DEPOSIT_LOCK");
-  assert.equal(ledger.amount, 55);
+  assert.equal(Number(ledger.amount), 55);
   assert.deepEqual(capturedArgs, {
     data: {
       wallet: {
@@ -187,8 +215,8 @@ test("updateWalletBalance increments both balances by delta", async () => {
     lockedBalanceDelta: 5,
   });
 
-  assert.equal(updated.balance, 135);
-  assert.equal(updated.lockedBalance, 25);
+  assert.equal(Number(updated.balance), 135);
+  assert.equal(Number(updated.lockedBalance), 25);
   assert.deepEqual(capturedArgs, {
     where: {
       userId: "user-update",

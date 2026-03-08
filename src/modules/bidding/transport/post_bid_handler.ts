@@ -21,15 +21,26 @@ import {
   type PlaceBidService,
 } from "../bid_service";
 import { prismaSqlTransactionRunner } from "../../../infrastructure/database/prisma_sql_runner";
+import { normalizeBidAmount } from "../domain/bid_validation";
 
-const bidRequestPayloadSchema = z.object({
-  auction_id: z.string().min(1),
-  company_id: z.string().min(1),
-  user_id: z.string().min(1),
+const bidRequestBodySchema = z.object({
+  auctionId: z.string().trim().min(1).optional(),
+  auction_id: z.string().trim().min(1).optional(),
+  companyId: z.string().trim().min(1).optional(),
+  company_id: z.string().trim().min(1).optional(),
+  userId: z.string().trim().min(1).optional(),
+  user_id: z.string().trim().min(1).optional(),
   amount: z.coerce.number().positive(),
 });
 
-type BidRequestPayload = z.infer<typeof bidRequestPayloadSchema>;
+type BidRequestBody = z.infer<typeof bidRequestBodySchema>;
+
+type BidRequestPayload = {
+  auction_id: string;
+  company_id: string;
+  user_id: string;
+  amount: number;
+};
 
 type BidRequestResult = {
   status: number;
@@ -73,8 +84,122 @@ function parseClientIp(request: Request): string {
   return "unknown";
 }
 
-function normalizeAmount(amount: number): number {
-  return Math.round(amount * 100) / 100;
+function cleanOptionalValue(value: string | null | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function decodeBase64UrlSegment(value: string): string | null {
+  try {
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    return Buffer.from(padded, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function parseJwtPayload(authorizationHeader: string | null): Record<string, unknown> | null {
+  const raw = cleanOptionalValue(authorizationHeader);
+
+  if (!raw || !raw.toLowerCase().startsWith("bearer ")) {
+    return null;
+  }
+
+  const token = raw.slice("bearer ".length).trim();
+
+  if (!token) {
+    return null;
+  }
+
+  const segments = token.split(".");
+
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const decodedPayload = decodeBase64UrlSegment(segments[1]);
+
+  if (!decodedPayload) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(decodedPayload) as unknown;
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function pickStringClaim(
+  payload: Record<string, unknown> | null,
+  keys: readonly string[],
+): string | undefined {
+  if (!payload) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = payload[key];
+
+    if (typeof value === "string") {
+      const normalized = cleanOptionalValue(value);
+
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function resolveAuthenticatedUserId(request: Request): string | undefined {
+  const jwtPayload = parseJwtPayload(request.headers.get("authorization"));
+
+  return (
+    cleanOptionalValue(request.headers.get("x-user-id")) ??
+    cleanOptionalValue(request.headers.get("user-id")) ??
+    pickStringClaim(jwtPayload, ["sub", "user_id", "userId", "uid"]) ??
+    undefined
+  );
+}
+
+function resolveCompanyId(request: Request, body: BidRequestBody): string | undefined {
+  const jwtPayload = parseJwtPayload(request.headers.get("authorization"));
+
+  return (
+    cleanOptionalValue(request.headers.get("x-company-id")) ??
+    cleanOptionalValue(request.headers.get("company-id")) ??
+    pickStringClaim(jwtPayload, ["company_id", "companyId", "org_id", "organization_id"]) ??
+    cleanOptionalValue(body.companyId) ??
+    cleanOptionalValue(body.company_id) ??
+    undefined
+  );
+}
+
+function errorBody(
+  errorCode: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    error: errorCode,
+    error_code: errorCode,
+    message,
+    ...extra,
+  };
 }
 
 export type PostBidHandlerDependencies = {
@@ -102,10 +227,10 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
         return jsonResult({
           status: 400,
           errorCode: bidErrorCodes.missingIdempotencyKey,
-          body: {
-            error_code: bidErrorCodes.missingIdempotencyKey,
-            message: "Idempotency-Key header is required",
-          },
+          body: errorBody(
+            bidErrorCodes.missingIdempotencyKey,
+            "Idempotency-Key header is required",
+          ),
         });
       }
 
@@ -117,28 +242,58 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
         return jsonResult({
           status: 400,
           errorCode: bidErrorCodes.invalidPayload,
-          body: {
-            error_code: bidErrorCodes.invalidPayload,
-            message: "Request body must be valid JSON",
-          },
+          body: errorBody(bidErrorCodes.invalidPayload, "Request body must be valid JSON"),
         });
       }
 
-      const parsedBody = bidRequestPayloadSchema.safeParse(requestBody);
+      const parsedBody = bidRequestBodySchema.safeParse(requestBody);
 
       if (!parsedBody.success) {
         return jsonResult({
           status: 400,
           errorCode: bidErrorCodes.invalidPayload,
-          body: {
-            error_code: bidErrorCodes.invalidPayload,
-            message: parsedBody.error.issues.map((issue) => issue.message).join("; "),
-          },
+          body: errorBody(
+            bidErrorCodes.invalidPayload,
+            parsedBody.error.issues.map((issue) => issue.message).join("; "),
+          ),
         });
       }
 
-      const payload = parsedBody.data;
-      payload.amount = normalizeAmount(payload.amount);
+      const requestPayload = parsedBody.data;
+      const auctionId =
+        cleanOptionalValue(requestPayload.auctionId) ??
+        cleanOptionalValue(requestPayload.auction_id);
+      const userId = resolveAuthenticatedUserId(request);
+      const companyId = resolveCompanyId(request, requestPayload);
+
+      if (!userId) {
+        return jsonResult({
+          status: 401,
+          errorCode: bidErrorCodes.unauthenticated,
+          body: errorBody(
+            bidErrorCodes.unauthenticated,
+            "Authenticated user context is required",
+          ),
+        });
+      }
+
+      if (!auctionId || !companyId) {
+        return jsonResult({
+          status: 400,
+          errorCode: bidErrorCodes.invalidPayload,
+          body: errorBody(
+            bidErrorCodes.invalidPayload,
+            "auctionId and companyId are required",
+          ),
+        });
+      }
+
+      const payload: BidRequestPayload = {
+        auction_id: auctionId,
+        company_id: companyId,
+        user_id: userId,
+        amount: normalizeBidAmount(requestPayload.amount),
+      };
       parsedPayload = payload;
 
       const disableFlag = await dependencies.readDisableBiddingFlagFn();
@@ -147,10 +302,7 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
         return jsonResult({
           status: 503,
           errorCode: bidErrorCodes.biddingDisabled,
-          body: {
-            error_code: bidErrorCodes.biddingDisabled,
-            message: "Bidding is temporarily disabled",
-          },
+          body: errorBody(bidErrorCodes.biddingDisabled, "Bidding is temporarily disabled"),
         });
       }
 
@@ -167,11 +319,13 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
         return jsonResult({
           status: 429,
           errorCode: bidErrorCodes.bidRateLimited,
-          body: {
-            error_code: bidErrorCodes.bidRateLimited,
-            message: "Bid request exceeded rate limit",
-            exceeded_scopes: rateLimitDecision.exceeded,
-          },
+          body: errorBody(
+            bidErrorCodes.bidRateLimited,
+            "Bid request exceeded rate limit",
+            {
+              exceeded_scopes: rateLimitDecision.exceeded,
+            },
+          ),
         });
       }
 
@@ -204,10 +358,10 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
         return jsonResult({
           status: 409,
           errorCode: bidErrorCodes.idempotencyConflict,
-          body: {
-            error_code: bidErrorCodes.idempotencyConflict,
-            message: "Idempotency key reuse with different payload",
-          },
+          body: errorBody(
+            bidErrorCodes.idempotencyConflict,
+            "Idempotency key reuse with different payload",
+          ),
         });
       }
 
@@ -247,30 +401,24 @@ export function createPostBidHandler(dependencies: PostBidHandlerDependencies): 
           return jsonResult({
             status: 429,
             errorCode: bidErrorCodes.bidFloodProtected,
-            body: {
-              error_code: bidErrorCodes.bidFloodProtected,
-              message: "Bid flood protection triggered",
-            },
+            body: errorBody(bidErrorCodes.bidFloodProtected, "Bid flood protection triggered"),
           });
         }
 
         return jsonResult({
           status: 409,
           errorCode: bidErrorCodes.bidContentionConflict,
-          body: {
-            error_code: bidErrorCodes.bidContentionConflict,
-            message: "Bid contention conflict. Retry with same idempotency key",
-          },
+          body: errorBody(
+            bidErrorCodes.bidContentionConflict,
+            "Bid contention conflict. Retry with same idempotency key",
+          ),
         });
       }
 
       return jsonResult({
         status: 500,
         errorCode: bidErrorCodes.internalError,
-        body: {
-          error_code: bidErrorCodes.internalError,
-          message: "Unexpected internal error",
-        },
+        body: errorBody(bidErrorCodes.internalError, "Unexpected internal error"),
       });
     } finally {
       observeGuardrailHistogram("bid_request_duration_ms", Date.now() - startedAt);

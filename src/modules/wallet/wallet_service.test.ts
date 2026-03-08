@@ -26,19 +26,19 @@ test("topUpWallet increases wallet balance and inserts DEPOSIT_TOPUP ledger", as
 
       if (sql.includes('FROM "Wallet"') && sql.includes('WHERE "userId" = $1')) {
         return {
-          rows: [{ id: "wallet-1", balance: 100 }] as T[],
+          rows: [{ id: "wallet-1", balance: 100 }] as unknown as T[],
         };
       }
 
       if (sql.startsWith('UPDATE "Wallet"')) {
         return {
-          rows: [{ id: "wallet-1", balance: 150 }] as T[],
+          rows: [{ id: "wallet-1", balance: 150 }] as unknown as T[],
         };
       }
 
       if (sql.startsWith('INSERT INTO "WalletLedger"')) {
         return {
-          rows: [{ id: "ledger-1" }] as T[],
+          rows: [{ id: "ledger-1" }] as unknown as T[],
         };
       }
 
