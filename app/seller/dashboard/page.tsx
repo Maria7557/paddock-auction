@@ -14,7 +14,6 @@ import {
   TRANSMISSION_TYPES,
   UAE_BRANDS,
   YEARS,
-  fetchNhtsaModels,
 } from "@/src/lib/vehicle_data";
 
 type SellerDashboardResponse = {
@@ -190,7 +189,7 @@ export default function SellerDashboardPage() {
 
   const [brandSource, setBrandSource] = useState<BrandSource>("uae");
   const [nhtsaModels, setNhtsaModels] = useState<string[]>([]);
-  const [loadingNhtsaModels, setLoadingNhtsaModels] = useState(false);
+  const [nhtsaLoading, setNhtsaLoading] = useState(false);
   const [nhtsaFetched, setNhtsaFetched] = useState(false);
 
   const loadDashboard = useCallback(async (authToken: string): Promise<void> => {
@@ -309,13 +308,26 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    setLoadingNhtsaModels(true);
+    setNhtsaLoading(true);
     setFormError(null);
 
     try {
       const yearValue = Number(formState.year);
       const year = Number.isFinite(yearValue) && yearValue > 0 ? yearValue : new Date().getUTCFullYear();
-      const models = await fetchNhtsaModels(formState.brand.trim(), year);
+      const response = await fetch(
+        `https://vpic.nhtsa.dot.gov/api/vehicles/getmodelsformakeyear/make/${encodeURIComponent(
+          formState.brand.trim(),
+        )}/modelyear/${year}?format=json`,
+      );
+
+      if (!response.ok) {
+        throw new Error("NHTSA request failed");
+      }
+
+      const payload = (await response.json()) as { Results?: Array<{ Model_Name?: string }> };
+      const models = (payload.Results ?? [])
+        .map((row) => row.Model_Name?.trim())
+        .filter((value): value is string => Boolean(value));
       setNhtsaModels(models);
       setNhtsaFetched(true);
 
@@ -327,7 +339,7 @@ export default function SellerDashboardPage() {
       setNhtsaFetched(true);
       setNhtsaModels([]);
     } finally {
-      setLoadingNhtsaModels(false);
+      setNhtsaLoading(false);
     }
   }
 
@@ -620,12 +632,12 @@ export default function SellerDashboardPage() {
                       type="button"
                       className="button button-secondary"
                       style={{ marginBottom: "8px" }}
-                      disabled={loadingNhtsaModels}
+                      disabled={nhtsaLoading}
                       onClick={() => {
                         void onFetchModels();
                       }}
                     >
-                      {loadingNhtsaModels ? "Loading models..." : "Fetch models"}
+                      {nhtsaLoading ? "Loading models..." : "Fetch models from NHTSA"}
                     </button>
                   ) : null}
 
