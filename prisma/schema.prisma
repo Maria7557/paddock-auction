@@ -335,6 +335,8 @@ enum UserRole {
 enum UserStatus {
   PENDING_APPROVAL
   ACTIVE
+  BLOCKED
+  REJECTED
   SUSPENDED
 }
 
@@ -342,6 +344,7 @@ enum CompanyStatus {
   PENDING_APPROVAL
   PENDING
   ACTIVE
+  REJECTED
   SUSPENDED
 }
 

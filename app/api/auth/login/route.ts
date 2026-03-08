@@ -102,6 +102,13 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
+  if (user.status === "BLOCKED") {
+    return json(403, {
+      error: "ACCOUNT_BLOCKED",
+      status: user.status,
+    });
+  }
+
   if (user.status !== "ACTIVE") {
     return json(403, {
       error: "ACCOUNT_PENDING_APPROVAL",
