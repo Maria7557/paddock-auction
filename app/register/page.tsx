@@ -7,30 +7,17 @@ export default function RegisterPage() {
     <MarketShell>
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
-          <h1>Register your company</h1>
-          <p>Create a verified buyer account to participate in UAE B2B auctions.</p>
+          <h1>Choose registration type</h1>
+          <p>Create buyer or company account.</p>
 
-          <form className="auth-form">
-            <label>
-              Company name
-              <input type="text" placeholder="Company LLC" required />
-            </label>
-            <label>
-              Trade license number
-              <input type="text" placeholder="TL-XXXXXX" required />
-            </label>
-            <label>
-              Work email
-              <input type="email" placeholder="ops@company.ae" required />
-            </label>
-            <button type="submit" className="button button-primary">
-              Submit registration
-            </button>
-          </form>
-
-          <p className="text-muted">
-            Already registered? <Link href="/login">Sign in</Link>
-          </p>
+          <div className="auth-form">
+            <Link href="/register/buyer" className="button button-primary">
+              Register as Buyer
+            </Link>
+            <Link href="/register/seller" className="button button-secondary">
+              Register my Company
+            </Link>
+          </div>
         </article>
       </section>
     </MarketShell>
