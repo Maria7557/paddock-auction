@@ -10,7 +10,7 @@ datasource db {
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
-  passwordHash String
+  passwordHash String?
   role         UserRole      @default(BUYER)
   status       UserStatus    @default(ACTIVE)
   createdAt    DateTime      @default(now())
@@ -333,17 +333,21 @@ enum UserRole {
 }
 
 enum UserStatus {
+  PENDING_APPROVAL
   ACTIVE
   SUSPENDED
 }
 
 enum CompanyStatus {
+  PENDING_APPROVAL
   PENDING
   ACTIVE
   SUSPENDED
 }
 
 enum CompanyUserRole {
+  SELLER_MANAGER
+  BUYER_BIDDER
   OWNER
   MANAGER
   MEMBER
