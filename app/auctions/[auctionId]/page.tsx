@@ -16,12 +16,12 @@ import { AuctionStatusBadge } from "@/src/modules/ui/transport/components/shared
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 type AuctionDetailPageProps = {
-  params: Promise<{ auctionId: string }> | { auctionId: string };
+  params: Promise<{ auctionId: string }>;
 };
 
 export default async function AuctionDetailPage({ params }: AuctionDetailPageProps) {
-  const resolvedParams = await Promise.resolve(params);
-  const lot = await readAuctionDetail(resolvedParams.auctionId);
+  const { auctionId } = await params;
+  const lot = await readAuctionDetail(auctionId);
 
   if (!lot) {
     notFound();
