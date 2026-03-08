@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { randomUUID } from "node:crypto";
 
 import bcrypt from "bcryptjs";

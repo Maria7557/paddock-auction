@@ -44,7 +44,7 @@ function forbiddenResponse(): NextResponse {
   );
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = getTokenFromRequest(request);
 
   if (!token) {
