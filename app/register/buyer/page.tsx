@@ -13,6 +13,7 @@ export default function BuyerRegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [emirate, setEmirate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -37,6 +38,7 @@ export default function BuyerRegisterPage() {
           email,
           password,
           role: "BUYER",
+          emirate,
         }),
       });
 
@@ -89,6 +91,22 @@ export default function BuyerRegisterPage() {
                 required
                 minLength={8}
               />
+            </label>
+            <label>
+              Emirate
+              <select value={emirate} onChange={(event) => setEmirate(event.target.value)} required>
+                <option value="" disabled>
+                  Select emirate
+                </option>
+                <option value="Dubai">Dubai</option>
+                <option value="Abu Dhabi">Abu Dhabi</option>
+                <option value="Sharjah">Sharjah</option>
+                <option value="Ajman">Ajman</option>
+                <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                <option value="Fujairah">Fujairah</option>
+                <option value="Umm Al Quwain">Umm Al Quwain</option>
+                <option value="Other">Other</option>
+              </select>
             </label>
             <label>
               Confirm password
