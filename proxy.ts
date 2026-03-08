@@ -33,22 +33,6 @@ function unauthorizedResponse(): NextResponse {
   );
 }
 
-function redirectToLogin(request: NextRequest): NextResponse {
-  return NextResponse.redirect(new URL("/login", request.url));
-}
-
-function unauthorizedForPath(request: NextRequest): NextResponse {
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    return unauthorizedResponse();
-  }
-
-  if (request.nextUrl.pathname.startsWith("/admin")) {
-    return redirectToLogin(request);
-  }
-
-  return unauthorizedResponse();
-}
-
 function forbiddenResponse(): NextResponse {
   return NextResponse.json(
     {
@@ -68,13 +52,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = getTokenFromRequest(request);
 
   if (!token) {
-    return unauthorizedForPath(request);
+    return unauthorizedResponse();
   }
 
   const verified = await verifyJwt(token);
 
   if (!verified) {
-    return unauthorizedForPath(request);
+    return unauthorizedResponse();
   }
 
   if (request.nextUrl.pathname.startsWith("/api/admin") && verified.role !== "ADMIN") {
@@ -99,16 +83,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/seller/:path*",
-    "/wallet/:path*",
-    "/my-bids/:path*",
-    "/admin/:path*",
-    "/api/auctions",
     "/api/bids/:path*",
     "/api/seller/:path*",
     "/api/buyer/:path*",
     "/api/wallet/:path*",
     "/api/admin/:path*",
+    "/api/auctions",
   ],
 };
