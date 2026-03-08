@@ -1,0 +1,129 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+
+import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
+
+type RegisterResponse = {
+  error?: string;
+};
+
+export default function SellerRegisterPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    if (password !== confirmPassword) {
+      setFeedback("Password confirmation does not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          role: "SELLER",
+          companyName,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as RegisterResponse | null;
+
+      if (!response.ok) {
+        if (payload?.error === "EMAIL_ALREADY_EXISTS") {
+          setFeedback("Email is already registered.");
+          return;
+        }
+
+        setFeedback("Registration failed.");
+        return;
+      }
+
+      setFeedback("Company registered. Pending admin approval.");
+      setPassword("");
+      setConfirmPassword("");
+    } catch {
+      setFeedback("Registration failed due to network error.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <MarketShell>
+      <section className="auth-layout">
+        <article className="surface-panel auth-panel">
+          <h1>Register Your Company</h1>
+          <p>Create your seller account to manage fleet listings after approval.</p>
+
+          <form className="auth-form" onSubmit={onSubmit}>
+            <label>
+              Work email
+              <input
+                type="email"
+                placeholder="ops@company.ae"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                minLength={8}
+              />
+            </label>
+            <label>
+              Confirm password
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+                minLength={8}
+              />
+            </label>
+            <label>
+              Company name
+              <input
+                type="text"
+                placeholder="FastCars LLC"
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                required
+              />
+            </label>
+            <button type="submit" className="button button-primary" disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit registration"}
+            </button>
+          </form>
+
+          {feedback ? <p className="text-muted">{feedback}</p> : null}
+
+          <p className="text-muted">
+            Already registered? <Link href="/login/seller">Sign in</Link>
+          </p>
+        </article>
+      </section>
+    </MarketShell>
+  );
+}

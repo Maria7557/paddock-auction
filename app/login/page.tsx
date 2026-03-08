@@ -7,26 +7,17 @@ export default function LoginPage() {
     <MarketShell>
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
-          <h1>Welcome back</h1>
-          <p>Sign in to continue bidding, funding wallet, and paying invoices.</p>
+          <h1>Choose login type</h1>
+          <p>Sign in as buyer or company.</p>
 
-          <form className="auth-form">
-            <label>
-              Work email
-              <input type="email" placeholder="you@company.ae" required />
-            </label>
-            <label>
-              Password
-              <input type="password" required />
-            </label>
-            <button type="submit" className="button button-primary">
-              Sign in
-            </button>
-          </form>
-
-          <p className="text-muted">
-            New to Paddock? <Link href="/register">Register company</Link>
-          </p>
+          <div className="auth-form">
+            <Link href="/login/buyer" className="button button-primary">
+              I&apos;m a Buyer
+            </Link>
+            <Link href="/login/seller" className="button button-secondary">
+              I&apos;m a Company
+            </Link>
+          </div>
         </article>
       </section>
     </MarketShell>
