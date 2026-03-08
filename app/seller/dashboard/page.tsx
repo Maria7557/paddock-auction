@@ -4,6 +4,16 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getToken, logout } from "@/src/lib/auth_client";
+import {
+  BODY_TYPES,
+  COLORS,
+  CONDITIONS,
+  FUEL_TYPES,
+  REGION_SPECS,
+  TRANSMISSION_TYPES,
+  VEHICLE_BRANDS,
+  YEARS,
+} from "@/src/lib/vehicle_data";
 
 type SellerDashboardResponse = {
   company: {
@@ -54,9 +64,16 @@ type SellerVehicleFormState = {
   model: string;
   year: string;
   vin: string;
-  mileage: string;
+  regionSpec: string;
+  bodyType: string;
+  fuelType: string;
+  transmission: string;
+  mileageKm: string;
   color: string;
+  condition: string;
+  serviceHistory: string;
   description: string;
+  sellerNotes: string;
   startingPrice: string;
   reservePrice: string;
   startsAt: string;
@@ -68,14 +85,23 @@ const initialFormState: SellerVehicleFormState = {
   model: "",
   year: "",
   vin: "",
-  mileage: "",
+  regionSpec: "",
+  bodyType: "",
+  fuelType: "",
+  transmission: "",
+  mileageKm: "",
   color: "",
+  condition: "",
+  serviceHistory: "",
   description: "",
+  sellerNotes: "",
   startingPrice: "",
   reservePrice: "",
   startsAt: "",
   endsAt: "",
 };
+
+const SERVICE_HISTORY_OPTIONS = ["Yes - Full History", "Yes - Partial", "No History"] as const;
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("en-AE", {
@@ -184,6 +210,15 @@ export default function SellerDashboardPage() {
     return dashboard?.company.status ?? "UNKNOWN";
   }, [dashboard]);
 
+  const brandOptions = useMemo(() => Object.keys(VEHICLE_BRANDS), []);
+  const modelOptions = useMemo(() => {
+    if (!formState.brand) {
+      return [];
+    }
+
+    return VEHICLE_BRANDS[formState.brand] ?? [];
+  }, [formState.brand]);
+
   function updateField<K extends keyof SellerVehicleFormState>(field: K, value: SellerVehicleFormState[K]): void {
     setFormState((previous) => ({
       ...previous,
@@ -200,7 +235,7 @@ export default function SellerDashboardPage() {
     }
 
     const year = Number(formState.year);
-    const mileage = Number(formState.mileage);
+    const mileageKm = Number(formState.mileageKm);
     const startingPrice = Number(formState.startingPrice);
     const reservePrice = formState.reservePrice.trim().length > 0 ? Number(formState.reservePrice) : undefined;
 
@@ -209,7 +244,7 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    if (!Number.isFinite(mileage) || mileage < 0) {
+    if (!Number.isFinite(mileageKm) || mileageKm < 0) {
       setFormError("Mileage must be a valid non-negative number.");
       return;
     }
@@ -219,13 +254,16 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    const startsAtIso = new Date(formState.startsAt).toISOString();
-    const endsAtIso = new Date(formState.endsAt).toISOString();
+    const startsAtTimestamp = Date.parse(formState.startsAt);
+    const endsAtTimestamp = Date.parse(formState.endsAt);
 
-    if (!Number.isFinite(Date.parse(startsAtIso)) || !Number.isFinite(Date.parse(endsAtIso))) {
+    if (!Number.isFinite(startsAtTimestamp) || !Number.isFinite(endsAtTimestamp)) {
       setFormError("Auction start and end date must be valid.");
       return;
     }
+
+    const startsAtIso = new Date(startsAtTimestamp).toISOString();
+    const endsAtIso = new Date(endsAtTimestamp).toISOString();
 
     setFormSubmitting(true);
     setFormError(null);
@@ -242,8 +280,17 @@ export default function SellerDashboardPage() {
           brand: formState.brand,
           model: formState.model,
           year,
-          mileage,
+          mileage: mileageKm,
+          mileageKm,
           vin: formState.vin,
+          color: formState.color,
+          fuelType: formState.fuelType,
+          transmission: formState.transmission,
+          bodyType: formState.bodyType,
+          regionSpec: formState.regionSpec,
+          condition: formState.condition,
+          serviceHistory: formState.serviceHistory,
+          description: formState.description,
         }),
       });
 
@@ -267,6 +314,7 @@ export default function SellerDashboardPage() {
           reservePrice,
           startsAt: startsAtIso,
           endsAt: endsAtIso,
+          sellerNotes: formState.sellerNotes,
         }),
       });
 
@@ -418,34 +466,70 @@ export default function SellerDashboardPage() {
           <form className="seller-form" onSubmit={onSubmitVehicle}>
             <label>
               Brand
-              <input
-                type="text"
+              <select
                 value={formState.brand}
-                onChange={(event) => updateField("brand", event.target.value)}
+                onChange={(event) => {
+                  const selectedBrand = event.target.value;
+                  setFormState((previous) => ({
+                    ...previous,
+                    brand: selectedBrand,
+                    model: "",
+                  }));
+                }}
                 required
-              />
+              >
+                <option value="" disabled>
+                  Select brand
+                </option>
+                {brandOptions.map((brand) => (
+                  <option key={brand} value={brand}>
+                    {brand.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
               Model
-              <input
-                type="text"
+              <select
                 value={formState.model}
                 onChange={(event) => updateField("model", event.target.value)}
                 required
-              />
+                disabled={!formState.brand}
+              >
+                {!formState.brand ? (
+                  <option value="" disabled>
+                    Select brand first
+                  </option>
+                ) : (
+                  <option value="" disabled>
+                    Select model
+                  </option>
+                )}
+                {modelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
               Year
-              <input
-                type="number"
-                min={2000}
-                max={2030}
+              <select
                 value={formState.year}
                 onChange={(event) => updateField("year", event.target.value)}
                 required
-              />
+              >
+                <option value="" disabled>
+                  Select year
+                </option>
+                {YEARS.map((year) => (
+                  <option key={year} value={String(year)}>
+                    {year}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
@@ -459,23 +543,140 @@ export default function SellerDashboardPage() {
             </label>
 
             <label>
-              Mileage
+              Region Spec
+              <select
+                value={formState.regionSpec}
+                onChange={(event) => updateField("regionSpec", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select region spec
+                </option>
+                {REGION_SPECS.map((region) => (
+                  <option key={region} value={region}>
+                    {region}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Body Type
+              <select
+                value={formState.bodyType}
+                onChange={(event) => updateField("bodyType", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select body type
+                </option>
+                {BODY_TYPES.map((bodyType) => (
+                  <option key={bodyType} value={bodyType}>
+                    {bodyType}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Fuel Type
+              <select
+                value={formState.fuelType}
+                onChange={(event) => updateField("fuelType", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select fuel type
+                </option>
+                {FUEL_TYPES.map((fuelType) => (
+                  <option key={fuelType} value={fuelType}>
+                    {fuelType}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Transmission
+              <select
+                value={formState.transmission}
+                onChange={(event) => updateField("transmission", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select transmission
+                </option>
+                {TRANSMISSION_TYPES.map((transmission) => (
+                  <option key={transmission} value={transmission}>
+                    {transmission}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Mileage km
               <input
                 type="number"
                 min={0}
-                value={formState.mileage}
-                onChange={(event) => updateField("mileage", event.target.value)}
+                value={formState.mileageKm}
+                onChange={(event) => updateField("mileageKm", event.target.value)}
                 required
               />
             </label>
 
             <label>
               Color
-              <input
-                type="text"
+              <select
                 value={formState.color}
                 onChange={(event) => updateField("color", event.target.value)}
-              />
+                required
+              >
+                <option value="" disabled>
+                  Select color
+                </option>
+                {COLORS.map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Condition
+              <select
+                value={formState.condition}
+                onChange={(event) => updateField("condition", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select condition
+                </option>
+                {CONDITIONS.map((condition) => (
+                  <option key={condition} value={condition}>
+                    {condition}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Service History
+              <select
+                value={formState.serviceHistory}
+                onChange={(event) => updateField("serviceHistory", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select service history
+                </option>
+                {SERVICE_HISTORY_OPTIONS.map((serviceHistoryOption) => (
+                  <option key={serviceHistoryOption} value={serviceHistoryOption}>
+                    {serviceHistoryOption}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="seller-form-full">
@@ -530,9 +731,19 @@ export default function SellerDashboardPage() {
               />
             </label>
 
+            <label className="seller-form-full">
+              Seller Notes
+              <textarea
+                rows={3}
+                placeholder="Additional notes for buyers..."
+                value={formState.sellerNotes}
+                onChange={(event) => updateField("sellerNotes", event.target.value)}
+              />
+            </label>
+
             <div className="seller-form-actions seller-form-full">
               <button type="submit" className="button button-primary" disabled={formSubmitting}>
-                {formSubmitting ? "Saving..." : "Create Vehicle + Auction"}
+                {formSubmitting ? "Saving..." : "Create Vehicle + Auction Draft"}
               </button>
               <button
                 type="button"
