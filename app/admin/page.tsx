@@ -25,6 +25,8 @@ type PendingUser = {
   role: string;
   status: string;
   kycVerified?: boolean;
+  walletBalance?: number;
+  hasDeposit?: boolean;
   createdAt: string;
 };
 
@@ -350,6 +352,8 @@ export default function AdminPage() {
                   <th>Email</th>
                   <th>Registered</th>
                   <th>KYC Status</th>
+                  <th>Wallet Balance</th>
+                  <th>Deposit Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -359,8 +363,20 @@ export default function AdminPage() {
                     <td>{user.email}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>
-                      <span className={statusBadgeClass(user.kycVerified ? "ACTIVE" : "PENDING")}> 
+                      <span className={statusBadgeClass(user.kycVerified ? "ACTIVE" : "PENDING")}>
                         {user.kycVerified ? "ACTIVE" : "PENDING"}
+                      </span>
+                    </td>
+                    <td>{formatAmountAed(user.walletBalance ?? 0)}</td>
+                    <td>
+                      <span
+                        className={
+                          user.hasDeposit
+                            ? "admin-status-badge admin-status-good"
+                            : "admin-status-badge admin-status-warn"
+                        }
+                      >
+                        {user.hasDeposit ? "Депозит получен ✅" : "Нет депозита ⚠️"}
                       </span>
                     </td>
                     <td>
@@ -381,13 +397,19 @@ export default function AdminPage() {
                 ))}
                 {kycUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="admin-empty-cell">
+                    <td colSpan={6} className="admin-empty-cell">
                       No pending KYC users.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
+            <p className="text-muted" style={{ marginTop: "12px" }}>
+              Verify payment in Stripe Dashboard before approving KYC.{" "}
+              <a href="https://dashboard.stripe.com/payments" target="_blank" rel="noreferrer">
+                https://dashboard.stripe.com/payments
+              </a>
+            </p>
           </div>
         ) : null}
 
