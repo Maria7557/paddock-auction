@@ -1,7 +1,31 @@
+"use client";
+
 import Link from "next/link";
-import { PropsWithChildren } from "react";
+import { useRouter } from "next/navigation";
+import { PropsWithChildren, useEffect, useState } from "react";
+
+import { getRole, getToken } from "@/src/lib/auth_client";
 
 export default function AdminLayout({ children }: PropsWithChildren) {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
+
+  useEffect(() => {
+    const token = getToken();
+    const role = getRole();
+
+    if (!token || role !== "ADMIN") {
+      router.replace("/login");
+      return;
+    }
+
+    setAuthorized(true);
+  }, [router]);
+
+  if (!authorized) {
+    return null;
+  }
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar" aria-label="Admin navigation">
