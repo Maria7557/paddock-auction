@@ -1,0 +1,52 @@
+/* [project]/src/modules/ui/transport/components/shared/market_shell.module.css [app-client] (css) */
+.market_shell-module__gc-QdW__dropdown {
+  align-items: center;
+  display: inline-flex;
+  position: relative;
+}
+
+.market_shell-module__gc-QdW__dropdownTrigger {
+  appearance: none;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 0;
+  font-size: 15px;
+  font-weight: 500;
+  display: inline-flex;
+}
+
+.market_shell-module__gc-QdW__dropdown:hover .market_shell-module__gc-QdW__dropdownTrigger, .market_shell-module__gc-QdW__dropdown:focus-within .market_shell-module__gc-QdW__dropdownTrigger {
+  color: var(--ink-primary);
+}
+
+.market_shell-module__gc-QdW__dropdownPanel {
+  border: 1px solid var(--line-soft);
+  min-width: 190px;
+  box-shadow: var(--shadow-soft);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  transition: opacity .16s, transform .16s;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  transform: translateY(4px);
+}
+
+.market_shell-module__gc-QdW__dropdown:hover .market_shell-module__gc-QdW__dropdownPanel, .market_shell-module__gc-QdW__dropdown:focus-within .market_shell-module__gc-QdW__dropdownPanel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/*# sourceMappingURL=src_modules_ui_transport_components_shared_market_shell_module_css_bad6b30c._.single.css.map*/
