@@ -34,7 +34,7 @@ model WalletLedger {
   id        String     @id @default(uuid())
   walletId  String
   type      LedgerType
-  amount    Int
+  amount    Decimal    @db.Decimal(18, 2)
   reference String?
   createdAt DateTime   @default(now())
   wallet    Wallet     @relation(fields: [walletId], references: [id])
@@ -44,18 +44,22 @@ model WalletLedger {
 
 model DepositLock {
   id               String            @id @default(uuid())
-  walletId         String            @map("wallet_id")
   auctionId        String            @map("auction_id")
-  amount           Int
+  companyId        String?           @map("company_id")
+  walletId         String?           @map("wallet_id")
+  amount           Decimal           @db.Decimal(18, 2)
   status           DepositLockStatus @default(ACTIVE)
-  createdAt        DateTime          @default(now()) @map("created_at")
-  releasedAt       DateTime?         @map("released_at")
-  burnedAt         DateTime?         @map("burned_at")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt       DateTime?         @map("released_at") @db.Timestamptz(6)
+  burnedAt         DateTime?         @map("burned_at") @db.Timestamptz(6)
   resolutionReason String?           @map("resolution_reason")
-  wallet           Wallet            @relation(fields: [walletId], references: [id])
+  auction          Auction           @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  wallet           Wallet?           @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("deposit_locks")
+  @@index([auctionId, companyId, status], map: "deposit_locks_lookup_idx")
   @@index([walletId], map: "depositlock_wallet_idx")
+  @@index([auctionId, walletId, status], map: "deposit_locks_wallet_lookup_idx")
 }
 
 model Company {
@@ -90,10 +94,249 @@ model Vehicle {
   vin     String @unique
 }
 
-enum Role {
-  USER
-  ADMIN
-  SUPER_ADMIN
+model Auction {
+  id              String                   @id @default(uuid())
+  vehicleId       String                   @map("vehicle_id")
+  sellerCompanyId String                   @map("seller_company_id")
+  state           AuctionState             @default(DRAFT)
+  version         Int                      @default(0)
+  startsAt        DateTime                 @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime                 @map("ends_at") @db.Timestamptz(6)
+  extensionCount  Int                      @default(0) @map("extension_count")
+  highestBidId    String?                  @map("highest_bid_id")
+  winnerCompanyId String?                  @map("winner_company_id")
+  closedAt        DateTime?                @map("closed_at") @db.Timestamptz(6)
+  currentPrice    Decimal                  @default(0) @map("current_price") @db.Decimal(18, 2)
+  minIncrement    Decimal                  @default(1) @map("min_increment") @db.Decimal(18, 2)
+  lastBidSequence Int                      @default(0) @map("last_bid_sequence")
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+  transitions     AuctionStateTransition[]
+  bids            Bid[]
+  bidRequests     BidRequest[]
+  invoice         Invoice?
+  paymentDeadlines PaymentDeadline[]
+  depositLocks    DepositLock[]
+
+  @@index([state, endsAt], map: "auctions_state_ends_at_idx")
+  @@map("auctions")
+}
+
+model AuctionStateTransition {
+  id        String       @id @default(uuid())
+  auctionId String       @map("auction_id")
+  fromState AuctionState @map("from_state")
+  toState   AuctionState @map("to_state")
+  trigger   String
+  reason    String?
+  actorId   String?      @map("actor_id")
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  auction   Auction      @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([auctionId, createdAt], map: "auction_state_transitions_auction_created_at_idx")
+  @@map("auction_state_transitions")
+}
+
+model DepositWallet {
+  id                       String   @id @default(uuid())
+  companyId                String   @map("company_id")
+  currency                 String
+  availableBalance         Decimal  @default(0) @map("available_balance") @db.Decimal(18, 2)
+  lockedBalance            Decimal  @default(0) @map("locked_balance") @db.Decimal(18, 2)
+  pendingWithdrawalBalance Decimal  @default(0) @map("pending_withdrawal_balance") @db.Decimal(18, 2)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([companyId, currency], map: "deposit_wallets_company_currency_key")
+  @@map("deposit_wallets")
+}
+
+model Bid {
+  id         String     @id @default(uuid())
+  auctionId  String     @map("auction_id")
+  companyId  String     @map("company_id")
+  userId     String     @map("user_id")
+  amount     Decimal    @db.Decimal(18, 2)
+  sequenceNo Int        @map("sequence_no")
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  auction    Auction    @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  requests   BidRequest[]
+
+  @@unique([auctionId, sequenceNo], map: "bids_auction_sequence_no_key")
+  @@index([auctionId, createdAt], map: "bids_auction_created_at_idx")
+  @@map("bids")
+}
+
+model BidRequest {
+  id             String           @id @default(uuid())
+  auctionId      String           @map("auction_id")
+  companyId      String           @map("company_id")
+  idempotencyKey String           @map("idempotency_key")
+  requestHash    String           @map("request_hash")
+  status         BidRequestStatus
+  responseStatus Int?             @map("response_status")
+  responseBody   Json?            @map("response_body")
+  bidId          String?          @map("bid_id")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime         @map("expires_at") @db.Timestamptz(6)
+  auction        Auction          @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  bid            Bid?             @relation(fields: [bidId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([auctionId, companyId, idempotencyKey], map: "bid_requests_auction_company_idempotency_key")
+  @@index([expiresAt], map: "bid_requests_expires_at_idx")
+  @@map("bid_requests")
+}
+
+model Invoice {
+  id              String         @id @default(uuid())
+  auctionId       String         @unique(map: "invoices_auction_id_key") @map("auction_id")
+  buyerCompanyId  String         @map("buyer_company_id")
+  sellerCompanyId String         @map("seller_company_id")
+  subtotal        Decimal        @db.Decimal(18, 2)
+  commission      Decimal        @db.Decimal(18, 2)
+  vat             Decimal        @db.Decimal(18, 2)
+  total           Decimal        @db.Decimal(18, 2)
+  currency        String
+  status          InvoiceStatus  @default(ISSUED)
+  issuedAt        DateTime       @default(now()) @map("issued_at") @db.Timestamptz(6)
+  dueAt           DateTime       @map("due_at") @db.Timestamptz(6)
+  paidAt          DateTime?      @map("paid_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  auction         Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  payments        Payment[]
+  financialEvents FinancialEvent[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id                    String          @id @default(uuid())
+  invoiceId             String          @map("invoice_id")
+  status                PaymentStatus   @default(PENDING)
+  idempotencyKey        String?         @map("idempotency_key")
+  stripePaymentIntentId String?         @unique(map: "payments_stripe_payment_intent_id_key") @map("stripe_payment_intent_id")
+  stripeChargeId        String?         @map("stripe_charge_id")
+  amount                Decimal         @db.Decimal(18, 2)
+  currency              String
+  failureReasonCode     String?         @map("failure_reason_code")
+  lastEventAt           DateTime?       @map("last_event_at") @db.Timestamptz(6)
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  invoice               Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  financialEvents       FinancialEvent[]
+
+  @@unique([invoiceId, idempotencyKey], map: "payments_invoice_idempotency_key_unique")
+  @@index([invoiceId, status], map: "payments_invoice_status_idx")
+  @@map("payments")
+}
+
+model PaymentWebhookEvent {
+  id            String                    @id @default(uuid())
+  stripeEventId String                    @unique(map: "payment_webhook_events_stripe_event_id_key") @map("stripe_event_id")
+  eventType     String                    @map("event_type")
+  payloadHash   String                    @map("payload_hash")
+  status        PaymentWebhookEventStatus @default(RECEIVED)
+  processedAt   DateTime?                 @map("processed_at") @db.Timestamptz(6)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("payment_webhook_events")
+}
+
+model PaymentDeadline {
+  id             String                @id @default(uuid())
+  auctionId      String                @map("auction_id")
+  buyerCompanyId String                @map("buyer_company_id")
+  dueAt          DateTime              @map("due_at") @db.Timestamptz(6)
+  status         PaymentDeadlineStatus @default(ACTIVE)
+  escalatedFlag  Boolean               @default(false) @map("escalated_flag")
+  resolvedAt     DateTime?             @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  auction        Auction               @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([auctionId, buyerCompanyId, status], map: "payment_deadlines_lookup_idx")
+  @@map("payment_deadlines")
+}
+
+model FinancialEvent {
+  id         String    @id @default(uuid())
+  eventType  String    @map("event_type")
+  sourceType String    @map("source_type")
+  sourceId   String    @map("source_id")
+  auctionId  String?   @map("auction_id")
+  companyId  String?   @map("company_id")
+  invoiceId  String?   @map("invoice_id")
+  paymentId  String?   @map("payment_id")
+  amount     Decimal?  @db.Decimal(18, 2)
+  currency   String?
+  payload    Json      @default(dbgenerated("'{}'::jsonb"))
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  payment    Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([sourceType, sourceId], map: "financial_events_source_type_source_id_key")
+  @@index([auctionId, createdAt], map: "financial_events_auction_created_at_idx")
+  @@map("financial_events")
+}
+
+model IdempotencyKey {
+  id             String               @id @default(uuid())
+  actorId        String               @map("actor_id")
+  endpoint       String
+  idempotencyKey String               @map("idempotency_key")
+  requestHash    String               @map("request_hash")
+  status         IdempotencyKeyStatus @default(PENDING)
+  responseStatus Int?                 @map("response_status")
+  responseBody   String?              @map("response_body")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  expiresAt      DateTime             @map("expires_at")
+
+  @@unique([actorId, endpoint, idempotencyKey])
+  @@map("idempotency_keys")
+}
+
+model OutboxEvent {
+  id            String           @id @default(uuid())
+  aggregateType String           @map("aggregate_type")
+  aggregateId   String           @map("aggregate_id")
+  eventType     String           @map("event_type")
+  partitionKey  String           @map("partition_key")
+  payload       Json
+  status        OutboxEventStatus @default(PENDING)
+  attempts      Int              @default(0)
+  nextAttemptAt DateTime?        @map("next_attempt_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  publishedAt   DateTime?        @map("published_at")
+
+  @@index([status, nextAttemptAt, id])
+  @@map("outbox_events")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  actorId        String   @map("actor_id")
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  correlationId  String?  @map("correlation_id")
+  idempotencyKey String?  @map("idempotency_key")
+  payloadHash    String   @map("payload_hash")
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model ConsumerCheckpoint {
+  id           String   @id @default(uuid())
+  consumerName String   @map("consumer_name")
+  eventId      String   @map("event_id")
+  processedAt  DateTime @default(now()) @map("processed_at")
+
+  @@unique([consumerName, eventId])
+  @@map("consumer_checkpoints")
 }
 
 enum UserRole {
@@ -118,6 +361,67 @@ enum CompanyUserRole {
   OWNER
   MANAGER
   MEMBER
+}
+
+enum AuctionState {
+  DRAFT
+  SCHEDULED
+  LIVE
+  EXTENDED
+  CLOSED
+  PAYMENT_PENDING
+  PAID
+  DEFAULTED
+  CANCELED
+  RELISTED
+  ENDED
+}
+
+enum BidRequestStatus {
+  IN_PROGRESS
+  SUCCEEDED
+  REJECTED
+  FAILED
+}
+
+enum InvoiceStatus {
+  ISSUED
+  PAID
+  DEFAULTED
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PaymentWebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum PaymentDeadlineStatus {
+  ACTIVE
+  RESOLVED
+  DEFAULTED
+  PAID
+}
+
+enum IdempotencyKeyStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PUBLISHED
+  FAILED
 }
 
 enum LedgerType {

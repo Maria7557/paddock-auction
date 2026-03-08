@@ -1,14 +1,22 @@
--- CreateEnum
-CREATE TYPE "LedgerType" AS ENUM (
-  'DEPOSIT_TOPUP',
-  'DEPOSIT_LOCK',
-  'DEPOSIT_RELEASE',
-  'DEPOSIT_BURN',
-  'WITHDRAWAL'
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typname = 'LedgerType'
+  ) THEN
+    CREATE TYPE "LedgerType" AS ENUM (
+      'DEPOSIT_TOPUP',
+      'DEPOSIT_LOCK',
+      'DEPOSIT_RELEASE',
+      'DEPOSIT_BURN',
+      'WITHDRAWAL'
+    );
+  END IF;
+END
+$$;
 
--- CreateTable
-CREATE TABLE "Wallet" (
+CREATE TABLE IF NOT EXISTS "Wallet" (
   "id" TEXT NOT NULL,
   "userId" TEXT NOT NULL,
   "balance" INTEGER NOT NULL DEFAULT 0,
@@ -18,8 +26,7 @@ CREATE TABLE "Wallet" (
   CONSTRAINT "Wallet_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "WalletLedger" (
+CREATE TABLE IF NOT EXISTS "WalletLedger" (
   "id" TEXT NOT NULL,
   "walletId" TEXT NOT NULL,
   "type" "LedgerType" NOT NULL,
@@ -30,15 +37,32 @@ CREATE TABLE "WalletLedger" (
   CONSTRAINT "WalletLedger_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "Wallet_userId_key" ON "Wallet"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Wallet_userId_key" ON "Wallet"("userId");
 
--- AddForeignKey
-ALTER TABLE "Wallet"
-  ADD CONSTRAINT "Wallet_userId_fkey"
-  FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'Wallet_userId_fkey'
+  ) THEN
+    ALTER TABLE "Wallet"
+      ADD CONSTRAINT "Wallet_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END
+$$;
 
--- AddForeignKey
-ALTER TABLE "WalletLedger"
-  ADD CONSTRAINT "WalletLedger_walletId_fkey"
-  FOREIGN KEY ("walletId") REFERENCES "Wallet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'WalletLedger_walletId_fkey'
+  ) THEN
+    ALTER TABLE "WalletLedger"
+      ADD CONSTRAINT "WalletLedger_walletId_fkey"
+      FOREIGN KEY ("walletId") REFERENCES "Wallet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END
+$$;
