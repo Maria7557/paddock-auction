@@ -5,9 +5,31 @@ export type Vehicle = {
   year: number;
   mileage: number;
   vin: string;
+  fuelType?: string | null;
+  transmission?: string | null;
+  bodyType?: string | null;
+  regionSpec?: string | null;
+  condition?: string | null;
+  serviceHistory?: string | null;
+  sellerNotes?: string | null;
 };
 
-export type CreateVehicleCommand = Omit<Vehicle, "id">;
+export type CreateVehicleCommand = {
+  brand: string;
+  model: string;
+  year: number;
+  mileage: number;
+  vin: string;
+  fuelType?: string;
+  transmission?: string;
+  bodyType?: string;
+  regionSpec?: string;
+  condition?: string;
+  serviceHistory?: string;
+  description?: string;
+  color?: string;
+  sellerNotes?: string;
+};
 
 export type VehicleRepository = {
   createVehicle(input: CreateVehicleCommand): Promise<Vehicle>;

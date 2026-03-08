@@ -4,6 +4,17 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getToken, logout } from "@/src/lib/auth_client";
+import {
+  BODY_TYPES,
+  COLORS,
+  CONDITIONS,
+  FUEL_TYPES,
+  REGION_SPECS,
+  SERVICE_HISTORY_OPTIONS,
+  TRANSMISSION_TYPES,
+  UAE_BRANDS,
+  YEARS,
+} from "@/src/lib/vehicle_data";
 
 type SellerDashboardResponse = {
   company: {
@@ -49,18 +60,27 @@ type AuctionCreateResponse = {
   message?: string;
 };
 
+type BrandSource = "uae" | "nhtsa" | "other";
+
 type SellerVehicleFormState = {
   brand: string;
   model: string;
   year: string;
   vin: string;
-  mileage: string;
+  regionSpec: string;
+  bodyType: string;
+  fuelType: string;
+  transmission: string;
+  mileageKm: string;
   color: string;
+  condition: string;
+  serviceHistory: string;
   description: string;
   startingPrice: string;
   reservePrice: string;
   startsAt: string;
   endsAt: string;
+  sellerNotes: string;
 };
 
 const initialFormState: SellerVehicleFormState = {
@@ -68,13 +88,20 @@ const initialFormState: SellerVehicleFormState = {
   model: "",
   year: "",
   vin: "",
-  mileage: "",
+  regionSpec: "",
+  bodyType: "",
+  fuelType: "",
+  transmission: "",
+  mileageKm: "",
   color: "",
+  condition: "",
+  serviceHistory: "",
   description: "",
   startingPrice: "",
   reservePrice: "",
   startsAt: "",
   endsAt: "",
+  sellerNotes: "",
 };
 
 function formatDate(value: string): string {
@@ -124,6 +151,30 @@ function auctionStateClass(state: string): string {
   return "admin-status-badge";
 }
 
+function normalizeBrandLabel(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function toBrandLabel(brandKey: string): string {
+  return brandKey.replaceAll("_", " ");
+}
+
+function resolveUaeBrandKey(input: string, uaeBrandKeys: string[]): string | null {
+  const normalized = normalizeBrandLabel(input).toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  for (const key of uaeBrandKeys) {
+    if (key.toLowerCase() === normalized || toBrandLabel(key).toLowerCase() === normalized) {
+      return key;
+    }
+  }
+
+  return null;
+}
+
 export default function SellerDashboardPage() {
   const [token, setToken] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<SellerDashboardResponse | null>(null);
@@ -135,6 +186,11 @@ export default function SellerDashboardPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formNotice, setFormNotice] = useState<string | null>(null);
+
+  const [brandSource, setBrandSource] = useState<BrandSource>("uae");
+  const [nhtsaModels, setNhtsaModels] = useState<string[]>([]);
+  const [nhtsaLoading, setNhtsaLoading] = useState(false);
+  const [nhtsaFetched, setNhtsaFetched] = useState(false);
 
   const loadDashboard = useCallback(async (authToken: string): Promise<void> => {
     setLoadingDashboard(true);
@@ -184,11 +240,107 @@ export default function SellerDashboardPage() {
     return dashboard?.company.status ?? "UNKNOWN";
   }, [dashboard]);
 
+  const uaeBrandKeys = useMemo(() => Object.keys(UAE_BRANDS), []);
+
+  const filteredUaeBrandLabels = useMemo(() => {
+    const query = normalizeBrandLabel(formState.brand).toLowerCase();
+
+    const labels = uaeBrandKeys.map((key) => toBrandLabel(key));
+
+    if (!query) {
+      return labels;
+    }
+
+    return labels.filter((label) => label.toLowerCase().includes(query));
+  }, [formState.brand, uaeBrandKeys]);
+
+  const matchedUaeBrandKey = useMemo(
+    () => resolveUaeBrandKey(formState.brand, uaeBrandKeys),
+    [formState.brand, uaeBrandKeys],
+  );
+
+  const uaeModels = useMemo(() => {
+    if (!matchedUaeBrandKey) {
+      return [];
+    }
+
+    return UAE_BRANDS[matchedUaeBrandKey] ?? [];
+  }, [matchedUaeBrandKey]);
+
+  useEffect(() => {
+    setNhtsaModels([]);
+    setNhtsaFetched(false);
+  }, [formState.brand, formState.year]);
+
   function updateField<K extends keyof SellerVehicleFormState>(field: K, value: SellerVehicleFormState[K]): void {
     setFormState((previous) => ({
       ...previous,
       [field]: value,
     }));
+  }
+
+  function onBrandChange(nextValue: string): void {
+    if (nextValue === "Other brand") {
+      setBrandSource("other");
+      setFormState((previous) => ({
+        ...previous,
+        brand: "",
+        model: "",
+      }));
+      return;
+    }
+
+    const normalized = normalizeBrandLabel(nextValue);
+    const matchedKey = resolveUaeBrandKey(normalized, uaeBrandKeys);
+
+    setBrandSource(matchedKey ? "uae" : normalized.length > 0 ? "nhtsa" : "uae");
+
+    setFormState((previous) => ({
+      ...previous,
+      brand: matchedKey ? toBrandLabel(matchedKey) : normalized,
+      model: "",
+    }));
+  }
+
+  async function onFetchModels(): Promise<void> {
+    if (!formState.brand.trim()) {
+      setFormError("Enter a brand before fetching models.");
+      return;
+    }
+
+    setNhtsaLoading(true);
+    setFormError(null);
+
+    try {
+      const yearValue = Number(formState.year);
+      const year = Number.isFinite(yearValue) && yearValue > 0 ? yearValue : new Date().getUTCFullYear();
+      const response = await fetch(
+        `https://vpic.nhtsa.dot.gov/api/vehicles/getmodelsformakeyear/make/${encodeURIComponent(
+          formState.brand.trim(),
+        )}/modelyear/${year}?format=json`,
+      );
+
+      if (!response.ok) {
+        throw new Error("NHTSA request failed");
+      }
+
+      const payload = (await response.json()) as { Results?: Array<{ Model_Name?: string }> };
+      const models = (payload.Results ?? [])
+        .map((row) => row.Model_Name?.trim())
+        .filter((value): value is string => Boolean(value));
+      setNhtsaModels(models);
+      setNhtsaFetched(true);
+
+      if (models.length === 0) {
+        setFormError("No NHTSA models found. Enter model manually.");
+      }
+    } catch {
+      setFormError("Failed to fetch models from NHTSA.");
+      setNhtsaFetched(true);
+      setNhtsaModels([]);
+    } finally {
+      setNhtsaLoading(false);
+    }
   }
 
   async function onSubmitVehicle(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -200,16 +352,16 @@ export default function SellerDashboardPage() {
     }
 
     const year = Number(formState.year);
-    const mileage = Number(formState.mileage);
+    const mileageKm = Number(formState.mileageKm);
     const startingPrice = Number(formState.startingPrice);
     const reservePrice = formState.reservePrice.trim().length > 0 ? Number(formState.reservePrice) : undefined;
 
-    if (!Number.isFinite(year) || year < 2000 || year > 2030) {
-      setFormError("Year must be between 2000 and 2030.");
+    if (!Number.isFinite(year) || year < 1990 || year > 2026) {
+      setFormError("Year must be between 1990 and 2026.");
       return;
     }
 
-    if (!Number.isFinite(mileage) || mileage < 0) {
+    if (!Number.isFinite(mileageKm) || mileageKm < 0) {
       setFormError("Mileage must be a valid non-negative number.");
       return;
     }
@@ -219,13 +371,16 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    const startsAtIso = new Date(formState.startsAt).toISOString();
-    const endsAtIso = new Date(formState.endsAt).toISOString();
+    const startsAtTimestamp = Date.parse(formState.startsAt);
+    const endsAtTimestamp = Date.parse(formState.endsAt);
 
-    if (!Number.isFinite(Date.parse(startsAtIso)) || !Number.isFinite(Date.parse(endsAtIso))) {
+    if (!Number.isFinite(startsAtTimestamp) || !Number.isFinite(endsAtTimestamp)) {
       setFormError("Auction start and end date must be valid.");
       return;
     }
+
+    const startsAtIso = new Date(startsAtTimestamp).toISOString();
+    const endsAtIso = new Date(endsAtTimestamp).toISOString();
 
     setFormSubmitting(true);
     setFormError(null);
@@ -242,8 +397,16 @@ export default function SellerDashboardPage() {
           brand: formState.brand,
           model: formState.model,
           year,
-          mileage,
           vin: formState.vin,
+          mileageKm,
+          color: formState.color,
+          fuelType: formState.fuelType,
+          transmission: formState.transmission,
+          bodyType: formState.bodyType,
+          regionSpec: formState.regionSpec,
+          condition: formState.condition,
+          serviceHistory: formState.serviceHistory,
+          description: formState.description,
         }),
       });
 
@@ -267,6 +430,7 @@ export default function SellerDashboardPage() {
           reservePrice,
           startsAt: startsAtIso,
           endsAt: endsAtIso,
+          sellerNotes: formState.sellerNotes,
         }),
       });
 
@@ -278,8 +442,11 @@ export default function SellerDashboardPage() {
         );
       }
 
-      setFormNotice("Vehicle added and auction created as DRAFT");
+      setFormNotice("Vehicle created and auction draft opened");
       setFormState(initialFormState);
+      setBrandSource("uae");
+      setNhtsaModels([]);
+      setNhtsaFetched(false);
       setFormOpen(false);
       await loadDashboard(token);
     } catch (error) {
@@ -419,33 +586,88 @@ export default function SellerDashboardPage() {
             <label>
               Brand
               <input
+                list="uae-brand-options"
                 type="text"
                 value={formState.brand}
-                onChange={(event) => updateField("brand", event.target.value)}
+                placeholder="Type or choose a UAE brand"
+                onChange={(event) => onBrandChange(event.target.value)}
                 required
               />
+              <datalist id="uae-brand-options">
+                {filteredUaeBrandLabels.map((brandLabel) => (
+                  <option key={brandLabel} value={brandLabel} />
+                ))}
+                <option value="Other brand" />
+              </datalist>
             </label>
 
             <label>
               Model
-              <input
-                type="text"
-                value={formState.model}
-                onChange={(event) => updateField("model", event.target.value)}
-                required
-              />
+              {matchedUaeBrandKey ? (
+                <select value={formState.model} onChange={(event) => updateField("model", event.target.value)} required>
+                  <option value="" disabled>
+                    Select model
+                  </option>
+                  {uaeModels.map((modelOption) => (
+                    <option key={modelOption} value={modelOption}>
+                      {modelOption}
+                    </option>
+                  ))}
+                </select>
+              ) : nhtsaModels.length > 0 ? (
+                <select value={formState.model} onChange={(event) => updateField("model", event.target.value)} required>
+                  <option value="" disabled>
+                    Select model
+                  </option>
+                  {nhtsaModels.map((modelOption) => (
+                    <option key={modelOption} value={modelOption}>
+                      {modelOption}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  {(brandSource === "nhtsa" || brandSource === "other") && formState.brand ? (
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ marginBottom: "8px" }}
+                      disabled={nhtsaLoading}
+                      onClick={() => {
+                        void onFetchModels();
+                      }}
+                    >
+                      {nhtsaLoading ? "Loading models..." : "Fetch models from NHTSA"}
+                    </button>
+                  ) : null}
+
+                  {nhtsaFetched ? (
+                    <input
+                      type="text"
+                      value={formState.model}
+                      onChange={(event) => updateField("model", event.target.value)}
+                      placeholder="Enter model"
+                      required
+                    />
+                  ) : (
+                    <input type="text" value={formState.model} placeholder="Select brand first" disabled required />
+                  )}
+                </>
+              )}
             </label>
 
             <label>
               Year
-              <input
-                type="number"
-                min={2000}
-                max={2030}
-                value={formState.year}
-                onChange={(event) => updateField("year", event.target.value)}
-                required
-              />
+              <select value={formState.year} onChange={(event) => updateField("year", event.target.value)} required>
+                <option value="" disabled>
+                  Select year
+                </option>
+                {YEARS.map((yearOption) => (
+                  <option key={yearOption} value={String(yearOption)}>
+                    {yearOption}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
@@ -459,23 +681,120 @@ export default function SellerDashboardPage() {
             </label>
 
             <label>
-              Mileage
+              Region Spec
+              <select value={formState.regionSpec} onChange={(event) => updateField("regionSpec", event.target.value)} required>
+                <option value="" disabled>
+                  Select region spec
+                </option>
+                {REGION_SPECS.map((regionSpec) => (
+                  <option key={regionSpec} value={regionSpec}>
+                    {regionSpec}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Body Type
+              <select value={formState.bodyType} onChange={(event) => updateField("bodyType", event.target.value)} required>
+                <option value="" disabled>
+                  Select body type
+                </option>
+                {BODY_TYPES.map((bodyType) => (
+                  <option key={bodyType} value={bodyType}>
+                    {bodyType}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Fuel Type
+              <select value={formState.fuelType} onChange={(event) => updateField("fuelType", event.target.value)} required>
+                <option value="" disabled>
+                  Select fuel type
+                </option>
+                {FUEL_TYPES.map((fuelType) => (
+                  <option key={fuelType} value={fuelType}>
+                    {fuelType}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Transmission
+              <select
+                value={formState.transmission}
+                onChange={(event) => updateField("transmission", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select transmission
+                </option>
+                {TRANSMISSION_TYPES.map((transmission) => (
+                  <option key={transmission} value={transmission}>
+                    {transmission}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Mileage km
               <input
                 type="number"
                 min={0}
-                value={formState.mileage}
-                onChange={(event) => updateField("mileage", event.target.value)}
+                value={formState.mileageKm}
+                onChange={(event) => updateField("mileageKm", event.target.value)}
                 required
               />
             </label>
 
             <label>
               Color
-              <input
-                type="text"
-                value={formState.color}
-                onChange={(event) => updateField("color", event.target.value)}
-              />
+              <select value={formState.color} onChange={(event) => updateField("color", event.target.value)} required>
+                <option value="" disabled>
+                  Select color
+                </option>
+                {COLORS.map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Condition
+              <select value={formState.condition} onChange={(event) => updateField("condition", event.target.value)} required>
+                <option value="" disabled>
+                  Select condition
+                </option>
+                {CONDITIONS.map((condition) => (
+                  <option key={condition} value={condition}>
+                    {condition}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Service History
+              <select
+                value={formState.serviceHistory}
+                onChange={(event) => updateField("serviceHistory", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select service history
+                </option>
+                {SERVICE_HISTORY_OPTIONS.map((serviceHistory) => (
+                  <option key={serviceHistory} value={serviceHistory}>
+                    {serviceHistory}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="seller-form-full">
@@ -530,9 +849,19 @@ export default function SellerDashboardPage() {
               />
             </label>
 
+            <label className="seller-form-full">
+              Seller Notes
+              <textarea
+                rows={3}
+                placeholder="Additional notes for buyers..."
+                value={formState.sellerNotes}
+                onChange={(event) => updateField("sellerNotes", event.target.value)}
+              />
+            </label>
+
             <div className="seller-form-actions seller-form-full">
               <button type="submit" className="button button-primary" disabled={formSubmitting}>
-                {formSubmitting ? "Saving..." : "Create Vehicle + Auction"}
+                {formSubmitting ? "Saving..." : "Create Vehicle + Auction Draft"}
               </button>
               <button
                 type="button"
@@ -547,8 +876,16 @@ export default function SellerDashboardPage() {
             </div>
           </form>
 
-          {formNotice ? <p className="inline-note tone-success" style={{ marginTop: "12px" }}>{formNotice}</p> : null}
-          {formError ? <p className="inline-note tone-error" style={{ marginTop: "12px" }}>{formError}</p> : null}
+          {formNotice ? (
+            <p className="inline-note tone-success" style={{ marginTop: "12px" }}>
+              {formNotice}
+            </p>
+          ) : null}
+          {formError ? (
+            <p className="inline-note tone-error" style={{ marginTop: "12px" }}>
+              {formError}
+            </p>
+          ) : null}
         </section>
       ) : null}
     </section>

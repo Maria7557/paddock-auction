@@ -87,12 +87,19 @@ model CompanyUser {
 }
 
 model Vehicle {
-  id      String @id @default(uuid())
-  brand   String
-  model   String
-  year    Int
-  mileage Int
-  vin     String @unique
+  id             String  @id @default(uuid())
+  brand          String
+  model          String
+  year           Int
+  mileage        Int
+  vin            String  @unique
+  fuelType       String?
+  transmission   String?
+  bodyType       String?
+  regionSpec     String?
+  condition      String?
+  serviceHistory String?
+  sellerNotes    String?
 }
 
 model Auction {
