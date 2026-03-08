@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
@@ -14,7 +13,6 @@ type LoginResponse = {
 };
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,19 +46,20 @@ export default function LoginPage() {
       }
 
       window.localStorage.setItem("fleetbid_token", payload.token);
+      window.localStorage.setItem("fleetbid_role", payload.role);
       document.cookie = `token=${payload.token}; Path=/; SameSite=Lax`;
 
       if (payload.role === "ADMIN") {
-        router.push("/admin");
+        window.location.href = "/admin";
         return;
       }
 
       if (payload.role === "SELLER") {
-        router.push("/seller/dashboard");
+        window.location.href = "/seller/dashboard";
         return;
       }
 
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch {
       setFeedback("Login failed due to network error.");
     } finally {
