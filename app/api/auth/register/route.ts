@@ -14,6 +14,7 @@ const registerSchema = z
     password: z.string().min(8),
     role: z.enum(["SELLER", "BUYER"]),
     companyName: z.string().trim().min(1).optional(),
+    emirate: z.string().trim().min(1).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.role === "SELLER" && !payload.companyName) {
@@ -93,6 +94,7 @@ export async function POST(request: Request): Promise<Response> {
           passwordHash,
           role: payload.role,
           status: payload.role === "BUYER" ? "ACTIVE" : "PENDING_APPROVAL",
+          emirate: payload.role === "BUYER" ? payload.emirate ?? null : null,
         },
       });
 

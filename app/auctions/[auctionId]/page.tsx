@@ -1,23 +1,52 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
-import {
-  formatAed,
-  formatLongDate,
-  readAuctionDetail,
-  readBidHistory,
-} from "@/src/modules/ui/domain/marketplace_read_model";
-import { AuctionDetailTabs } from "@/src/modules/ui/transport/components/public/auction_detail_tabs";
-import { AuctionGallery } from "@/src/modules/ui/transport/components/public/auction_gallery";
-import { LiveBidHistory } from "@/src/modules/ui/transport/components/public/live_bid_history";
-import { MobileBidBar } from "@/src/modules/ui/transport/components/public/mobile_bid_bar";
-import { SellerTrustPanel } from "@/src/modules/ui/transport/components/public/seller_trust_panel";
-import { StickyBidModule } from "@/src/modules/ui/transport/components/public/sticky_bid_module";
-import { AuctionStatusBadge } from "@/src/modules/ui/transport/components/shared/auction_status_badge";
+import { readAuctionDetail } from "@/src/modules/ui/domain/marketplace_read_model";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
+
+import { LiveClient } from "./live-client";
 
 type AuctionDetailPageProps = {
   params: Promise<{ auctionId: string }>;
 };
+
+type LiveState = {
+  auctionId: string;
+  state: "DRAFT" | "SCHEDULED" | "LIVE" | "CLOSED" | "CANCELLED" | "PAYMENT_PENDING";
+  currentPrice: number;
+  minIncrement: number;
+  nextBidAmount: number;
+  endsAt: string;
+  lastBidder: {
+    emirate: string;
+    companyName: string;
+    amount: number;
+    placedAt: string;
+  } | null;
+  participantsByEmirate: Array<{ emirate: string; count: number }>;
+  totalParticipants: number;
+  winnerId: string | null;
+  isWinner: boolean;
+};
+
+function normalizeLotState(state: string): LiveState["state"] {
+  const normalized = state.toUpperCase();
+
+  if (normalized === "DRAFT") return "DRAFT";
+  if (normalized === "SCHEDULED") return "SCHEDULED";
+  if (normalized === "LIVE") return "LIVE";
+  if (normalized === "PAYMENT_PENDING") return "PAYMENT_PENDING";
+  if (normalized === "CANCELLED") return "CANCELLED";
+
+  return "CLOSED";
+}
+
+function pickSpec(specs: Array<{ label: string; value: string }>, candidates: string[]): string | null {
+  const candidateSet = new Set(candidates.map((candidate) => candidate.toLowerCase()));
+  const match = specs.find((spec) => candidateSet.has(spec.label.toLowerCase()));
+
+  return match?.value ?? null;
+}
 
 export default async function AuctionDetailPage({ params }: AuctionDetailPageProps) {
   const { auctionId } = await params;
@@ -27,75 +56,63 @@ export default async function AuctionDetailPage({ params }: AuctionDetailPagePro
     notFound();
   }
 
-  const bidHistory = await readBidHistory(lot.id);
-  const minimumNextBid = lot.currentBidAed + lot.minimumStepAed;
-  const canBid = lot.status === "LIVE";
+  const headersList = await headers();
+  const host = headersList.get("host") ?? "localhost:3000";
+  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+  const token = headersList.get("authorization") ?? "";
+
+  let initialLiveState: LiveState | null = null;
+
+  try {
+    const liveRes = await fetch(`${protocol}://${host}/api/auctions/${auctionId}/live`, {
+      headers: token ? { authorization: token } : {},
+      cache: "no-store",
+    });
+
+    if (liveRes.ok) {
+      initialLiveState = (await liveRes.json()) as LiveState;
+    }
+  } catch {
+    // fallback — client will poll
+  }
+
+  const vehicle = {
+    brand: lot.make ?? lot.title.split(" ")[0] ?? "Unknown",
+    model: lot.model ?? lot.title.split(" ").slice(1).join(" ") ?? "Unknown",
+    year: lot.year,
+    mileage: lot.mileageKm,
+    regionSpec: pickSpec(lot.specs, ["Region", "Region Spec", "Spec"]) ?? null,
+    fuelType: pickSpec(lot.specs, ["Fuel", "Fuel Type"]) ?? null,
+    transmission: pickSpec(lot.specs, ["Transmission"]) ?? null,
+    bodyType: pickSpec(lot.specs, ["Body", "Body Type"]) ?? null,
+    color: pickSpec(lot.specs, ["Color"]) ?? null,
+    condition: pickSpec(lot.specs, ["Condition"]) ?? null,
+    description: lot.inspectionSummary ?? null,
+    sellerNotes: lot.sellerNotes ?? null,
+  };
+
+  const defaultLiveState: LiveState = {
+    auctionId,
+    state: normalizeLotState(lot.status),
+    currentPrice: lot.currentBidAed,
+    minIncrement: lot.minimumStepAed,
+    nextBidAmount: lot.currentBidAed + lot.minimumStepAed,
+    endsAt: lot.endsAt,
+    lastBidder: null,
+    participantsByEmirate: [],
+    totalParticipants: 0,
+    winnerId: null,
+    isWinner: false,
+  };
 
   return (
     <MarketShell>
-      <section className="detail-top">
-        <div>
-          <p className="hero-kicker">{lot.lotNumber}</p>
-          <h1>{lot.title}</h1>
-          <p className="hero-subtext">
-            {lot.year} / {lot.mileageKm.toLocaleString("en-US")} KM / {lot.location}
-          </p>
-        </div>
-        <AuctionStatusBadge status={lot.status} />
-      </section>
-
-      <section className="detail-layout-v2">
-        <div className="detail-main-col">
-          <AuctionGallery images={lot.images} title={lot.title} />
-
-          <section className="surface-panel">
-            <h2>Lot highlights</h2>
-            <div className="spec-headline-grid">
-              <article>
-                <p>Current bid</p>
-                <strong>{formatAed(lot.currentBidAed)}</strong>
-              </article>
-              <article>
-                <p>Minimum next bid</p>
-                <strong>{formatAed(minimumNextBid)}</strong>
-              </article>
-              <article>
-                <p>Minimum step</p>
-                <strong>{formatAed(lot.minimumStepAed)}</strong>
-              </article>
-              <article>
-                <p>Auction ends</p>
-                <strong>{formatLongDate(lot.endsAt)}</strong>
-              </article>
-            </div>
-          </section>
-
-          <AuctionDetailTabs
-            specs={lot.specs}
-            inspectionSummary={lot.inspectionSummary}
-            documents={lot.documents}
-            seller={lot.seller}
-            sellerNotes={lot.sellerNotes}
-            bidHistory={bidHistory}
-          />
-
-          <LiveBidHistory auctionId={lot.id} initialEntries={bidHistory} />
-        </div>
-
-        <aside className="detail-side-col">
-          <StickyBidModule
-            auctionId={lot.id}
-            initialCurrentBidAed={lot.currentBidAed}
-            minimumStepAed={lot.minimumStepAed}
-            initialEndsAt={lot.endsAt}
-            depositRequiredAed={lot.depositRequiredAed}
-            depositReady={lot.depositReady}
-          />
-          <SellerTrustPanel lot={lot} />
-        </aside>
-      </section>
-
-      <MobileBidBar currentBidAed={lot.currentBidAed} minimumNextBidAed={minimumNextBid} canBid={canBid} />
+      <LiveClient
+        auctionId={auctionId}
+        vehicle={vehicle}
+        images={lot.images ?? []}
+        initialState={initialLiveState ?? defaultLiveState}
+      />
     </MarketShell>
   );
 }
