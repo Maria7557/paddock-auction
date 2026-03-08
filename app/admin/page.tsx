@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getToken, logout } from "@/src/lib/auth_client";
 
 type AdminTab = "companies" | "kyc" | "returns" | "blocked";
 
@@ -93,7 +94,7 @@ export default function AdminPage() {
   const [blockedUsers, setBlockedUsers] = useState<PendingUser[]>([]);
 
   useEffect(() => {
-    setToken(window.localStorage.getItem("fleetbid_token"));
+    setToken(getToken());
   }, []);
 
   async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -236,8 +237,18 @@ export default function AdminPage() {
   return (
     <section className="admin-dashboard">
       <header className="surface-panel admin-header">
-        <h1>FleetBid Admin</h1>
-        <p>Logged in as admin@fleetbid.ae</p>
+        <div>
+          <h1>FleetBid Admin</h1>
+          <p>Logged in as admin@fleetbid.ae</p>
+        </div>
+        <button
+          type="button"
+          className="button button-secondary"
+          style={{ borderColor: "#f0ccca", color: "var(--red-600)", minHeight: "40px", padding: "8px 14px" }}
+          onClick={logout}
+        >
+          Logout
+        </button>
       </header>
 
       <div className="surface-panel">
