@@ -45,6 +45,10 @@ function forbiddenResponse(): NextResponse {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (request.nextUrl.pathname === "/api/auctions" && request.method.toUpperCase() === "GET") {
+    return NextResponse.next();
+  }
+
   const token = getTokenFromRequest(request);
 
   if (!token) {
@@ -80,10 +84,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/seller/:path*",
     "/wallet/:path*",
     "/my-bids/:path*",
     "/admin/:path*",
+    "/api/auctions",
     "/api/bids/:path*",
+    "/api/seller/:path*",
     "/api/wallet/:path*",
     "/api/admin/:path*",
   ],
