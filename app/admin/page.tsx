@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getToken, logout } from "@/src/lib/auth_client";
 
 type AdminTab = "companies" | "kyc" | "returns" | "blocked";
 
@@ -24,6 +25,8 @@ type PendingUser = {
   role: string;
   status: string;
   kycVerified?: boolean;
+  walletBalance?: number;
+  hasDeposit?: boolean;
   createdAt: string;
 };
 
@@ -93,7 +96,7 @@ export default function AdminPage() {
   const [blockedUsers, setBlockedUsers] = useState<PendingUser[]>([]);
 
   useEffect(() => {
-    setToken(window.localStorage.getItem("fleetbid_token"));
+    setToken(getToken());
   }, []);
 
   async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -236,8 +239,18 @@ export default function AdminPage() {
   return (
     <section className="admin-dashboard">
       <header className="surface-panel admin-header">
-        <h1>FleetBid Admin</h1>
-        <p>Logged in as admin@fleetbid.ae</p>
+        <div>
+          <h1>FleetBid Admin</h1>
+          <p>Logged in as admin@fleetbid.ae</p>
+        </div>
+        <button
+          type="button"
+          className="button button-secondary"
+          style={{ borderColor: "#f0ccca", color: "var(--red-600)", minHeight: "40px", padding: "8px 14px" }}
+          onClick={logout}
+        >
+          Logout
+        </button>
       </header>
 
       <div className="surface-panel">
@@ -339,6 +352,8 @@ export default function AdminPage() {
                   <th>Email</th>
                   <th>Registered</th>
                   <th>KYC Status</th>
+                  <th>Wallet Balance</th>
+                  <th>Deposit Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -348,8 +363,20 @@ export default function AdminPage() {
                     <td>{user.email}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>
-                      <span className={statusBadgeClass(user.kycVerified ? "ACTIVE" : "PENDING")}> 
+                      <span className={statusBadgeClass(user.kycVerified ? "ACTIVE" : "PENDING")}>
                         {user.kycVerified ? "ACTIVE" : "PENDING"}
+                      </span>
+                    </td>
+                    <td>{formatAmountAed(user.walletBalance ?? 0)}</td>
+                    <td>
+                      <span
+                        className={
+                          user.hasDeposit
+                            ? "admin-status-badge admin-status-good"
+                            : "admin-status-badge admin-status-warn"
+                        }
+                      >
+                        {user.hasDeposit ? "Депозит получен ✅" : "Нет депозита ⚠️"}
                       </span>
                     </td>
                     <td>
@@ -370,13 +397,19 @@ export default function AdminPage() {
                 ))}
                 {kycUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="admin-empty-cell">
+                    <td colSpan={6} className="admin-empty-cell">
                       No pending KYC users.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
+            <p className="text-muted" style={{ marginTop: "12px" }}>
+              Verify payment in Stripe Dashboard before approving KYC.{" "}
+              <a href="https://dashboard.stripe.com/payments" target="_blank" rel="noreferrer">
+                https://dashboard.stripe.com/payments
+              </a>
+            </p>
           </div>
         ) : null}
 

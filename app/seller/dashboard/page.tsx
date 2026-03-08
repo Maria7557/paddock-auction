@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { getToken, logout } from "@/src/lib/auth_client";
 
 type SellerDashboardResponse = {
   company: {
@@ -55,7 +56,7 @@ export default function SellerDashboardPage() {
   const [dashboard, setDashboard] = useState<SellerDashboardResponse | null>(null);
 
   useEffect(() => {
-    setToken(window.localStorage.getItem("fleetbid_token"));
+    setToken(getToken());
   }, []);
 
   useEffect(() => {
@@ -122,8 +123,20 @@ export default function SellerDashboardPage() {
   return (
     <section className="market-shell">
       <div className="section-block compact">
-        <h1>Welcome, Seller</h1>
-        <p className="text-muted">Manage listings, auction activity, and approval status.</p>
+        <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h1>Welcome, Seller</h1>
+            <p className="text-muted">Manage listings, auction activity, and approval status.</p>
+          </div>
+          <button
+            type="button"
+            className="button button-secondary"
+            style={{ borderColor: "#f0ccca", color: "var(--red-600)", minHeight: "40px", padding: "8px 14px" }}
+            onClick={logout}
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       {!token ? (

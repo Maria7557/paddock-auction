@@ -52,6 +52,11 @@ export async function GET(request: Request): Promise<Response> {
   const users = await prisma.user.findMany({
     where: whereClause,
     include: {
+      wallet: {
+        select: {
+          balance: true,
+        },
+      },
       companyUsers: {
         select: {
           id: true,
@@ -78,6 +83,8 @@ export async function GET(request: Request): Promise<Response> {
       role: user.role,
       status: user.status,
       kycVerified: user.kycVerified,
+      walletBalance: Number(user.wallet?.balance ?? 0),
+      hasDeposit: Number(user.wallet?.balance ?? 0) > 0,
       createdAt: user.createdAt.toISOString(),
       companyUsers: user.companyUsers.map((membership) => ({
         id: membership.id,
