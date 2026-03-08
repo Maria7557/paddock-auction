@@ -92,7 +92,7 @@ export async function POST(request: Request): Promise<Response> {
           email,
           passwordHash,
           role: payload.role,
-          status: "PENDING_APPROVAL",
+          status: payload.role === "BUYER" ? "ACTIVE" : "PENDING_APPROVAL",
         },
       });
 
@@ -145,7 +145,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: createdUser.id,
       email: createdUser.email,
       role: createdUser.role,
-      status: "PENDING_APPROVAL",
+      status: createdUser.status,
     });
   } catch (error) {
     if (
