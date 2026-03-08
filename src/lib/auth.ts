@@ -6,6 +6,7 @@ export type AuthJwtPayload = {
   userId: string;
   role: string;
   companyId?: string;
+  kycVerified?: boolean;
 };
 
 function getJwtSecret(): Uint8Array | null {
@@ -28,6 +29,7 @@ export async function signJwt(payload: AuthJwtPayload): Promise<string> {
   return new SignJWT({
     role: payload.role,
     companyId: payload.companyId,
+    kycVerified: payload.kycVerified ?? false,
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(payload.userId)
@@ -51,6 +53,7 @@ export async function verifyJwt(token: string): Promise<AuthJwtPayload | null> {
     const userId = verified.payload.sub;
     const role = verified.payload.role;
     const companyId = verified.payload.companyId;
+    const kycVerified = verified.payload.kycVerified;
 
     if (typeof userId !== "string" || typeof role !== "string") {
       return null;
@@ -60,6 +63,7 @@ export async function verifyJwt(token: string): Promise<AuthJwtPayload | null> {
       userId,
       role,
       companyId: typeof companyId === "string" ? companyId : undefined,
+      kycVerified: typeof kycVerified === "boolean" ? kycVerified : false,
     };
   } catch {
     return null;
