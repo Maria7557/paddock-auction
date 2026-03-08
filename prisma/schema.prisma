@@ -137,20 +137,6 @@ model AuctionStateTransition {
   @@map("auction_state_transitions")
 }
 
-model DepositWallet {
-  id                       String   @id @default(uuid())
-  companyId                String   @map("company_id")
-  currency                 String
-  availableBalance         Decimal  @default(0) @map("available_balance") @db.Decimal(18, 2)
-  lockedBalance            Decimal  @default(0) @map("locked_balance") @db.Decimal(18, 2)
-  pendingWithdrawalBalance Decimal  @default(0) @map("pending_withdrawal_balance") @db.Decimal(18, 2)
-  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([companyId, currency], map: "deposit_wallets_company_currency_key")
-  @@map("deposit_wallets")
-}
-
 model Bid {
   id         String     @id @default(uuid())
   auctionId  String     @map("auction_id")
