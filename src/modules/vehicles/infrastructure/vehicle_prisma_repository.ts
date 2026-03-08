@@ -36,6 +36,13 @@ function mapVehicle(vehicle: {
   year: number;
   mileage: number;
   vin: string;
+  fuelType: string | null;
+  transmission: string | null;
+  bodyType: string | null;
+  regionSpec: string | null;
+  condition: string | null;
+  serviceHistory: string | null;
+  sellerNotes: string | null;
 }): Vehicle {
   return {
     id: vehicle.id,
@@ -44,6 +51,13 @@ function mapVehicle(vehicle: {
     year: vehicle.year,
     mileage: vehicle.mileage,
     vin: vehicle.vin,
+    fuelType: vehicle.fuelType,
+    transmission: vehicle.transmission,
+    bodyType: vehicle.bodyType,
+    regionSpec: vehicle.regionSpec,
+    condition: vehicle.condition,
+    serviceHistory: vehicle.serviceHistory,
+    sellerNotes: vehicle.sellerNotes,
   };
 }
 
@@ -58,6 +72,13 @@ export function createVehicleRepository(dbClient: VehicleDbClient = prisma): Veh
             year: input.year,
             mileage: input.mileage,
             vin: input.vin,
+            fuelType: input.fuelType,
+            transmission: input.transmission,
+            bodyType: input.bodyType,
+            regionSpec: input.regionSpec,
+            condition: input.condition,
+            serviceHistory: input.serviceHistory,
+            sellerNotes: input.sellerNotes,
           },
         });
 

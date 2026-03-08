@@ -1,16 +1,37 @@
+import { z } from "zod";
+
 import { DomainError } from "../../../lib/domain_errors";
 import { createVehicleService, type VehicleService } from "../application/vehicle_service";
 import { vehicleErrorCodes } from "../domain/vehicle_error_codes";
 import { createVehicleRepository } from "../infrastructure/vehicle_prisma_repository";
-import { z } from "zod";
 
-const createVehiclePayloadSchema = z.object({
-  brand: z.string().trim().min(1),
-  model: z.string().trim().min(1),
-  year: z.coerce.number().int().min(1886),
-  mileage: z.coerce.number().int().nonnegative(),
-  vin: z.string().trim().min(1).max(64),
-});
+const createVehiclePayloadSchema = z
+  .object({
+    brand: z.string().trim().min(1),
+    model: z.string().trim().min(1),
+    year: z.coerce.number().int().min(1886),
+    mileage: z.coerce.number().int().nonnegative().optional(),
+    mileageKm: z.coerce.number().int().nonnegative().optional(),
+    vin: z.string().trim().min(1).max(64),
+    color: z.string().trim().min(1).optional(),
+    fuelType: z.string().trim().min(1).optional(),
+    transmission: z.string().trim().min(1).optional(),
+    bodyType: z.string().trim().min(1).optional(),
+    regionSpec: z.string().trim().min(1).optional(),
+    condition: z.string().trim().min(1).optional(),
+    serviceHistory: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    sellerNotes: z.string().trim().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.mileage === undefined && value.mileageKm === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mileageKm"],
+        message: "Either mileage or mileageKm is required",
+      });
+    }
+  });
 
 type VehicleResponse = {
   id: string;
@@ -99,8 +120,17 @@ export function createPostVehicleHandler(
         brand: payload.brand,
         model: payload.model,
         year: payload.year,
-        mileage: payload.mileage,
+        mileage: payload.mileageKm ?? payload.mileage ?? 0,
         vin: payload.vin.toUpperCase(),
+        color: payload.color,
+        fuelType: payload.fuelType,
+        transmission: payload.transmission,
+        bodyType: payload.bodyType,
+        regionSpec: payload.regionSpec,
+        condition: payload.condition,
+        serviceHistory: payload.serviceHistory,
+        description: payload.description,
+        sellerNotes: payload.sellerNotes,
       });
 
       return jsonResult({

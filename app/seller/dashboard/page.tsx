@@ -10,9 +10,11 @@ import {
   CONDITIONS,
   FUEL_TYPES,
   REGION_SPECS,
+  SERVICE_HISTORY_OPTIONS,
   TRANSMISSION_TYPES,
-  VEHICLE_BRANDS,
+  UAE_BRANDS,
   YEARS,
+  fetchNhtsaModels,
 } from "@/src/lib/vehicle_data";
 
 type SellerDashboardResponse = {
@@ -59,6 +61,8 @@ type AuctionCreateResponse = {
   message?: string;
 };
 
+type BrandSource = "uae" | "nhtsa" | "other";
+
 type SellerVehicleFormState = {
   brand: string;
   model: string;
@@ -73,11 +77,11 @@ type SellerVehicleFormState = {
   condition: string;
   serviceHistory: string;
   description: string;
-  sellerNotes: string;
   startingPrice: string;
   reservePrice: string;
   startsAt: string;
   endsAt: string;
+  sellerNotes: string;
 };
 
 const initialFormState: SellerVehicleFormState = {
@@ -94,14 +98,12 @@ const initialFormState: SellerVehicleFormState = {
   condition: "",
   serviceHistory: "",
   description: "",
-  sellerNotes: "",
   startingPrice: "",
   reservePrice: "",
   startsAt: "",
   endsAt: "",
+  sellerNotes: "",
 };
-
-const SERVICE_HISTORY_OPTIONS = ["Yes - Full History", "Yes - Partial", "No History"] as const;
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("en-AE", {
@@ -150,6 +152,30 @@ function auctionStateClass(state: string): string {
   return "admin-status-badge";
 }
 
+function normalizeBrandLabel(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function toBrandLabel(brandKey: string): string {
+  return brandKey.replaceAll("_", " ");
+}
+
+function resolveUaeBrandKey(input: string, uaeBrandKeys: string[]): string | null {
+  const normalized = normalizeBrandLabel(input).toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  for (const key of uaeBrandKeys) {
+    if (key.toLowerCase() === normalized || toBrandLabel(key).toLowerCase() === normalized) {
+      return key;
+    }
+  }
+
+  return null;
+}
+
 export default function SellerDashboardPage() {
   const [token, setToken] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<SellerDashboardResponse | null>(null);
@@ -161,6 +187,11 @@ export default function SellerDashboardPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formNotice, setFormNotice] = useState<string | null>(null);
+
+  const [brandSource, setBrandSource] = useState<BrandSource>("uae");
+  const [nhtsaModels, setNhtsaModels] = useState<string[]>([]);
+  const [loadingNhtsaModels, setLoadingNhtsaModels] = useState(false);
+  const [nhtsaFetched, setNhtsaFetched] = useState(false);
 
   const loadDashboard = useCallback(async (authToken: string): Promise<void> => {
     setLoadingDashboard(true);
@@ -210,20 +241,94 @@ export default function SellerDashboardPage() {
     return dashboard?.company.status ?? "UNKNOWN";
   }, [dashboard]);
 
-  const brandOptions = useMemo(() => Object.keys(VEHICLE_BRANDS), []);
-  const modelOptions = useMemo(() => {
-    if (!formState.brand) {
+  const uaeBrandKeys = useMemo(() => Object.keys(UAE_BRANDS), []);
+
+  const filteredUaeBrandLabels = useMemo(() => {
+    const query = normalizeBrandLabel(formState.brand).toLowerCase();
+
+    const labels = uaeBrandKeys.map((key) => toBrandLabel(key));
+
+    if (!query) {
+      return labels;
+    }
+
+    return labels.filter((label) => label.toLowerCase().includes(query));
+  }, [formState.brand, uaeBrandKeys]);
+
+  const matchedUaeBrandKey = useMemo(
+    () => resolveUaeBrandKey(formState.brand, uaeBrandKeys),
+    [formState.brand, uaeBrandKeys],
+  );
+
+  const uaeModels = useMemo(() => {
+    if (!matchedUaeBrandKey) {
       return [];
     }
 
-    return VEHICLE_BRANDS[formState.brand] ?? [];
-  }, [formState.brand]);
+    return UAE_BRANDS[matchedUaeBrandKey] ?? [];
+  }, [matchedUaeBrandKey]);
+
+  useEffect(() => {
+    setNhtsaModels([]);
+    setNhtsaFetched(false);
+  }, [formState.brand, formState.year]);
 
   function updateField<K extends keyof SellerVehicleFormState>(field: K, value: SellerVehicleFormState[K]): void {
     setFormState((previous) => ({
       ...previous,
       [field]: value,
     }));
+  }
+
+  function onBrandChange(nextValue: string): void {
+    if (nextValue === "Other brand") {
+      setBrandSource("other");
+      setFormState((previous) => ({
+        ...previous,
+        brand: "",
+        model: "",
+      }));
+      return;
+    }
+
+    const normalized = normalizeBrandLabel(nextValue);
+    const matchedKey = resolveUaeBrandKey(normalized, uaeBrandKeys);
+
+    setBrandSource(matchedKey ? "uae" : normalized.length > 0 ? "nhtsa" : "uae");
+
+    setFormState((previous) => ({
+      ...previous,
+      brand: matchedKey ? toBrandLabel(matchedKey) : normalized,
+      model: "",
+    }));
+  }
+
+  async function onFetchModels(): Promise<void> {
+    if (!formState.brand.trim()) {
+      setFormError("Enter a brand before fetching models.");
+      return;
+    }
+
+    setLoadingNhtsaModels(true);
+    setFormError(null);
+
+    try {
+      const yearValue = Number(formState.year);
+      const year = Number.isFinite(yearValue) && yearValue > 0 ? yearValue : new Date().getUTCFullYear();
+      const models = await fetchNhtsaModels(formState.brand.trim(), year);
+      setNhtsaModels(models);
+      setNhtsaFetched(true);
+
+      if (models.length === 0) {
+        setFormError("No NHTSA models found. Enter model manually.");
+      }
+    } catch {
+      setFormError("Failed to fetch models from NHTSA.");
+      setNhtsaFetched(true);
+      setNhtsaModels([]);
+    } finally {
+      setLoadingNhtsaModels(false);
+    }
   }
 
   async function onSubmitVehicle(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -239,8 +344,8 @@ export default function SellerDashboardPage() {
     const startingPrice = Number(formState.startingPrice);
     const reservePrice = formState.reservePrice.trim().length > 0 ? Number(formState.reservePrice) : undefined;
 
-    if (!Number.isFinite(year) || year < 2000 || year > 2030) {
-      setFormError("Year must be between 2000 and 2030.");
+    if (!Number.isFinite(year) || year < 1990 || year > 2026) {
+      setFormError("Year must be between 1990 and 2026.");
       return;
     }
 
@@ -280,9 +385,8 @@ export default function SellerDashboardPage() {
           brand: formState.brand,
           model: formState.model,
           year,
-          mileage: mileageKm,
-          mileageKm,
           vin: formState.vin,
+          mileageKm,
           color: formState.color,
           fuelType: formState.fuelType,
           transmission: formState.transmission,
@@ -326,8 +430,11 @@ export default function SellerDashboardPage() {
         );
       }
 
-      setFormNotice("Vehicle added and auction created as DRAFT");
+      setFormNotice("Vehicle created and auction draft opened");
       setFormState(initialFormState);
+      setBrandSource("uae");
+      setNhtsaModels([]);
+      setNhtsaFetched(false);
       setFormOpen(false);
       await loadDashboard(token);
     } catch (error) {
@@ -466,67 +573,86 @@ export default function SellerDashboardPage() {
           <form className="seller-form" onSubmit={onSubmitVehicle}>
             <label>
               Brand
-              <select
+              <input
+                list="uae-brand-options"
+                type="text"
                 value={formState.brand}
-                onChange={(event) => {
-                  const selectedBrand = event.target.value;
-                  setFormState((previous) => ({
-                    ...previous,
-                    brand: selectedBrand,
-                    model: "",
-                  }));
-                }}
+                placeholder="Type or choose a UAE brand"
+                onChange={(event) => onBrandChange(event.target.value)}
                 required
-              >
-                <option value="" disabled>
-                  Select brand
-                </option>
-                {brandOptions.map((brand) => (
-                  <option key={brand} value={brand}>
-                    {brand.replaceAll("_", " ")}
-                  </option>
+              />
+              <datalist id="uae-brand-options">
+                {filteredUaeBrandLabels.map((brandLabel) => (
+                  <option key={brandLabel} value={brandLabel} />
                 ))}
-              </select>
+                <option value="Other brand" />
+              </datalist>
             </label>
 
             <label>
               Model
-              <select
-                value={formState.model}
-                onChange={(event) => updateField("model", event.target.value)}
-                required
-                disabled={!formState.brand}
-              >
-                {!formState.brand ? (
-                  <option value="" disabled>
-                    Select brand first
-                  </option>
-                ) : (
+              {matchedUaeBrandKey ? (
+                <select value={formState.model} onChange={(event) => updateField("model", event.target.value)} required>
                   <option value="" disabled>
                     Select model
                   </option>
-                )}
-                {modelOptions.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
+                  {uaeModels.map((modelOption) => (
+                    <option key={modelOption} value={modelOption}>
+                      {modelOption}
+                    </option>
+                  ))}
+                </select>
+              ) : nhtsaModels.length > 0 ? (
+                <select value={formState.model} onChange={(event) => updateField("model", event.target.value)} required>
+                  <option value="" disabled>
+                    Select model
                   </option>
-                ))}
-              </select>
+                  {nhtsaModels.map((modelOption) => (
+                    <option key={modelOption} value={modelOption}>
+                      {modelOption}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  {(brandSource === "nhtsa" || brandSource === "other") && formState.brand ? (
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ marginBottom: "8px" }}
+                      disabled={loadingNhtsaModels}
+                      onClick={() => {
+                        void onFetchModels();
+                      }}
+                    >
+                      {loadingNhtsaModels ? "Loading models..." : "Fetch models"}
+                    </button>
+                  ) : null}
+
+                  {nhtsaFetched ? (
+                    <input
+                      type="text"
+                      value={formState.model}
+                      onChange={(event) => updateField("model", event.target.value)}
+                      placeholder="Enter model"
+                      required
+                    />
+                  ) : (
+                    <input type="text" value={formState.model} placeholder="Select brand first" disabled required />
+                  )}
+                </>
+              )}
             </label>
 
             <label>
               Year
-              <select
-                value={formState.year}
-                onChange={(event) => updateField("year", event.target.value)}
-                required
-              >
+              <select value={formState.year} onChange={(event) => updateField("year", event.target.value)} required>
                 <option value="" disabled>
                   Select year
                 </option>
-                {YEARS.map((year) => (
-                  <option key={year} value={String(year)}>
-                    {year}
+                {YEARS.map((yearOption) => (
+                  <option key={yearOption} value={String(yearOption)}>
+                    {yearOption}
                   </option>
                 ))}
               </select>
@@ -544,17 +670,13 @@ export default function SellerDashboardPage() {
 
             <label>
               Region Spec
-              <select
-                value={formState.regionSpec}
-                onChange={(event) => updateField("regionSpec", event.target.value)}
-                required
-              >
+              <select value={formState.regionSpec} onChange={(event) => updateField("regionSpec", event.target.value)} required>
                 <option value="" disabled>
                   Select region spec
                 </option>
-                {REGION_SPECS.map((region) => (
-                  <option key={region} value={region}>
-                    {region}
+                {REGION_SPECS.map((regionSpec) => (
+                  <option key={regionSpec} value={regionSpec}>
+                    {regionSpec}
                   </option>
                 ))}
               </select>
@@ -562,11 +684,7 @@ export default function SellerDashboardPage() {
 
             <label>
               Body Type
-              <select
-                value={formState.bodyType}
-                onChange={(event) => updateField("bodyType", event.target.value)}
-                required
-              >
+              <select value={formState.bodyType} onChange={(event) => updateField("bodyType", event.target.value)} required>
                 <option value="" disabled>
                   Select body type
                 </option>
@@ -580,11 +698,7 @@ export default function SellerDashboardPage() {
 
             <label>
               Fuel Type
-              <select
-                value={formState.fuelType}
-                onChange={(event) => updateField("fuelType", event.target.value)}
-                required
-              >
+              <select value={formState.fuelType} onChange={(event) => updateField("fuelType", event.target.value)} required>
                 <option value="" disabled>
                   Select fuel type
                 </option>
@@ -627,11 +741,7 @@ export default function SellerDashboardPage() {
 
             <label>
               Color
-              <select
-                value={formState.color}
-                onChange={(event) => updateField("color", event.target.value)}
-                required
-              >
+              <select value={formState.color} onChange={(event) => updateField("color", event.target.value)} required>
                 <option value="" disabled>
                   Select color
                 </option>
@@ -645,11 +755,7 @@ export default function SellerDashboardPage() {
 
             <label>
               Condition
-              <select
-                value={formState.condition}
-                onChange={(event) => updateField("condition", event.target.value)}
-                required
-              >
+              <select value={formState.condition} onChange={(event) => updateField("condition", event.target.value)} required>
                 <option value="" disabled>
                   Select condition
                 </option>
@@ -671,9 +777,9 @@ export default function SellerDashboardPage() {
                 <option value="" disabled>
                   Select service history
                 </option>
-                {SERVICE_HISTORY_OPTIONS.map((serviceHistoryOption) => (
-                  <option key={serviceHistoryOption} value={serviceHistoryOption}>
-                    {serviceHistoryOption}
+                {SERVICE_HISTORY_OPTIONS.map((serviceHistory) => (
+                  <option key={serviceHistory} value={serviceHistory}>
+                    {serviceHistory}
                   </option>
                 ))}
               </select>
@@ -758,8 +864,16 @@ export default function SellerDashboardPage() {
             </div>
           </form>
 
-          {formNotice ? <p className="inline-note tone-success" style={{ marginTop: "12px" }}>{formNotice}</p> : null}
-          {formError ? <p className="inline-note tone-error" style={{ marginTop: "12px" }}>{formError}</p> : null}
+          {formNotice ? (
+            <p className="inline-note tone-success" style={{ marginTop: "12px" }}>
+              {formNotice}
+            </p>
+          ) : null}
+          {formError ? (
+            <p className="inline-note tone-error" style={{ marginTop: "12px" }}>
+              {formError}
+            </p>
+          ) : null}
         </section>
       ) : null}
     </section>
