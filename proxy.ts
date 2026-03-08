@@ -33,6 +33,22 @@ function unauthorizedResponse(): NextResponse {
   );
 }
 
+function redirectToLogin(request: NextRequest): NextResponse {
+  return NextResponse.redirect(new URL("/login", request.url));
+}
+
+function unauthorizedForPath(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return unauthorizedResponse();
+  }
+
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    return redirectToLogin(request);
+  }
+
+  return unauthorizedResponse();
+}
+
 function forbiddenResponse(): NextResponse {
   return NextResponse.json(
     {
@@ -52,13 +68,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = getTokenFromRequest(request);
 
   if (!token) {
-    return unauthorizedResponse();
+    return unauthorizedForPath(request);
   }
 
   const verified = await verifyJwt(token);
 
   if (!verified) {
-    return unauthorizedResponse();
+    return unauthorizedForPath(request);
   }
 
   if (request.nextUrl.pathname.startsWith("/api/admin") && verified.role !== "ADMIN") {

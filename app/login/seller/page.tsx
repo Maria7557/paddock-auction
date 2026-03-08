@@ -8,6 +8,7 @@ import { MarketShell } from "@/src/modules/ui/transport/components/shared/market
 
 type LoginResponse = {
   token?: string;
+  role?: string;
   error?: string;
   status?: string;
 };
@@ -54,6 +55,12 @@ export default function SellerLoginPage() {
         return;
       }
 
+      if (payload.role !== "SELLER") {
+        setFeedback("This login page is for company seller accounts.");
+        return;
+      }
+
+      window.localStorage.setItem("fleetbid_token", payload.token);
       document.cookie = `token=${payload.token}; Path=/; SameSite=Lax`;
       router.push("/seller/dashboard");
     } catch {
