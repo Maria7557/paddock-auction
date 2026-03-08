@@ -2112,6 +2112,99 @@ select:focus-visible {
   color: var(--red-600);
 }
 
+.seller-status-scheduled {
+  border-color: #d2ddee;
+  background: #e9f0fb;
+  color: #2f568a;
+}
+
+.seller-dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.seller-dashboard-header h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.seller-dashboard-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.seller-form {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.seller-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.seller-form textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  background: #fff;
+  color: var(--ink-primary);
+  font-size: 14px;
+  resize: vertical;
+}
+
+.seller-form textarea:focus-visible {
+  outline: 2px solid rgba(17, 106, 67, 0.25);
+  outline-offset: 0;
+}
+
+.seller-form-full {
+  grid-column: 1 / -1;
+}
+
+.seller-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.seller-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--green-600);
+  margin-right: 6px;
+  display: inline-block;
+  animation: seller-live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes seller-live-pulse {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+}
+
 @media (max-width: 1200px) {
   .home-grid,
   .listing-grid {
@@ -2343,6 +2436,14 @@ select:focus-visible {
 
   .admin-header {
     display: grid;
+  }
+
+  .seller-dashboard-header {
+    display: grid;
+  }
+
+  .seller-form {
+    grid-template-columns: 1fr;
   }
 
   .admin-sidebar nav ul {
