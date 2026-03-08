@@ -77,6 +77,7 @@ export async function POST(request: Request): Promise<Response> {
       email: true,
       passwordHash: true,
       status: true,
+      kycVerified: true,
       role: true,
       companyUsers: {
         select: {
@@ -109,13 +110,6 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  if (user.status !== "ACTIVE") {
-    return json(403, {
-      error: "ACCOUNT_PENDING_APPROVAL",
-      status: user.status,
-    });
-  }
-
   const companyLink = user.companyUsers[0] ?? null;
   const role = mapRole({
     userRole: user.role,
@@ -128,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: user.id,
       role,
       companyId: companyId ?? undefined,
+      kycVerified: user.kycVerified,
     });
 
     return json(200, {
@@ -135,6 +130,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: user.id,
       role,
       companyId,
+      kycVerified: user.kycVerified,
     });
   } catch {
     return json(500, {

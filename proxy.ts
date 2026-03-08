@@ -64,6 +64,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-user-id", verified.userId);
   requestHeaders.set("x-user-role", verified.role);
+  requestHeaders.set("x-kyc-verified", verified.kycVerified ? "true" : "false");
 
   if (verified.companyId) {
     requestHeaders.set("x-company-id", verified.companyId);

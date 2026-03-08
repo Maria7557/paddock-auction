@@ -1,13 +1,14 @@
 export const runtime = "nodejs";
 
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 
 import prisma from "@/src/infrastructure/database/prisma";
 
 import { json, requireAdmin } from "../../_lib/admin_route_utils";
 
 const statusQuerySchema = z
-  .enum(["PENDING_APPROVAL", "BLOCKED", "ACTIVE"])
+  .enum(["PENDING_APPROVAL", "BLOCKED", "ACTIVE", "PENDING_KYC"])
   .optional();
 
 export async function GET(request: Request): Promise<Response> {
@@ -24,20 +25,32 @@ export async function GET(request: Request): Promise<Response> {
   if (!status.success && requestedStatus) {
     return json(400, {
       error: "INVALID_STATUS",
-      message: "status must be one of PENDING_APPROVAL, BLOCKED, ACTIVE",
+      message: "status must be one of PENDING_APPROVAL, BLOCKED, ACTIVE, PENDING_KYC",
     });
   }
 
+  let whereClause: Prisma.UserWhereInput;
+
+  if (status.data === "PENDING_KYC") {
+    whereClause = {
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: false,
+    };
+  } else if (status.data) {
+    whereClause = {
+      status: status.data,
+    };
+  } else {
+    whereClause = {
+      status: {
+        in: ["PENDING_APPROVAL", "BLOCKED"],
+      },
+    };
+  }
+
   const users = await prisma.user.findMany({
-    where: status.data
-      ? {
-          status: status.data,
-        }
-      : {
-          status: {
-            in: ["PENDING_APPROVAL", "BLOCKED"],
-          },
-        },
+    where: whereClause,
     include: {
       companyUsers: {
         select: {
@@ -64,6 +77,7 @@ export async function GET(request: Request): Promise<Response> {
       email: user.email,
       role: user.role,
       status: user.status,
+      kycVerified: user.kycVerified,
       createdAt: user.createdAt.toISOString(),
       companyUsers: user.companyUsers.map((membership) => ({
         id: membership.id,

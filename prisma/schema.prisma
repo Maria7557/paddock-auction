@@ -13,6 +13,7 @@ model User {
   passwordHash String?
   role         UserRole      @default(BUYER)
   status       UserStatus    @default(ACTIVE)
+  kycVerified  Boolean       @default(false) @map("kyc_verified")
   createdAt    DateTime      @default(now())
   wallet       Wallet?
   companyUsers CompanyUser[]
