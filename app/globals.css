@@ -26,6 +26,8 @@
 
   --amber-600: #9b6914;
   --amber-100: #f6ead4;
+  --blue-600: #1d4ed8;
+  --blue-100: #eff6ff;
 
   --radius-card: 16px;
   --radius-control: 12px;
@@ -33,6 +35,7 @@
 
   --shadow-soft: 0 6px 22px rgba(15, 23, 42, 0.06);
   --shadow-lift: 0 12px 28px rgba(15, 23, 42, 0.08);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
 
   --space-1: 8px;
   --space-2: 12px;
@@ -74,6 +77,157 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+.container {
+  width: min(1280px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+  border-radius: var(--radius-pill);
+  padding: 13px 24px;
+  transition: all 0.15s;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--green-600);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--green-700);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--ink-primary);
+  border: 1.5px solid var(--line-strong);
+}
+
+.btn-outline:hover {
+  border-color: var(--ink-primary);
+}
+
+.btn-white {
+  background: #fff;
+  color: var(--ink-primary);
+}
+
+.btn-white:hover {
+  background: #f0f0f0;
+}
+
+.btn-ghost-white {
+  background: transparent;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+}
+
+.btn-ghost-white:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-blue {
+  background: var(--blue-600);
+  color: #fff;
+}
+
+.btn-blue:hover {
+  background: #1e40af;
+}
+
+.btn-lg {
+  font-size: 16px;
+  padding: 15px 28px;
+}
+
+.btn-sm {
+  font-size: 13px;
+  padding: 9px 18px;
+}
+
+.btn-full {
+  width: 100%;
+  justify-content: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.pill-live {
+  background: var(--green-600);
+  color: #fff;
+}
+
+.pill-sched {
+  background: var(--blue-100);
+  color: var(--blue-600);
+}
+
+.pill-dark {
+  background: var(--ink-primary);
+  color: #fff;
+}
+
+.pill-green {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.eyebrow-green {
+  color: var(--green-600);
+}
+
+.eyebrow-white {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.section-h2 {
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 800;
+  color: var(--ink-primary);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.section-h2-white {
+  color: #fff;
+}
+
+.live-dot-green {
+  background: var(--green-600);
+}
+
+.pill-live .live-dot,
+.eyebrow-white .live-dot {
+  background: #fff;
 }
 
 .skip-link {

@@ -1,0 +1,122 @@
+/* ── Shared section base ─────────────────────────────────────────────────── */
+.sec       { padding: 72px 0; }
+.white     { background: var(--bg-card); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.subtle    { background: var(--bg-subtle); border-top: 1px solid var(--line-soft); }
+.dark      { background: var(--ink-primary); }
+.green     { background: var(--green-600); }
+
+.twoCol    { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start; }
+.centreHead { text-align: center; margin-bottom: 44px; }
+.mb16      { margin-bottom: 16px; }
+
+.body      { font-size: 16px; color: var(--ink-secondary); line-height: 1.75; }
+.bodyWhite { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.7; }
+
+.ctas      { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── What cards ─────────────────────────────────────────────────────────── */
+.cards     { display: flex; flex-direction: column; gap: 12px; }
+.whatCard  { background: var(--bg-subtle); border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px 18px; display: flex; align-items: flex-start; gap: 14px; }
+.whatIcon  { width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.g { background: var(--green-100); }
+.b { background: var(--blue-100); }
+.a { background: var(--amber-100); }
+.cardTitle { font-size: 14px; font-weight: 700; color: var(--ink-primary); margin-bottom: 3px; }
+.cardText  { font-size: 13px; color: var(--ink-muted); line-height: 1.55; }
+
+/* ── Why / Not Insurance ─────────────────────────────────────────────────── */
+.whyList   { display: flex; flex-direction: column; }
+.whyItem   { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 15px; }
+.whyItem:last-child { border-bottom: none; }
+.whyCheck  { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.checkYes  { background: var(--green-600); }
+.checkNo   { background: rgba(255,255,255,0.07); }
+.yes span  { color: #fff; font-weight: 500; }
+.no span   { color: rgba(255,255,255,0.25); text-decoration: line-through; }
+.divider   { height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0; }
+
+/* ── How it works ───────────────────────────────────────────────────────── */
+.howGrid   { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.howBlock  { background: var(--bg-card); border-radius: var(--radius-card); border: 1px solid var(--line-soft); padding: 30px; box-shadow: var(--shadow-card); }
+.howHead   { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line-soft); }
+.howIcon   { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.iconGreen { background: var(--green-100); }
+.iconBlue  { background: var(--blue-100); }
+.blockTitle { font-size: 18px; font-weight: 800; color: var(--ink-primary); letter-spacing: -0.02em; }
+.blockSub   { font-size: 13px; color: var(--ink-muted); margin-top: 2px; }
+.blockCta   { margin-top: 22px !important; }
+
+.step      { display: flex; align-items: flex-start; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
+.step:last-of-type { border-bottom: none; }
+.num       { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; margin-top: 1px; }
+.numGreen  { background: var(--green-600); color: #fff; }
+.numBlue   { background: var(--blue-600); color: #fff; }
+.stepTitle { font-size: 15px; font-weight: 600; color: var(--ink-primary); line-height: 1.4; }
+.stepSub   { font-size: 13px; color: var(--ink-muted); margin-top: 2px; }
+
+/* ── This week's auction ─────────────────────────────────────────────────── */
+.liveEyebrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.weekH2      { margin-bottom: 8px; }
+.weekDate    { font-size: 17px; color: rgba(255,255,255,0.8); font-weight: 500; margin-bottom: 22px; }
+.weekDetail  { display: flex; align-items: center; gap: 10px; font-size: 15px; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
+.weekDetailIcon { width: 28px; height: 28px; border-radius: 7px; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* Countdown block */
+.cdBlock    { background: rgba(0,0,0,0.2); border-radius: 16px; padding: 28px; }
+.cdLabel    { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.45); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; text-align: center; }
+.cdUnits    { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.cdUnit     { background: rgba(255,255,255,0.12); border-radius: 12px; padding: 14px 16px; min-width: 72px; text-align: center; }
+.cdNum      { font-size: 34px; font-weight: 800; color: #fff; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.cdSep      { font-size: 26px; font-weight: 800; color: rgba(255,255,255,0.3); padding-bottom: 16px; }
+.cdUnitLbl  { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.35); margin-top: 5px; letter-spacing: 0.05em; text-transform: uppercase; }
+.cdInfo     { margin-top: 18px; padding: 14px; background: rgba(255,255,255,0.08); border-radius: 10px; }
+.cdInfoLbl  { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.cdInfoRow  { font-size: 14px; color: rgba(255,255,255,0.8); font-weight: 500; margin-bottom: 4px; }
+.cdCta      { margin-top: 12px !important; }
+
+/* ── Categories ─────────────────────────────────────────────────────────── */
+.catsGrid   { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+.catCard    { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 3/4; cursor: pointer; display: block; }
+.catCard:hover img { transform: scale(1.05); }
+.catCard img { transition: transform 0.4s; }
+.catOverlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.1) 60%, transparent 100%); }
+.catContent { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 18px; }
+.catTitle   { font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 4px; letter-spacing: -0.01em; }
+.catSub     { font-size: 13px; color: rgba(255,255,255,0.65); }
+.catCta     { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #fff; background: var(--green-600); border-radius: var(--radius-pill); padding: 6px 13px; margin-top: 10px; opacity: 0; transform: translateY(4px); transition: all 0.18s; }
+.catCard:hover .catCta { opacity: 1; transform: translateY(0); }
+
+/* ── Sell ───────────────────────────────────────────────────────────────── */
+.sellStats  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+.sellStat   { background: var(--bg-card); border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px 18px; }
+.sellStatVal { font-size: 22px; font-weight: 800; color: var(--green-600); letter-spacing: -0.02em; }
+.sellStatLbl { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
+.sellCard   { background: var(--bg-card); border-radius: var(--radius-card); border: 1px solid var(--line-soft); padding: 28px; box-shadow: var(--shadow-card); }
+.sellCardTitle { font-size: 15px; font-weight: 700; color: var(--ink-primary); margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+
+/* ── Trust / CTA ─────────────────────────────────────────────────────────── */
+.trustItems { display: flex; flex-direction: column; gap: 12px; }
+.trustRow   { display: flex; align-items: flex-start; gap: 13px; padding: 14px 16px; background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+.trustIco   { width: 32px; height: 32px; border-radius: 8px; background: var(--green-600); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.trustTitle { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 3px; }
+.trustText  { font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.5; }
+.ctaBox     { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-card); padding: 32px; }
+.ctaH3      { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: -0.02em; margin-bottom: 8px; }
+.ctaSub     { font-size: 15px; color: rgba(255,255,255,0.5); margin-bottom: 24px; line-height: 1.6; }
+.badges     { display: flex; flex-direction: column; gap: 9px; margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.08); }
+.badge      { display: flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(255,255,255,0.4); }
+.badgeIco   { flex-shrink: 0; }
+.quote      { margin-top: 20px; padding: 16px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid rgba(255,255,255,0.07); }
+.quoteText  { font-size: 14px; font-style: italic; color: rgba(255,255,255,0.45); line-height: 1.65; }
+.quoteAttr  { font-size: 12px; font-weight: 600; color: var(--green-100); margin-top: 10px; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .twoCol    { grid-template-columns: 1fr; gap: 40px; }
+  .howGrid   { grid-template-columns: 1fr; }
+  .catsGrid  { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .catsGrid  { grid-template-columns: 1fr 1fr; }
+  .sellStats { grid-template-columns: 1fr 1fr; }
+}

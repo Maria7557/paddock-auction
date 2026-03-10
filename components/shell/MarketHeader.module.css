@@ -1,0 +1,89 @@
+.header {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--line-soft);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.inner {
+  height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-primary);
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: 32px;
+  text-decoration: none;
+}
+
+.logoMark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--green-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.navLink {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  padding: 7px 12px;
+  border-radius: 8px;
+  transition: all 0.12s;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  color: var(--ink-primary);
+  background: var(--bg-subtle);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.loginBtn {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  padding: 7px 14px;
+  border-radius: 8px;
+  transition: all 0.12s;
+  text-decoration: none;
+}
+
+.loginBtn:hover {
+  color: var(--ink-primary);
+  background: var(--bg-subtle);
+}
+
+.regBtn {
+  font-size: 14px !important;
+  padding: 9px 18px !important;
+}

@@ -1,0 +1,41 @@
+.footer { background: #111; padding: 48px 0 24px; border-top: 1px solid rgba(255,255,255,0.05); }
+
+.grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 40px;
+}
+
+.logo {
+  font-size: 17px; font-weight: 800; color: #fff;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+
+.logoMark {
+  width: 22px; height: 22px; background: var(--green-600);
+  border-radius: 5px; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 10px; font-weight: 800;
+}
+
+.desc  { font-size: 13px; color: #5c6370; line-height: 1.65; max-width: 240px; margin-bottom: 10px; }
+.vat   { font-size: 11px; color: #374151; }
+
+.colTitle { font-size: 10px; font-weight: 700; color: #4b5563; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+.links    { display: flex; flex-direction: column; gap: 9px; }
+.link     { font-size: 13px; color: #5c6370; cursor: pointer; transition: color 0.12s; }
+.link:hover { color: #9ca3af; }
+
+.bottom {
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: #374151;
+}
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .grid { grid-template-columns: 1fr; }
+}
