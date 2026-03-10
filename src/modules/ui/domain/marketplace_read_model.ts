@@ -1,6 +1,10 @@
 // Temporary frontend read model for marketplace UX.
 // Replace with backend GET read endpoints when those contracts are available.
 
+import type { AuctionState, Auction as DbAuction, Company as DbCompany, Vehicle as DbVehicle } from "@prisma/client";
+
+import prisma from "@/src/infrastructure/database/prisma";
+
 export type AuctionStatus =
   | "LIVE"
   | "SCHEDULED"
@@ -691,24 +695,249 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-export async function readHomepageLots(): Promise<AuctionLot[]> {
-  await sleep(90);
+const HOMEPAGE_AUCTION_STATES: AuctionState[] = ["LIVE", "SCHEDULED"];
+const LISTING_AUCTION_STATES: AuctionState[] = [
+  "LIVE",
+  "SCHEDULED",
+  "PAYMENT_PENDING",
+  "DEFAULTED",
+  "ENDED",
+  "CLOSED",
+  "EXTENDED",
+];
+const FALLBACK_LOT_IMAGES = [
+  "/images/car-elantra.jpg",
+  "/images/car-gwagon.jpg",
+  "/images/car-bentley.jpg",
+  "/images/car-mclaren.jpg",
+  "/images/car-mustang.jpg",
+];
 
-  return AUCTIONS.filter((lot) => lot.status === "LIVE").slice(0, 6).map((lot) => ({ ...lot }));
+function normalizeAuctionStatus(state: AuctionState): AuctionStatus {
+  if (state === "LIVE") {
+    return "LIVE";
+  }
+
+  if (state === "SCHEDULED") {
+    return "SCHEDULED";
+  }
+
+  if (state === "PAYMENT_PENDING") {
+    return "PAYMENT_PENDING";
+  }
+
+  if (state === "DEFAULTED") {
+    return "DEFAULTED";
+  }
+
+  return "ENDED";
+}
+
+function deriveLotNumber(auctionId: string): string {
+  return `LOT-${auctionId.slice(0, 8).toUpperCase()}`;
+}
+
+function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
+  const brand = vehicle?.brand.trim().toLowerCase() ?? "";
+
+  if (brand.includes("bentley")) {
+    return ["/images/car-bentley.jpg"];
+  }
+
+  if (brand.includes("mercedes") || brand.includes("nissan") || brand.includes("gmc")) {
+    return ["/images/car-gwagon.jpg"];
+  }
+
+  if (brand.includes("mustang") || brand.includes("ford")) {
+    return ["/images/car-mustang.jpg"];
+  }
+
+  if (brand.includes("mclaren") || brand.includes("ferrari") || brand.includes("lamborghini")) {
+    return ["/images/car-mclaren.jpg"];
+  }
+
+  return [FALLBACK_LOT_IMAGES[index % FALLBACK_LOT_IMAGES.length] ?? "/vehicle-photo.svg"];
+}
+
+function buildSpecs(vehicle: DbVehicle | null): AuctionSpec[] {
+  if (!vehicle) {
+    return [];
+  }
+
+  return [
+    vehicle.fuelType ? { label: "Fuel", value: vehicle.fuelType } : null,
+    vehicle.transmission ? { label: "Transmission", value: vehicle.transmission } : null,
+    vehicle.bodyType ? { label: "Body Type", value: vehicle.bodyType } : null,
+    vehicle.regionSpec ? { label: "Region", value: vehicle.regionSpec } : null,
+    vehicle.condition ? { label: "Condition", value: vehicle.condition } : null,
+    vehicle.serviceHistory ? { label: "Service", value: vehicle.serviceHistory } : null,
+  ].filter((spec): spec is AuctionSpec => spec !== null);
+}
+
+function toAuctionLot({
+  auction,
+  vehicle,
+  company,
+  index,
+}: {
+  auction: DbAuction;
+  vehicle: DbVehicle | null;
+  company: DbCompany | null;
+  index: number;
+}): AuctionLot {
+  const title = `${vehicle?.brand ?? "Vehicle"} ${vehicle?.model ?? auction.id.slice(0, 6)}`.trim();
+  const status = normalizeAuctionStatus(auction.state);
+  const currentBidAed = Number(auction.currentPrice.toString());
+  const minimumStepAed = Number(auction.minIncrement.toString());
+  const sellerVerifiedYears = company
+    ? Math.max(1, new Date().getUTCFullYear() - company.createdAt.getUTCFullYear())
+    : 1;
+
+  return {
+    id: auction.id,
+    lotNumber: deriveLotNumber(auction.id),
+    title,
+    make: vehicle?.brand ?? "Unknown",
+    model: vehicle?.model ?? "Unknown",
+    year: vehicle?.year ?? new Date().getUTCFullYear(),
+    mileageKm: vehicle?.mileage ?? 0,
+    location: company?.country ?? "UAE",
+    seller: company?.name ?? "Verified Seller",
+    sellerVerifiedYears,
+    sellerCompletionRate: 96,
+    vin: vehicle?.vin ?? "PENDING",
+    status,
+    currentBidAed,
+    minimumStepAed,
+    endsAt: auction.endsAt.toISOString(),
+    startsAt: auction.startsAt.toISOString(),
+    listedAt: auction.createdAt.toISOString(),
+    depositRequiredAed: 5000,
+    depositReady: true,
+    watchlisted: false,
+    images: deriveLotImages(vehicle, index),
+    specs: buildSpecs(vehicle),
+    inspectionSummary:
+      status === "DEFAULTED"
+        ? "Winner defaulted under payment policy. Lot awaiting relist."
+        : "Operational fleet vehicle with verified ownership and service records.",
+    sellerNotes: vehicle?.sellerNotes ?? "Vehicle sourced from verified UAE fleet operator.",
+    documents: [{ id: `doc-${auction.id}`, label: "Inspection report", fileType: "PDF" }],
+  };
+}
+
+async function hydrateAuctionLots(auctions: DbAuction[]): Promise<AuctionLot[]> {
+  if (auctions.length === 0) {
+    return [];
+  }
+
+  const vehicleIds = [...new Set(auctions.map((auction) => auction.vehicleId))];
+  const companyIds = [...new Set(auctions.map((auction) => auction.sellerCompanyId))];
+
+  const [vehicles, companies] = await Promise.all([
+    prisma.vehicle.findMany({
+      where: {
+        id: {
+          in: vehicleIds,
+        },
+      },
+    }),
+    prisma.company.findMany({
+      where: {
+        id: {
+          in: companyIds,
+        },
+      },
+    }),
+  ]);
+
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+
+  return auctions.map((auction, index) =>
+    toAuctionLot({
+      auction,
+      vehicle: vehicleById.get(auction.vehicleId) ?? null,
+      company: companyById.get(auction.sellerCompanyId) ?? null,
+      index,
+    }),
+  );
+}
+
+export async function readHomepageLots(): Promise<AuctionLot[]> {
+  const auctions = await prisma.auction.findMany({
+    where: {
+      state: {
+        in: HOMEPAGE_AUCTION_STATES,
+      },
+    },
+    orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
+    take: 6,
+  });
+
+  const lots = await hydrateAuctionLots(auctions);
+  const statusRank: Record<AuctionStatus, number> = {
+    LIVE: 0,
+    SCHEDULED: 1,
+    PAYMENT_PENDING: 2,
+    DEFAULTED: 3,
+    ENDED: 4,
+  };
+
+  return lots.sort((left, right) => {
+    const rankDelta = statusRank[left.status] - statusRank[right.status];
+
+    if (rankDelta !== 0) {
+      return rankDelta;
+    }
+
+    return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
+  });
 }
 
 export async function readAuctionListing(): Promise<AuctionLot[]> {
-  await sleep(140);
+  const auctions = await prisma.auction.findMany({
+    where: {
+      state: {
+        in: LISTING_AUCTION_STATES,
+      },
+    },
+    orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
+  });
 
-  return AUCTIONS.map((lot) => ({ ...lot }));
+  return hydrateAuctionLots(auctions);
 }
 
 export async function readAuctionDetail(auctionId: string): Promise<AuctionLot | null> {
-  await sleep(85);
+  const auction = await prisma.auction.findUnique({
+    where: {
+      id: auctionId,
+    },
+  });
 
-  const lot = AUCTIONS.find((item) => item.id === auctionId) ?? null;
+  if (!auction) {
+    return null;
+  }
 
-  return lot ? { ...lot } : null;
+  const [vehicle, company] = await Promise.all([
+    prisma.vehicle.findUnique({
+      where: {
+        id: auction.vehicleId,
+      },
+    }),
+    prisma.company.findUnique({
+      where: {
+        id: auction.sellerCompanyId,
+      },
+    }),
+  ]);
+
+  return toAuctionLot({
+    auction,
+    vehicle,
+    company,
+    index: 0,
+  });
 }
 
 export async function readBidHistory(auctionId: string): Promise<AuctionBidHistoryEntry[]> {
