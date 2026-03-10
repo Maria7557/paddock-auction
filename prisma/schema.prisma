@@ -18,6 +18,7 @@ model User {
   createdAt    DateTime      @default(now())
   wallet       Wallet?
   companyUsers CompanyUser[]
+  savedLots    SavedLot[]
 }
 
 model Wallet {
@@ -101,6 +102,7 @@ model Vehicle {
   condition      String?
   serviceHistory String?
   sellerNotes    String?
+  auctions       Auction[]
 }
 
 model Auction {
@@ -126,6 +128,8 @@ model Auction {
   invoice         Invoice?
   paymentDeadlines PaymentDeadline[]
   depositLocks    DepositLock[]
+  vehicle         Vehicle                  @relation(fields: [vehicleId], references: [id])
+  savedBy         SavedLot[]
 
   @@index([state, endsAt], map: "auctions_state_ends_at_idx")
   @@map("auctions")
@@ -160,6 +164,18 @@ model Bid {
   @@unique([auctionId, sequenceNo], map: "bids_auction_sequence_no_key")
   @@index([auctionId, createdAt], map: "bids_auction_created_at_idx")
   @@map("bids")
+}
+
+model SavedLot {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  auctionId String   @map("auction_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, auctionId], map: "saved_lots_user_auction_key")
+  @@map("saved_lots")
 }
 
 model BidRequest {
