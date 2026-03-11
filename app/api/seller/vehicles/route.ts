@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 
-import { AuctionState, Prisma } from "@prisma/client";
+import { AuctionState, Prisma, VehicleMediaType } from "@prisma/client";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -18,16 +18,19 @@ const createSellerVehicleSchema = z.object({
   bodyType: z.string().trim().min(1),
   fuelType: z.string().trim().min(1),
   transmission: z.string().trim().min(1),
+  airbags: z.enum(["NO_AIRBAGS", "2", "4", "6", "8", "10_PLUS", "UNKNOWN"]),
   color: z.string().trim().min(1),
   mileageKm: z.coerce.number().int().nonnegative(),
   condition: z.string().trim().min(1),
   serviceHistory: z.string().trim().min(1),
   description: z.string().trim().optional(),
-  sellerNotes: z.string().trim().optional(),
+  damageMap: z.record(z.string(), z.enum(["MINOR", "MAJOR"])).optional(),
+  photoUrls: z.array(z.string().trim().url()).min(10),
+  mulkiyaFrontUrl: z.string().trim().url(),
+  mulkiyaBackUrl: z.string().trim().url(),
   startingPriceAed: z.coerce.number().positive(),
-  reservePriceAed: z.coerce.number().positive().optional(),
-  startsAt: z.string().datetime(),
-  endsAt: z.string().datetime(),
+  buyNowPriceAed: z.coerce.number().positive().optional(),
+  inspectionDropoffDate: z.string().trim().min(1),
 });
 
 type VehicleListItem = {
@@ -50,6 +53,17 @@ type VehicleListItem = {
 
 function decimalToNumber(value: Prisma.Decimal): number {
   return Number(value.toString());
+}
+
+function toUtcDate(value: string): Date | null {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addDays(value: Date, days: number): Date {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
 }
 
 function matchesStatus(state: AuctionState, status: string): boolean {
@@ -116,7 +130,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     },
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     include: {
-      vehicle: true,
+      vehicle: {
+        include: {
+          media: {
+            where: {
+              type: "PHOTO",
+            },
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              url: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -140,13 +166,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       year: vehicle.year,
       vin: vehicle.vin,
       mileageKm: vehicle.mileage,
-      images: vehicle.images,
+      images: vehicle.media.length > 0 ? vehicle.media.map((item) => item.url) : vehicle.images,
       latestAuction: {
         id: auction.id,
         state: auction.state,
         createdAt: auction.createdAt.toISOString(),
-        startsAt: auction.startsAt.toISOString(),
-        endsAt: auction.endsAt.toISOString(),
+        startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
+        endsAt: (auction.auctionEndsAt ?? auction.endsAt).toISOString(),
         currentBidAed: decimalToNumber(auction.currentPrice),
       },
     });
@@ -206,18 +232,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const payload = parsed.data;
-  const startsAt = new Date(payload.startsAt);
-  const endsAt = new Date(payload.endsAt);
+  const dropoffDate = toUtcDate(payload.inspectionDropoffDate);
 
-  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+  if (!dropoffDate) {
     return NextResponse.json(
       {
-        error: "INVALID_AUCTION_WINDOW",
-        message: "endsAt must be after startsAt",
+        error: "INVALID_INSPECTION_DATE",
+        message: "inspectionDropoffDate is invalid",
       },
       { status: 400 },
     );
   }
+
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const maxDate = addDays(tomorrow, 89);
+
+  if (dropoffDate < tomorrow || dropoffDate > maxDate) {
+    return NextResponse.json(
+      {
+        error: "INVALID_INSPECTION_DATE_RANGE",
+        message: "inspectionDropoffDate must be between tomorrow and 90 days from today",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (payload.buyNowPriceAed !== undefined && payload.buyNowPriceAed <= payload.startingPriceAed) {
+    return NextResponse.json(
+      {
+        error: "INVALID_BUY_NOW",
+        message: "buyNowPriceAed must be greater than startingPriceAed",
+      },
+      { status: 400 },
+    );
+  }
+
+  const viewingEndsAt = addDays(dropoffDate, 2);
+  const auctionStartsAt = addDays(dropoffDate, 2);
+  const auctionEndsAt = addDays(dropoffDate, 3);
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -233,11 +288,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           fuelType: payload.fuelType,
           transmission: payload.transmission,
           exteriorColor: payload.color,
+          airbags: payload.airbags,
           condition: payload.condition,
           serviceHistory: payload.serviceHistory,
           description: payload.description,
-          sellerNotes: payload.sellerNotes,
+          damageMap: payload.damageMap,
+          images: payload.photoUrls,
         },
+      });
+
+      await tx.vehicleMedia.createMany({
+        data: [
+          ...payload.photoUrls.map((url, index) => ({
+            vehicleId: vehicle.id,
+            url,
+            type: VehicleMediaType.PHOTO,
+            sortOrder: index,
+          })),
+          {
+            vehicleId: vehicle.id,
+            url: payload.mulkiyaFrontUrl,
+            type: VehicleMediaType.MULKIYA_FRONT,
+            sortOrder: 0,
+          },
+          {
+            vehicleId: vehicle.id,
+            url: payload.mulkiyaBackUrl,
+            type: VehicleMediaType.MULKIYA_BACK,
+            sortOrder: 0,
+          },
+        ],
       });
 
       const auction = await tx.auction.create({
@@ -245,11 +325,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           vehicleId: vehicle.id,
           sellerCompanyId: auth.companyId,
           state: "DRAFT",
-          startsAt,
-          endsAt,
+          startsAt: auctionStartsAt,
+          endsAt: auctionEndsAt,
+          inspectionDropoffDate: dropoffDate,
+          viewingEndsAt,
+          auctionStartsAt,
+          auctionEndsAt,
           startingPrice: payload.startingPriceAed,
           currentPrice: payload.startingPriceAed,
-          buyNowPrice: payload.reservePriceAed,
+          buyNowPrice: payload.buyNowPriceAed,
           minIncrement: 500,
         },
       });

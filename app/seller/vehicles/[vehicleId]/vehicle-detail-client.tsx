@@ -20,21 +20,29 @@ type VehicleDetailResponse = {
     bodyType: string | null;
     fuelType: string | null;
     transmission: string | null;
+    airbags: string | null;
     color: string | null;
     condition: string | null;
     serviceHistory: string | null;
     description: string | null;
-    sellerNotes: string | null;
+    damageMap: Record<string, "MINOR" | "MAJOR">;
     images: string[];
+    photoUrls: string[];
+    mulkiyaFrontUrl: string | null;
+    mulkiyaBackUrl: string | null;
   };
   auction: {
     id: string;
     state: string;
     startingPriceAed: number;
-    reservePriceAed: number;
+    buyNowPriceAed: number;
     currentBidAed: number;
     startsAt: string;
     endsAt: string;
+    inspectionDropoffDate: string | null;
+    viewingEndsAt: string | null;
+    auctionStartsAt: string | null;
+    auctionEndsAt: string | null;
     bidsCount: number;
   };
 };
@@ -53,16 +61,19 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     bodyType: data.vehicle.bodyType ?? "",
     fuelType: data.vehicle.fuelType ?? "",
     transmission: data.vehicle.transmission ?? "",
+    airbags: data.vehicle.airbags ?? "UNKNOWN",
     color: data.vehicle.color ?? "",
     mileageKm: String(data.vehicle.mileageKm),
     condition: data.vehicle.condition ?? "",
     serviceHistory: data.vehicle.serviceHistory ?? "",
     description: data.vehicle.description ?? "",
-    sellerNotes: data.vehicle.sellerNotes ?? "",
+    damageMap: data.vehicle.damageMap ?? {},
+    photoUrls: data.vehicle.photoUrls ?? data.vehicle.images ?? [],
+    mulkiyaFrontUrl: data.vehicle.mulkiyaFrontUrl ?? "",
+    mulkiyaBackUrl: data.vehicle.mulkiyaBackUrl ?? "",
     startingPriceAed: String(data.auction.startingPriceAed),
-    reservePriceAed: data.auction.reservePriceAed ? String(data.auction.reservePriceAed) : "",
-    startsAt: data.auction.startsAt.slice(0, 16),
-    endsAt: data.auction.endsAt.slice(0, 16),
+    buyNowPriceAed: data.auction.buyNowPriceAed ? String(data.auction.buyNowPriceAed) : "",
+    inspectionDropoffDate: data.auction.inspectionDropoffDate ? data.auction.inspectionDropoffDate.slice(0, 10) : "",
   };
 }
 
@@ -124,12 +135,13 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
         bodyType: values.bodyType,
         fuelType: values.fuelType,
         transmission: values.transmission,
+        airbags: values.airbags,
         color: values.color,
         mileageKm: Number(values.mileageKm),
         condition: values.condition,
         serviceHistory: values.serviceHistory,
         description: values.description,
-        sellerNotes: values.sellerNotes,
+        damageMap: values.damageMap,
       }),
     });
 
@@ -225,6 +237,10 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
             <strong>{data.vehicle.transmission ?? "-"}</strong>
           </article>
           <article>
+            <p>Airbags</p>
+            <strong>{data.vehicle.airbags ?? "-"}</strong>
+          </article>
+          <article>
             <p>Mileage</p>
             <strong>{data.vehicle.mileageKm.toLocaleString("en-AE")} km</strong>
           </article>
@@ -257,15 +273,23 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
             <strong>{formatAed(data.auction.startingPriceAed)}</strong>
           </article>
           <article>
+            <p>Buy Now Price</p>
+            <strong>{data.auction.buyNowPriceAed ? formatAed(data.auction.buyNowPriceAed) : "-"}</strong>
+          </article>
+          <article>
             <p>Current Bid</p>
             <strong>{formatAed(data.auction.currentBidAed)}</strong>
           </article>
           <article>
-            <p>Starts At</p>
+            <p>Inspection Drop-off</p>
+            <strong>{data.auction.inspectionDropoffDate ? formatSellerDateTime(data.auction.inspectionDropoffDate) : "-"}</strong>
+          </article>
+          <article>
+            <p>Auction Starts</p>
             <strong>{formatSellerDateTime(data.auction.startsAt)}</strong>
           </article>
           <article>
-            <p>Ends At</p>
+            <p>Auction Ends</p>
             <strong>{formatSellerDateTime(data.auction.endsAt)}</strong>
           </article>
           <article>

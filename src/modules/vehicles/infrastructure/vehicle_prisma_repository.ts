@@ -42,7 +42,6 @@ function mapVehicle(vehicle: {
   regionSpec: string | null;
   condition: string | null;
   serviceHistory: string | null;
-  sellerNotes: string | null;
 }): Vehicle {
   return {
     id: vehicle.id,
@@ -57,7 +56,6 @@ function mapVehicle(vehicle: {
     regionSpec: vehicle.regionSpec,
     condition: vehicle.condition,
     serviceHistory: vehicle.serviceHistory,
-    sellerNotes: vehicle.sellerNotes,
   };
 }
 
@@ -78,7 +76,6 @@ export function createVehicleRepository(dbClient: VehicleDbClient = prisma): Veh
             regionSpec: input.regionSpec,
             condition: input.condition,
             serviceHistory: input.serviceHistory,
-            sellerNotes: input.sellerNotes,
           },
         });
 

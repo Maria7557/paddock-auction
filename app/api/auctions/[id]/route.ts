@@ -149,7 +149,7 @@ export async function GET(
           regionSpec: vehicle.regionSpec,
           condition: vehicle.condition,
           serviceHistory: vehicle.serviceHistory,
-          sellerNotes: vehicle.sellerNotes,
+          sellerNotes: vehicle.description ?? null,
           description: vehicle.description ?? null,
           engine: vehicle.engine ?? null,
           driveType: vehicle.driveType ?? null,

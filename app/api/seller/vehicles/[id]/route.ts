@@ -22,12 +22,13 @@ const updateVehicleSchema = z.object({
   bodyType: z.string().trim().min(1).optional(),
   fuelType: z.string().trim().min(1).optional(),
   transmission: z.string().trim().min(1).optional(),
+  airbags: z.enum(["NO_AIRBAGS", "2", "4", "6", "8", "10_PLUS", "UNKNOWN"]).optional(),
   color: z.string().trim().min(1).optional(),
   mileageKm: z.coerce.number().int().nonnegative().optional(),
   condition: z.string().trim().min(1).optional(),
   serviceHistory: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
-  sellerNotes: z.string().trim().optional(),
+  damageMap: z.record(z.string(), z.enum(["MINOR", "MAJOR"])).optional(),
 });
 
 function decimalToNumber(value: Prisma.Decimal | null): number {
@@ -46,7 +47,18 @@ async function getCompanyAuctionForVehicle(companyId: string, vehicleId: string)
     },
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     include: {
-      vehicle: true,
+      vehicle: {
+        include: {
+          media: {
+            orderBy: [{ type: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              type: true,
+              url: true,
+              sortOrder: true,
+            },
+          },
+        },
+      },
       _count: {
         select: {
           bids: true,
@@ -82,6 +94,13 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
     },
   });
 
+  const photoUrls = auction.vehicle.media
+    .filter((item) => item.type === "PHOTO")
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item) => item.url);
+  const mulkiyaFrontUrl = auction.vehicle.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null;
+  const mulkiyaBackUrl = auction.vehicle.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null;
+
   return NextResponse.json({
     vehicle: {
       id: auction.vehicle.id,
@@ -94,21 +113,29 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
       bodyType: auction.vehicle.bodyType,
       fuelType: auction.vehicle.fuelType,
       transmission: auction.vehicle.transmission,
+      airbags: auction.vehicle.airbags,
       color: auction.vehicle.exteriorColor,
       condition: auction.vehicle.condition,
       serviceHistory: auction.vehicle.serviceHistory,
       description: auction.vehicle.description,
-      sellerNotes: auction.vehicle.sellerNotes,
-      images: auction.vehicle.images,
+      damageMap: auction.vehicle.damageMap ?? {},
+      images: photoUrls.length > 0 ? photoUrls : auction.vehicle.images,
+      photoUrls,
+      mulkiyaFrontUrl,
+      mulkiyaBackUrl,
     },
     auction: {
       id: auction.id,
       state: auction.state,
       startingPriceAed: decimalToNumber(auction.startingPrice),
-      reservePriceAed: decimalToNumber(auction.buyNowPrice),
+      buyNowPriceAed: decimalToNumber(auction.buyNowPrice),
       currentBidAed: topBid ? decimalToNumber(topBid.amount) : decimalToNumber(auction.currentPrice),
-      startsAt: auction.startsAt.toISOString(),
-      endsAt: auction.endsAt.toISOString(),
+      startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
+      endsAt: (auction.auctionEndsAt ?? auction.endsAt).toISOString(),
+      inspectionDropoffDate: auction.inspectionDropoffDate?.toISOString() ?? null,
+      viewingEndsAt: auction.viewingEndsAt?.toISOString() ?? null,
+      auctionStartsAt: auction.auctionStartsAt?.toISOString() ?? null,
+      auctionEndsAt: auction.auctionEndsAt?.toISOString() ?? null,
       bidsCount: auction._count.bids,
     },
   });
@@ -177,12 +204,13 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
         bodyType: payload.bodyType,
         fuelType: payload.fuelType,
         transmission: payload.transmission,
+        airbags: payload.airbags,
         mileage: payload.mileageKm,
         exteriorColor: payload.color,
         condition: payload.condition,
         serviceHistory: payload.serviceHistory,
         description: payload.description,
-        sellerNotes: payload.sellerNotes,
+        damageMap: payload.damageMap,
       },
     });
 
@@ -239,6 +267,12 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
   }
 
   await prisma.$transaction(async (tx) => {
+    await tx.vehicleMedia.deleteMany({
+      where: {
+        vehicleId: id,
+      },
+    });
+
     await tx.auction.deleteMany({
       where: {
         sellerCompanyId: auth.companyId,

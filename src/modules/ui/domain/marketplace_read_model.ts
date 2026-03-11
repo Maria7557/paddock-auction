@@ -847,7 +847,7 @@ function toAuctionLot({
       status === "DEFAULTED"
         ? "Winner defaulted under payment policy. Lot awaiting relist."
         : "Operational fleet vehicle with verified ownership and service records.",
-    sellerNotes: vehicle?.sellerNotes ?? "Vehicle sourced from verified UAE fleet operator.",
+    sellerNotes: vehicle?.description ?? "Vehicle sourced from verified UAE fleet operator.",
     documents: [{ id: `doc-${auction.id}`, label: "Inspection report", fileType: "PDF" }],
   };
 }

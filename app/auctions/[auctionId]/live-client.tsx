@@ -36,7 +36,6 @@ type VehicleSpec = {
   color?: string | null;
   condition?: string | null;
   description?: string | null;
-  sellerNotes?: string | null;
 };
 
 type LiveClientProps = {
@@ -378,14 +377,6 @@ function VehicleSpecs({ vehicle }: { vehicle: VehicleSpec }) {
             Description
           </p>
           <p>{vehicle.description}</p>
-        </div>
-      )}
-      {vehicle.sellerNotes && (
-        <div className="spec-description" style={{ marginTop: "12px" }}>
-          <p className="spec-label" style={{ marginBottom: "6px" }}>
-            Seller Notes
-          </p>
-          <p style={{ color: "var(--ink-secondary)" }}>{vehicle.sellerNotes}</p>
         </div>
       )}
     </div>

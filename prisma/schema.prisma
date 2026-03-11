@@ -59,10 +59,10 @@ model DepositLock {
   auction          Auction           @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   wallet           Wallet?           @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@map("deposit_locks")
   @@index([auctionId, companyId, status], map: "deposit_locks_lookup_idx")
   @@index([walletId], map: "depositlock_wallet_idx")
   @@index([auctionId, walletId, status], map: "deposit_locks_wallet_lookup_idx")
+  @@map("deposit_locks")
 }
 
 model Company {
@@ -89,61 +89,80 @@ model CompanyUser {
 }
 
 model Vehicle {
-  id             String   @id @default(uuid())
+  id             String         @id @default(uuid())
   brand          String
   model          String
   year           Int
   mileage        Int
-  vin            String   @unique
-  marketPrice    Decimal? @map("market_price") @db.Decimal(18, 2)
+  vin            String         @unique
+  marketPrice    Decimal?       @map("market_price") @db.Decimal(18, 2)
   fuelType       String?
   transmission   String?
   bodyType       String?
   regionSpec     String?
   condition      String?
   serviceHistory String?
-  sellerNotes    String?
   description    String?
   engine         String?
-  driveType      String?  @map("drive_type")
-  exteriorColor  String?  @map("exterior_color")
-  interiorColor  String?  @map("interior_color")
-  airbags        String?  @default("Intact")
-  damage         String?  @default("None")
-  images         String[] @default([])
+  driveType      String?        @map("drive_type")
+  exteriorColor  String?        @map("exterior_color")
+  interiorColor  String?        @map("interior_color")
+  airbags        String?
+  damage         String?        @default("None")
+  damageMap      Json?          @map("damage_map")
+  images         String[]       @default([])
+  media          VehicleMedia[]
   auctions       Auction[]
 }
 
 model Auction {
-  id              String                   @id @default(uuid())
-  vehicleId       String                   @map("vehicle_id")
-  sellerCompanyId String                   @map("seller_company_id")
-  state           AuctionState             @default(DRAFT)
-  version         Int                      @default(0)
-  startsAt        DateTime                 @map("starts_at") @db.Timestamptz(6)
-  endsAt          DateTime                 @map("ends_at") @db.Timestamptz(6)
-  extensionCount  Int                      @default(0) @map("extension_count")
-  highestBidId    String?                  @map("highest_bid_id")
-  winnerCompanyId String?                  @map("winner_company_id")
-  closedAt        DateTime?                @map("closed_at") @db.Timestamptz(6)
-  currentPrice    Decimal                  @default(0) @map("current_price") @db.Decimal(18, 2)
-  minIncrement    Decimal                  @default(1) @map("min_increment") @db.Decimal(18, 2)
-  startingPrice   Decimal                  @default(0) @map("starting_price") @db.Decimal(18, 2)
-  buyNowPrice     Decimal?                 @map("buy_now_price") @db.Decimal(18, 2)
-  lastBidSequence Int                      @default(0) @map("last_bid_sequence")
-  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
-  transitions     AuctionStateTransition[]
-  bids            Bid[]
-  bidRequests     BidRequest[]
-  invoice         Invoice?
-  paymentDeadlines PaymentDeadline[]
-  depositLocks    DepositLock[]
-  vehicle         Vehicle                  @relation(fields: [vehicleId], references: [id])
-  savedBy         SavedLot[]
+  id                    String                   @id @default(uuid())
+  vehicleId             String                   @map("vehicle_id")
+  sellerCompanyId       String                   @map("seller_company_id")
+  state                 AuctionState             @default(DRAFT)
+  version               Int                      @default(0)
+  startsAt              DateTime                 @map("starts_at") @db.Timestamptz(6)
+  endsAt                DateTime                 @map("ends_at") @db.Timestamptz(6)
+  inspectionDropoffDate DateTime?                @map("inspection_dropoff_date") @db.Timestamptz(6)
+  viewingEndsAt         DateTime?                @map("viewing_ends_at") @db.Timestamptz(6)
+  auctionStartsAt       DateTime?                @map("auction_starts_at") @db.Timestamptz(6)
+  auctionEndsAt         DateTime?                @map("auction_ends_at") @db.Timestamptz(6)
+  extensionCount        Int                      @default(0) @map("extension_count")
+  highestBidId          String?                  @map("highest_bid_id")
+  winnerCompanyId       String?                  @map("winner_company_id")
+  closedAt              DateTime?                @map("closed_at") @db.Timestamptz(6)
+  currentPrice          Decimal                  @default(0) @map("current_price") @db.Decimal(18, 2)
+  minIncrement          Decimal                  @default(1) @map("min_increment") @db.Decimal(18, 2)
+  startingPrice         Decimal                  @default(0) @map("starting_price") @db.Decimal(18, 2)
+  buyNowPrice           Decimal?                 @map("buy_now_price") @db.Decimal(18, 2)
+  lastBidSequence       Int                      @default(0) @map("last_bid_sequence")
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+  transitions           AuctionStateTransition[]
+  bids                  Bid[]
+  bidRequests           BidRequest[]
+  invoice               Invoice?
+  paymentDeadlines      PaymentDeadline[]
+  depositLocks          DepositLock[]
+  vehicle               Vehicle                  @relation(fields: [vehicleId], references: [id])
+  savedBy               SavedLot[]
 
   @@index([state, endsAt], map: "auctions_state_ends_at_idx")
   @@map("auctions")
+}
+
+model VehicleMedia {
+  id        String           @id @default(uuid())
+  vehicleId String           @map("vehicle_id")
+  url       String
+  type      VehicleMediaType
+  sortOrder Int              @default(0) @map("sort_order")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  vehicle   Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, type], map: "vehicle_media_vehicle_type_idx")
+  @@index([vehicleId, sortOrder], map: "vehicle_media_vehicle_sort_idx")
+  @@map("vehicle_media")
 }
 
 model AuctionStateTransition {
@@ -162,14 +181,14 @@ model AuctionStateTransition {
 }
 
 model Bid {
-  id         String     @id @default(uuid())
-  auctionId  String     @map("auction_id")
-  companyId  String     @map("company_id")
-  userId     String     @map("user_id")
-  amount     Decimal    @db.Decimal(18, 2)
-  sequenceNo Int        @map("sequence_no")
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  auction    Auction    @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id         String       @id @default(uuid())
+  auctionId  String       @map("auction_id")
+  companyId  String       @map("company_id")
+  userId     String       @map("user_id")
+  amount     Decimal      @db.Decimal(18, 2)
+  sequenceNo Int          @map("sequence_no")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  auction    Auction      @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   requests   BidRequest[]
 
   @@unique([auctionId, sequenceNo], map: "bids_auction_sequence_no_key")
@@ -210,22 +229,22 @@ model BidRequest {
 }
 
 model Invoice {
-  id              String         @id @default(uuid())
-  auctionId       String         @unique(map: "invoices_auction_id_key") @map("auction_id")
-  buyerCompanyId  String         @map("buyer_company_id")
-  sellerCompanyId String         @map("seller_company_id")
-  subtotal        Decimal        @db.Decimal(18, 2)
-  commission      Decimal        @db.Decimal(18, 2)
-  vat             Decimal        @db.Decimal(18, 2)
-  total           Decimal        @db.Decimal(18, 2)
+  id              String           @id @default(uuid())
+  auctionId       String           @unique(map: "invoices_auction_id_key") @map("auction_id")
+  buyerCompanyId  String           @map("buyer_company_id")
+  sellerCompanyId String           @map("seller_company_id")
+  subtotal        Decimal          @db.Decimal(18, 2)
+  commission      Decimal          @db.Decimal(18, 2)
+  vat             Decimal          @db.Decimal(18, 2)
+  total           Decimal          @db.Decimal(18, 2)
   currency        String
-  status          InvoiceStatus  @default(ISSUED)
-  issuedAt        DateTime       @default(now()) @map("issued_at") @db.Timestamptz(6)
-  dueAt           DateTime       @map("due_at") @db.Timestamptz(6)
-  paidAt          DateTime?      @map("paid_at") @db.Timestamptz(6)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  auction         Auction        @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  status          InvoiceStatus    @default(ISSUED)
+  issuedAt        DateTime         @default(now()) @map("issued_at") @db.Timestamptz(6)
+  dueAt           DateTime         @map("due_at") @db.Timestamptz(6)
+  paidAt          DateTime?        @map("paid_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  auction         Auction          @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   payments        Payment[]
   financialEvents FinancialEvent[]
 
@@ -233,19 +252,19 @@ model Invoice {
 }
 
 model Payment {
-  id                    String          @id @default(uuid())
-  invoiceId             String          @map("invoice_id")
-  status                PaymentStatus   @default(PENDING)
-  idempotencyKey        String?         @map("idempotency_key")
-  stripePaymentIntentId String?         @unique(map: "payments_stripe_payment_intent_id_key") @map("stripe_payment_intent_id")
-  stripeChargeId        String?         @map("stripe_charge_id")
-  amount                Decimal         @db.Decimal(18, 2)
+  id                    String           @id @default(uuid())
+  invoiceId             String           @map("invoice_id")
+  status                PaymentStatus    @default(PENDING)
+  idempotencyKey        String?          @map("idempotency_key")
+  stripePaymentIntentId String?          @unique(map: "payments_stripe_payment_intent_id_key") @map("stripe_payment_intent_id")
+  stripeChargeId        String?          @map("stripe_charge_id")
+  amount                Decimal          @db.Decimal(18, 2)
   currency              String
-  failureReasonCode     String?         @map("failure_reason_code")
-  lastEventAt           DateTime?       @map("last_event_at") @db.Timestamptz(6)
-  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
-  invoice               Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  failureReasonCode     String?          @map("failure_reason_code")
+  lastEventAt           DateTime?        @map("last_event_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  invoice               Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   financialEvents       FinancialEvent[]
 
   @@unique([invoiceId, idempotencyKey], map: "payments_invoice_idempotency_key_unique")
@@ -281,20 +300,20 @@ model PaymentDeadline {
 }
 
 model FinancialEvent {
-  id         String    @id @default(uuid())
-  eventType  String    @map("event_type")
-  sourceType String    @map("source_type")
-  sourceId   String    @map("source_id")
-  auctionId  String?   @map("auction_id")
-  companyId  String?   @map("company_id")
-  invoiceId  String?   @map("invoice_id")
-  paymentId  String?   @map("payment_id")
-  amount     Decimal?  @db.Decimal(18, 2)
+  id         String   @id @default(uuid())
+  eventType  String   @map("event_type")
+  sourceType String   @map("source_type")
+  sourceId   String   @map("source_id")
+  auctionId  String?  @map("auction_id")
+  companyId  String?  @map("company_id")
+  invoiceId  String?  @map("invoice_id")
+  paymentId  String?  @map("payment_id")
+  amount     Decimal? @db.Decimal(18, 2)
   currency   String?
-  payload    Json      @default(dbgenerated("'{}'::jsonb"))
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  payment    Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  payload    Json     @default(dbgenerated("'{}'::jsonb"))
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  payment    Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([sourceType, sourceId], map: "financial_events_source_type_source_id_key")
   @@index([auctionId, createdAt], map: "financial_events_auction_created_at_idx")
@@ -318,17 +337,17 @@ model IdempotencyKey {
 }
 
 model OutboxEvent {
-  id            String           @id @default(uuid())
-  aggregateType String           @map("aggregate_type")
-  aggregateId   String           @map("aggregate_id")
-  eventType     String           @map("event_type")
-  partitionKey  String           @map("partition_key")
+  id            String            @id @default(uuid())
+  aggregateType String            @map("aggregate_type")
+  aggregateId   String            @map("aggregate_id")
+  eventType     String            @map("event_type")
+  partitionKey  String            @map("partition_key")
   payload       Json
   status        OutboxEventStatus @default(PENDING)
-  attempts      Int              @default(0)
-  nextAttemptAt DateTime?        @map("next_attempt_at")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  publishedAt   DateTime?        @map("published_at")
+  attempts      Int               @default(0)
+  nextAttemptAt DateTime?         @map("next_attempt_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  publishedAt   DateTime?         @map("published_at")
 
   @@index([status, nextAttemptAt, id])
   @@map("outbox_events")
@@ -469,4 +488,10 @@ enum DepositLockStatus {
   ACTIVE
   RELEASED
   BURNED
+}
+
+enum VehicleMediaType {
+  PHOTO
+  MULKIYA_FRONT
+  MULKIYA_BACK
 }

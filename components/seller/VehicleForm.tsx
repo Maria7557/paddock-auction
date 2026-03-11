@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   BODY_TYPES,
@@ -14,6 +14,32 @@ import {
   YEARS,
 } from "@/src/lib/vehicle_data";
 
+import { type DamageMapValue, DamageDiagram } from "@/components/seller/DamageDiagram";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const AIRBAG_OPTIONS = [
+  { value: "NO_AIRBAGS", label: "No airbags" },
+  { value: "2", label: "2 — Driver + Passenger" },
+  { value: "4", label: "4 — Front + Side" },
+  { value: "6", label: "6 — Front, Side + Curtain" },
+  { value: "8", label: "8 — Full set" },
+  { value: "10_PLUS", label: "10+ — Full + Knee airbags" },
+  { value: "UNKNOWN", label: "Unknown" },
+] as const;
+
+type UploadPhoto = {
+  file: File;
+  preview: string;
+};
+
+type UploadMediaResponse = {
+  photos: string[];
+  mulkiyaFrontUrl: string;
+  mulkiyaBackUrl: string;
+};
+
 export type SellerVehicleFormValues = {
   brand: string;
   model: string;
@@ -23,16 +49,19 @@ export type SellerVehicleFormValues = {
   bodyType: string;
   fuelType: string;
   transmission: string;
+  airbags: string;
   color: string;
   mileageKm: string;
   condition: string;
   serviceHistory: string;
   description: string;
-  sellerNotes: string;
+  damageMap: DamageMapValue;
+  photoUrls: string[];
+  mulkiyaFrontUrl: string;
+  mulkiyaBackUrl: string;
   startingPriceAed: string;
-  reservePriceAed: string;
-  startsAt: string;
-  endsAt: string;
+  buyNowPriceAed: string;
+  inspectionDropoffDate: string;
 };
 
 export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
@@ -44,16 +73,19 @@ export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
   bodyType: "",
   fuelType: "",
   transmission: "",
+  airbags: "",
   color: "",
   mileageKm: "",
   condition: "",
   serviceHistory: "",
   description: "",
-  sellerNotes: "",
+  damageMap: {},
+  photoUrls: [],
+  mulkiyaFrontUrl: "",
+  mulkiyaBackUrl: "",
   startingPriceAed: "",
-  reservePriceAed: "",
-  startsAt: "",
-  endsAt: "",
+  buyNowPriceAed: "",
+  inspectionDropoffDate: "",
 };
 
 type VehicleFormProps = {
@@ -91,6 +123,43 @@ function findUaeBrandKey(input: string): string | null {
   return null;
 }
 
+function toIsoDate(value: Date): string {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(value: Date, days: number): Date {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatTimelineDate(value: Date): string {
+  return new Intl.DateTimeFormat("en-AE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(value);
+}
+
+function isValidInspectionDate(value: string, tomorrowISO: string, maxDateISO: string): boolean {
+  return value >= tomorrowISO && value <= maxDateISO;
+}
+
+function validateUploadFile(file: File, allowedTypes: Set<string>): string | null {
+  if (!allowedTypes.has(file.type)) {
+    return "Invalid file type. Allowed: JPG, PNG (Mulkiya also supports PDF).";
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return "Each file must be 10MB or less.";
+  }
+
+  return null;
+}
+
 export function VehicleForm({
   initialValues,
   submitLabel,
@@ -102,11 +171,23 @@ export function VehicleForm({
   const [values, setValues] = useState<SellerVehicleFormValues>({
     ...EMPTY_VEHICLE_FORM,
     ...initialValues,
+    damageMap: initialValues?.damageMap ?? EMPTY_VEHICLE_FORM.damageMap,
+    photoUrls: initialValues?.photoUrls ?? EMPTY_VEHICLE_FORM.photoUrls,
   });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [nhtsaModels, setNhtsaModels] = useState<string[]>([]);
   const [loadingNhtsa, setLoadingNhtsa] = useState(false);
+  const [photos, setPhotos] = useState<UploadPhoto[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [mulkiyaFront, setMulkiyaFront] = useState<File | null>(null);
+  const [mulkiyaBack, setMulkiyaBack] = useState<File | null>(null);
+  const photosRef = useRef<UploadPhoto[]>([]);
+
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const mulkiyaFrontRef = useRef<HTMLInputElement | null>(null);
+  const mulkiyaBackRef = useRef<HTMLInputElement | null>(null);
 
   const uaeBrands = useMemo(() => Object.keys(UAE_BRANDS).map((key) => toBrandLabel(key)), []);
 
@@ -120,11 +201,143 @@ export function VehicleForm({
     return UAE_BRANDS[matchedUaeBrandKey] ?? [];
   }, [matchedUaeBrandKey]);
 
+  const tomorrowISO = useMemo(() => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + 1);
+    return toIsoDate(date);
+  }, []);
+
+  const maxDateISO = useMemo(() => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + 90);
+    return toIsoDate(date);
+  }, []);
+
+  const selectedDropoffDate = useMemo(() => {
+    if (!values.inspectionDropoffDate) {
+      return null;
+    }
+
+    const date = new Date(`${values.inspectionDropoffDate}T00:00:00.000Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }, [values.inspectionDropoffDate]);
+
+  const mulkiyaFrontPreview = useMemo(() => {
+    if (!mulkiyaFront || mulkiyaFront.type === "application/pdf") {
+      return null;
+    }
+
+    return URL.createObjectURL(mulkiyaFront);
+  }, [mulkiyaFront]);
+
+  const mulkiyaBackPreview = useMemo(() => {
+    if (!mulkiyaBack || mulkiyaBack.type === "application/pdf") {
+      return null;
+    }
+
+    return URL.createObjectURL(mulkiyaBack);
+  }, [mulkiyaBack]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    return () => {
+      for (const photo of photosRef.current) {
+        URL.revokeObjectURL(photo.preview);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mulkiyaFrontPreview) {
+        URL.revokeObjectURL(mulkiyaFrontPreview);
+      }
+    };
+  }, [mulkiyaFrontPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (mulkiyaBackPreview) {
+        URL.revokeObjectURL(mulkiyaBackPreview);
+      }
+    };
+  }, [mulkiyaBackPreview]);
+
   function updateField<K extends keyof SellerVehicleFormValues>(key: K, value: SellerVehicleFormValues[K]): void {
     setValues((previous) => ({
       ...previous,
       [key]: value,
     }));
+  }
+
+  function removePhoto(index: number): void {
+    setPhotos((previous) => {
+      const target = previous[index];
+
+      if (target) {
+        URL.revokeObjectURL(target.preview);
+      }
+
+      return previous.filter((_, i) => i !== index);
+    });
+  }
+
+  function addPhotoFiles(fileList: FileList | File[]): void {
+    const files = Array.from(fileList);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const nextFiles: UploadPhoto[] = [];
+
+    for (const file of files) {
+      const validationError = validateUploadFile(file, IMAGE_MIME_TYPES);
+
+      if (validationError) {
+        setSubmitError(validationError);
+        continue;
+      }
+
+      nextFiles.push({
+        file,
+        preview: URL.createObjectURL(file),
+      });
+    }
+
+    if (nextFiles.length > 0) {
+      setPhotos((previous) => [...previous, ...nextFiles]);
+      setSubmitError(null);
+    }
+  }
+
+  function setMulkiyaFile(side: "front" | "back", file: File | null): void {
+    if (!file) {
+      if (side === "front") {
+        setMulkiyaFront(null);
+      } else {
+        setMulkiyaBack(null);
+      }
+      return;
+    }
+
+    const validationError = validateUploadFile(file, MULKIYA_MIME_TYPES);
+
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+
+    if (side === "front") {
+      setMulkiyaFront(file);
+    } else {
+      setMulkiyaBack(file);
+    }
+
+    setSubmitError(null);
   }
 
   async function fetchNhtsaModels(): Promise<void> {
@@ -164,13 +377,82 @@ export function VehicleForm({
     }
   }
 
+  async function uploadMediaIfNeeded(): Promise<UploadMediaResponse | null> {
+    if (!showAuctionFields) {
+      return null;
+    }
+
+    if (photos.length < 10) {
+      throw new Error("Please upload at least 10 photos before submitting.");
+    }
+
+    if (!mulkiyaFront || !mulkiyaBack) {
+      throw new Error("Please upload both front and back sides of the Mulkiya.");
+    }
+
+    const formData = new FormData();
+
+    for (const photo of photos) {
+      formData.append("photos", photo.file);
+    }
+
+    formData.append("mulkiyaFront", mulkiyaFront);
+    formData.append("mulkiyaBack", mulkiyaBack);
+
+    setUploadingMedia(true);
+
+    try {
+      const response = await fetch("/api/seller/vehicles/upload-photos", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | UploadMediaResponse
+        | { error?: string; message?: string }
+        | null;
+
+      if (!response.ok || !payload || !("photos" in payload)) {
+        throw new Error(
+          (payload as { message?: string; error?: string } | null)?.message ??
+            (payload as { message?: string; error?: string } | null)?.error ??
+            "Failed to upload media",
+        );
+      }
+
+      return payload as UploadMediaResponse;
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
     setSubmitError(null);
 
     try {
-      await onSubmit(values);
+      if (showAuctionFields) {
+        if (!isValidInspectionDate(values.inspectionDropoffDate, tomorrowISO, maxDateISO)) {
+          throw new Error("Inspection drop-off date must be between tomorrow and 90 days from today.");
+        }
+
+        const startingPrice = Number(values.startingPriceAed);
+        const buyNow = values.buyNowPriceAed ? Number(values.buyNowPriceAed) : null;
+
+        if (buyNow !== null && buyNow <= startingPrice) {
+          throw new Error("Buy Now Price must be greater than Starting Price.");
+        }
+      }
+
+      const uploadResult = await uploadMediaIfNeeded();
+
+      await onSubmit({
+        ...values,
+        photoUrls: uploadResult?.photos ?? values.photoUrls,
+        mulkiyaFrontUrl: uploadResult?.mulkiyaFrontUrl ?? values.mulkiyaFrontUrl,
+        mulkiyaBackUrl: uploadResult?.mulkiyaBackUrl ?? values.mulkiyaBackUrl,
+      });
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to save vehicle");
     } finally {
@@ -316,6 +598,20 @@ export function VehicleForm({
       </label>
 
       <label>
+        Airbags
+        <select value={values.airbags} onChange={(event) => updateField("airbags", event.target.value)} required>
+          <option value="" disabled>
+            Select airbags
+          </option>
+          {AIRBAG_OPTIONS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
         Color
         <select value={values.color} onChange={(event) => updateField("color", event.target.value)} required>
           <option value="" disabled>
@@ -330,7 +626,7 @@ export function VehicleForm({
       </label>
 
       <label>
-        Mileage (km)
+        Mileage km
         <input
           type="number"
           min={0}
@@ -372,34 +668,205 @@ export function VehicleForm({
         </select>
       </label>
 
-      <label className="seller-form-full">
+      <label>
         Description
         <textarea
-          rows={3}
+          rows={4}
           value={values.description}
           onChange={(event) => updateField("description", event.target.value)}
           placeholder="Vehicle notes for buyers"
         />
       </label>
 
-      <label className="seller-form-full">
-        Seller Notes
-        <textarea
-          rows={3}
-          value={values.sellerNotes}
-          onChange={(event) => updateField("sellerNotes", event.target.value)}
-          placeholder="Internal seller notes"
+      <section className="seller-form-full form-section">
+        <h3 className="form-section-title">Damage Report</h3>
+        <DamageDiagram
+          value={values.damageMap}
+          onChange={(next) => {
+            updateField("damageMap", next);
+          }}
         />
-      </label>
+      </section>
 
       {showAuctionFields ? (
         <>
+          <section className="seller-form-full form-section">
+            <h3 className="form-section-title">Vehicle Photos</h3>
+            <p className="field-hint">
+              Upload at least 10 photos. Include exterior (all 4 sides + front/rear), interior, dashboard, engine bay,
+              and any damage areas. Accepted: JPG, PNG. Max 10MB per photo.
+            </p>
+
+            <div
+              className={`photo-upload-zone ${isDragging ? "dragging" : ""}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+                addPhotoFiles(event.dataTransfer.files);
+              }}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                multiple
+                onChange={(event) => {
+                  if (event.target.files) {
+                    addPhotoFiles(event.target.files);
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+              <p>
+                Drag photos here or <span className="seller-inline-link">click to browse</span>
+              </p>
+              <p className="field-hint">Minimum 10 photos required</p>
+            </div>
+
+            {photos.length > 0 ? (
+              <div className="photo-grid">
+                {photos.map((photo, index) => (
+                  <div key={`${photo.file.name}-${index}`} className="photo-thumb">
+                    <img src={photo.preview} alt={`Photo ${index + 1}`} />
+                    <button
+                      type="button"
+                      className="photo-remove"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removePhoto(index);
+                      }}
+                    >
+                      ×
+                    </button>
+                    {index === 0 ? <span className="photo-badge">Cover</span> : null}
+                  </div>
+                ))}
+
+                <div className="photo-add-more" onClick={() => photoInputRef.current?.click()}>
+                  <span className="photo-add-plus">+</span>
+                  <span>Add more</span>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="photo-counter">
+              <span className={photos.length >= 10 ? "counter-ok" : "counter-warn"}>{photos.length}/10 minimum</span>
+              {photos.length >= 10 ? <span className="counter-check">✓ Requirement met</span> : null}
+            </div>
+          </section>
+
+          <section className="seller-form-full form-section">
+            <h3 className="form-section-title">Mulkiya — Vehicle Registration Card</h3>
+            <p className="field-hint">
+              Upload clear photos of both sides of the Mulkiya (UAE vehicle registration card). This is required to
+              verify ownership before the auction is published.
+            </p>
+
+            <div className="mulkiya-upload-row">
+              <div className="mulkiya-slot">
+                <div
+                  className={`mulkiya-zone ${mulkiyaFront ? "has-file" : ""}`}
+                  onClick={() => mulkiyaFrontRef.current?.click()}
+                >
+                  <input
+                    ref={mulkiyaFrontRef}
+                    type="file"
+                    accept="image/jpeg,image/png,application/pdf"
+                    onChange={(event) => setMulkiyaFile("front", event.target.files?.[0] ?? null)}
+                    style={{ display: "none" }}
+                  />
+
+                  {mulkiyaFront ? (
+                    <>
+                      {mulkiyaFront.type === "application/pdf" ? (
+                        <span>{mulkiyaFront.name}</span>
+                      ) : (
+                        <img src={mulkiyaFrontPreview ?? ""} alt="Mulkiya front" />
+                      )}
+                      <button
+                        type="button"
+                        className="doc-remove"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMulkiyaFront(null);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="mulkiya-icon">ID</span>
+                      <span>Front side</span>
+                      <span className="field-hint">Click to upload</span>
+                    </>
+                  )}
+                </div>
+
+                <label className="mulkiya-label">
+                  {mulkiyaFront ? <span className="ok">✓ Front uploaded</span> : <span className="required">Front side — required</span>}
+                </label>
+              </div>
+
+              <div className="mulkiya-slot">
+                <div
+                  className={`mulkiya-zone ${mulkiyaBack ? "has-file" : ""}`}
+                  onClick={() => mulkiyaBackRef.current?.click()}
+                >
+                  <input
+                    ref={mulkiyaBackRef}
+                    type="file"
+                    accept="image/jpeg,image/png,application/pdf"
+                    onChange={(event) => setMulkiyaFile("back", event.target.files?.[0] ?? null)}
+                    style={{ display: "none" }}
+                  />
+
+                  {mulkiyaBack ? (
+                    <>
+                      {mulkiyaBack.type === "application/pdf" ? (
+                        <span>{mulkiyaBack.name}</span>
+                      ) : (
+                        <img src={mulkiyaBackPreview ?? ""} alt="Mulkiya back" />
+                      )}
+                      <button
+                        type="button"
+                        className="doc-remove"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMulkiyaBack(null);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="mulkiya-icon">ID</span>
+                      <span>Back side</span>
+                      <span className="field-hint">Click to upload</span>
+                    </>
+                  )}
+                </div>
+
+                <label className="mulkiya-label">
+                  {mulkiyaBack ? <span className="ok">✓ Back uploaded</span> : <span className="required">Back side — required</span>}
+                </label>
+              </div>
+            </div>
+          </section>
+
           <label>
-            Starting Price (AED)
+            Starting Price AED
             <input
               type="number"
               min={1}
-              step="0.01"
+              step="500"
               value={values.startingPriceAed}
               onChange={(event) => updateField("startingPriceAed", event.target.value)}
               required
@@ -407,41 +874,72 @@ export function VehicleForm({
           </label>
 
           <label>
-            Reserve Price (AED)
+            Buy Now Price AED
+            <p className="field-hint">
+              If a buyer pays this price, the auction ends immediately and the vehicle is sold.
+            </p>
             <input
               type="number"
-              min={1}
-              step="0.01"
-              value={values.reservePriceAed}
-              onChange={(event) => updateField("reservePriceAed", event.target.value)}
+              min={0}
+              step="500"
+              value={values.buyNowPriceAed}
+              onChange={(event) => updateField("buyNowPriceAed", event.target.value)}
             />
           </label>
 
-          <label>
-            Starts At
-            <input
-              type="datetime-local"
-              value={values.startsAt}
-              onChange={(event) => updateField("startsAt", event.target.value)}
-              required
-            />
-          </label>
+          <div className="seller-form-full form-section">
+            <label>
+              Inspection Drop-off Date
+              <p className="field-hint">
+                Bring your vehicle to the FleetBid showroom on this date. Buyers can view it in person for 2 days
+                before the auction goes live. We will confirm your time slot by email.
+              </p>
+              <input
+                type="date"
+                min={tomorrowISO}
+                max={maxDateISO}
+                value={values.inspectionDropoffDate}
+                onChange={(event) => updateField("inspectionDropoffDate", event.target.value)}
+                required
+              />
+            </label>
 
-          <label>
-            Ends At
-            <input
-              type="datetime-local"
-              value={values.endsAt}
-              onChange={(event) => updateField("endsAt", event.target.value)}
-              required
-            />
-          </label>
+            {selectedDropoffDate ? (
+              <div className="inspection-timeline">
+                <div className="timeline-step">
+                  <span className="timeline-dot green" />
+                  <div>
+                    <strong>Drop-off & Inspection</strong>
+                    <span>{formatTimelineDate(selectedDropoffDate)}</span>
+                  </div>
+                </div>
+                <div className="timeline-step">
+                  <span className="timeline-dot blue" />
+                  <div>
+                    <strong>Buyer Viewing</strong>
+                    <span>
+                      {formatTimelineDate(selectedDropoffDate)} – {formatTimelineDate(addDays(selectedDropoffDate, 2))}
+                    </span>
+                  </div>
+                </div>
+                <div className="timeline-step">
+                  <span className="timeline-dot orange" />
+                  <div>
+                    <strong>Auction Live</strong>
+                    <span>
+                      {formatTimelineDate(addDays(selectedDropoffDate, 2))} – {formatTimelineDate(addDays(selectedDropoffDate, 3))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </>
       ) : null}
 
       <div className="seller-form-actions seller-form-full">
-        <button type="submit" className="button button-primary" disabled={submitting}>
-          {submitting ? submittingLabel : submitLabel}
+        <button type="submit" className="button button-primary" disabled={submitting || uploadingMedia}>
+          {submitting || uploadingMedia ? submittingLabel : submitLabel}
         </button>
 
         {onCancel ? (

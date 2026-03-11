@@ -18,7 +18,7 @@ const patchAuctionSchema = z.object({
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().optional(),
   startingPriceAed: z.coerce.number().positive().optional(),
-  reservePriceAed: z.coerce.number().positive().optional(),
+  buyNowPriceAed: z.coerce.number().positive().optional(),
 });
 
 function decimalToNumber(value: Prisma.Decimal | null): number {
@@ -89,8 +89,12 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
       state: auction.state,
       startsAt: auction.startsAt.toISOString(),
       endsAt: auction.endsAt.toISOString(),
+      inspectionDropoffDate: auction.inspectionDropoffDate?.toISOString() ?? null,
+      viewingEndsAt: auction.viewingEndsAt?.toISOString() ?? null,
+      auctionStartsAt: auction.auctionStartsAt?.toISOString() ?? null,
+      auctionEndsAt: auction.auctionEndsAt?.toISOString() ?? null,
       startingPriceAed: decimalToNumber(auction.startingPrice),
-      reservePriceAed: decimalToNumber(auction.buyNowPrice),
+      buyNowPriceAed: decimalToNumber(auction.buyNowPrice),
       currentBidAed: decimalToNumber(auction.currentPrice),
       totalBids: auction._count.bids,
       vehicle: auction.vehicle
@@ -240,9 +244,11 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     data: {
       startsAt,
       endsAt,
+      auctionStartsAt: startsAt,
+      auctionEndsAt: endsAt,
       startingPrice: payload.startingPriceAed,
       currentPrice: payload.startingPriceAed,
-      buyNowPrice: payload.reservePriceAed,
+      buyNowPrice: payload.buyNowPriceAed,
     },
   });
 

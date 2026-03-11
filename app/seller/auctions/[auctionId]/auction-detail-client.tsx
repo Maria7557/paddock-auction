@@ -13,8 +13,12 @@ type AuctionDetailResponse = {
     state: string;
     startsAt: string;
     endsAt: string;
+    inspectionDropoffDate: string | null;
+    viewingEndsAt: string | null;
+    auctionStartsAt: string | null;
+    auctionEndsAt: string | null;
     startingPriceAed: number;
-    reservePriceAed: number;
+    buyNowPriceAed: number;
     currentBidAed: number;
     totalBids: number;
     vehicle: {
@@ -80,12 +84,12 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     startsAt: string;
     endsAt: string;
     startingPriceAed: string;
-    reservePriceAed: string;
+    buyNowPriceAed: string;
   }>({
     startsAt: "",
     endsAt: "",
     startingPriceAed: "",
-    reservePriceAed: "",
+    buyNowPriceAed: "",
   });
 
   const loadAuction = useCallback(async () => {
@@ -106,7 +110,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
         startsAt: parsed.auction.startsAt.slice(0, 16),
         endsAt: parsed.auction.endsAt.slice(0, 16),
         startingPriceAed: String(parsed.auction.startingPriceAed),
-        reservePriceAed: parsed.auction.reservePriceAed ? String(parsed.auction.reservePriceAed) : "",
+        buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
       });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unexpected error");
@@ -169,8 +173,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
         payload.endsAt = new Date(editForm.endsAt).toISOString();
         payload.startingPriceAed = Number(editForm.startingPriceAed);
 
-        if (editForm.reservePriceAed.trim()) {
-          payload.reservePriceAed = Number(editForm.reservePriceAed);
+        if (editForm.buyNowPriceAed.trim()) {
+          payload.buyNowPriceAed = Number(editForm.buyNowPriceAed);
         }
       }
 
@@ -241,8 +245,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
           <strong>{formatAed(data.auction.startingPriceAed)}</strong>
         </article>
         <article className="surface-panel">
-          <p>Reserve Price</p>
-          <strong>{data.auction.reservePriceAed ? formatAed(data.auction.reservePriceAed) : "-"}</strong>
+          <p>Buy Now Price</p>
+          <strong>{data.auction.buyNowPriceAed ? formatAed(data.auction.buyNowPriceAed) : "-"}</strong>
         </article>
         <article className="surface-panel">
           <p>Current Bid</p>
@@ -286,12 +290,12 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             </label>
 
             <label>
-              Reserve Price (AED)
+              Buy Now Price (AED)
               <input
                 type="number"
                 min={1}
-                value={editForm.reservePriceAed}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, reservePriceAed: event.target.value }))}
+                value={editForm.buyNowPriceAed}
+                onChange={(event) => setEditForm((previous) => ({ ...previous, buyNowPriceAed: event.target.value }))}
               />
             </label>
 

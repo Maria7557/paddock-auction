@@ -100,8 +100,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       startingPriceAed: decimalToNumber(auction.startingPrice),
       currentBidAed: decimalToNumber(auction.currentPrice),
       bidsCount: auction._count.bids,
-      startsAt: auction.startsAt.toISOString(),
-      endsAt: auction.endsAt.toISOString(),
+      startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
+      endsAt: (auction.auctionEndsAt ?? auction.endsAt).toISOString(),
     })),
   });
 }

@@ -21,7 +21,6 @@ const createVehiclePayloadSchema = z
     condition: z.string().trim().min(1).optional(),
     serviceHistory: z.string().trim().min(1).optional(),
     description: z.string().trim().optional(),
-    sellerNotes: z.string().trim().optional(),
   })
   .superRefine((value, context) => {
     if (value.mileage === undefined && value.mileageKm === undefined) {
@@ -130,7 +129,6 @@ export function createPostVehicleHandler(
         condition: payload.condition,
         serviceHistory: payload.serviceHistory,
         description: payload.description,
-        sellerNotes: payload.sellerNotes,
       });
 
       return jsonResult({

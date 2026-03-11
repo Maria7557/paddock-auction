@@ -11,7 +11,6 @@ export type Vehicle = {
   regionSpec?: string | null;
   condition?: string | null;
   serviceHistory?: string | null;
-  sellerNotes?: string | null;
 };
 
 export type CreateVehicleCommand = {
@@ -28,7 +27,6 @@ export type CreateVehicleCommand = {
   serviceHistory?: string;
   description?: string;
   color?: string;
-  sellerNotes?: string;
 };
 
 export type VehicleRepository = {

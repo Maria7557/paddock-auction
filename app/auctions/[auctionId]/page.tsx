@@ -155,7 +155,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       driveType: String(vehicle.driveType ?? vehicle.drivetrain ?? "—"),
       fuelType: String(vehicle.fuelType ?? "Petrol"),
       features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : DEFAULT_FEATURES,
-      description: String(vehicle.sellerNotes ?? vehicle.description ?? DEFAULT_DESCRIPTION),
+      description: String(vehicle.description ?? DEFAULT_DESCRIPTION),
       highlights: Array.isArray(vehicle.highlights) ? (vehicle.highlights as string[]) : DEFAULT_HIGHLIGHTS,
       sellerName: String(auction.sellerName ?? data.sellerName ?? "Fleet Operator"),
       sellerRef: String(auction.sellerRef ?? ""),
