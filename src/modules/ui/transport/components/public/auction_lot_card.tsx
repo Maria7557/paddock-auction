@@ -24,6 +24,7 @@ function estimateMarketPrice(currentBidAed: number): number {
 
 export function AuctionLotCard({ lot }: AuctionLotCardProps) {
   const heroImage = resolveLotImage(lot.images[0]);
+  const marketPrice = lot.marketPriceAed ?? estimateMarketPrice(lot.currentBidAed);
 
   return (
     <LotCard
@@ -35,7 +36,7 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       currentBid={lot.currentBidAed}
       status={lot.status}
       endTime={lot.endsAt}
-      marketPrice={estimateMarketPrice(lot.currentBidAed)}
+      marketPrice={marketPrice}
     />
   );
 }

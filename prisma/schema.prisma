@@ -95,6 +95,7 @@ model Vehicle {
   year           Int
   mileage        Int
   vin            String  @unique
+  marketPrice    Decimal? @map("market_price") @db.Decimal(18, 2)
   fuelType       String?
   transmission   String?
   bodyType       String?

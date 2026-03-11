@@ -48,6 +48,7 @@ export type AuctionLot = {
   vin: string;
   status: AuctionStatus;
   currentBidAed: number;
+  marketPriceAed?: number | null;
   minimumStepAed: number;
   endsAt: string;
   startsAt: string;
@@ -808,6 +809,7 @@ function toAuctionLot({
     vin: vehicle?.vin ?? "PENDING",
     status,
     currentBidAed,
+    marketPriceAed: vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : null,
     minimumStepAed,
     endsAt: auction.endsAt.toISOString(),
     startsAt: auction.startsAt.toISOString(),

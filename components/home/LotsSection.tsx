@@ -34,6 +34,7 @@ export default function LotsSection({ lots, totalCount }: Props) {
               mileage={lot.mileageKm}
               imageUrl={lot.imageUrl}
               currentBid={lot.currentBidAed}
+              marketPrice={lot.marketPriceAed}
               status={lot.status}
               endTime={lot.endsAt}
             />

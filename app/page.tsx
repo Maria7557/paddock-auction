@@ -56,7 +56,7 @@ function mapToHomeLot(lot: AuctionLot): Lot {
   const color = getSpec(lot, 'Color', 'Unknown');
   const condition = getSpec(lot, 'Condition', 'Good');
   const startingBidAed = Math.max(lot.currentBidAed - lot.minimumStepAed * 5, 0);
-  const marketPriceAed = Math.round(lot.currentBidAed * 1.25);
+  const marketPriceAed = lot.marketPriceAed ?? Math.round(lot.currentBidAed * 1.25);
 
   return {
     id: lot.id,
