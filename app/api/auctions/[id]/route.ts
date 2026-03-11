@@ -46,7 +46,7 @@ export async function GET(
     });
   }
 
-  const [company, bids, similarAuctions, highestBid] = await Promise.all([
+  const [company, bids, similarAuctions, highestBid, totalBids] = await Promise.all([
     prisma.company.findUnique({
       where: {
         id: auction.sellerCompanyId,
@@ -103,12 +103,18 @@ export async function GET(
         amount: true,
       },
     }),
+    prisma.bid.count({
+      where: {
+        auctionId: auction.id,
+      },
+    }),
   ]);
 
   const vehicle = auction.vehicle;
   const currentPrice = Number(auction.currentPrice.toString());
   const minIncrement = Number(auction.minIncrement.toString());
   const currentBid = currentPrice;
+  const buyNowPrice = vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : 0;
 
   return json(200, {
     id: auction.id,
@@ -120,7 +126,8 @@ export async function GET(
     currentBid,
     currentPrice,
     minIncrement,
-    buyNowPrice: 0,
+    buyNowPrice,
+    totalBids,
     sellerName: company?.name ?? "Fleet Operator",
     sellerRef: company?.registrationNumber ?? "",
     location: "UAE, Dubai",

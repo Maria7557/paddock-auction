@@ -12,6 +12,12 @@ export function SaleInfo({ lot }: Props) {
     weekday: 'short', day: 'numeric', month: 'short',
   });
   const timeStr = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const referencePrice = lot.currentBidAed > 0 ? lot.currentBidAed : 0;
+  const showACV =
+    !!lot.actualCashValue &&
+    lot.actualCashValue > 0 &&
+    referencePrice > 0 &&
+    lot.actualCashValue < referencePrice * 5;
 
   const cells: { label: string; value: React.ReactNode | null; accent?: boolean }[] = [
     {
@@ -34,10 +40,7 @@ export function SaleInfo({ lot }: Props) {
     },
     {
       label: 'Actual Cash Value',
-      value:
-        lot.actualCashValue > 0 && lot.actualCashValue < lot.currentBidAed * 5
-          ? formatAed(lot.actualCashValue)
-          : null,
+      value: showACV ? formatAed(lot.actualCashValue) : null,
       accent: true,
     },
   ].filter((cell) => cell.value !== null);

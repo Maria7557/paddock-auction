@@ -65,6 +65,7 @@ export type LotDetail = {
   currentBidAed: number;
   buyNowAed: number;
   minStepAed: number;
+  totalBids: number;
   endsAt: string;
   startsAt: string;
   images: string[];
@@ -162,6 +163,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       currentBidAed: Number(auction.currentPrice ?? auction.currentBidAed ?? 0),
       buyNowAed: Number(auction.buyNowPrice ?? auction.buyNowAed ?? 0),
       minStepAed: Number(auction.minIncrement ?? auction.minStepAed ?? 500),
+      totalBids: Number(auction.totalBids ?? (Array.isArray(data.bids) ? data.bids.length : 0)),
       endsAt: String(auction.endsAt ?? new Date(Date.now() + 3600_000).toISOString()),
       startsAt: String(auction.startsAt ?? new Date().toISOString()),
       images:
@@ -236,20 +238,6 @@ export default async function AuctionDetailPage({
   const isScheduled = lot.state === "SCHEDULED";
   const isActive = isLive || isScheduled;
 
-  const stateLabel: Record<LotAuctionState, string> = {
-    DRAFT: "Draft",
-    SCHEDULED: "Scheduled",
-    LIVE: "Live",
-    EXTENDED: "Extended",
-    PAYMENT_PENDING: "Payment Pending",
-    ENDED: "Ended",
-    DEFAULTED: "Defaulted",
-    CLOSED: "Closed",
-    PAID: "Paid",
-    CANCELED: "Canceled",
-    RELISTED: "Relisted",
-  };
-
   return (
     <MarketShell>
       <div className={styles.page}>
@@ -293,18 +281,11 @@ export default async function AuctionDetailPage({
             </div>
           </div>
 
-          <div className={styles.statePill} data-state={lot.state} aria-label={`Auction state: ${stateLabel[lot.state]}`}>
-            {isLive ? <span className={styles.livePulse} aria-hidden /> : null}
-            {stateLabel[lot.state]}
-          </div>
         </div>
 
         <div className={styles.hero}>
           <div className={styles.galleryCol}>
             <LotGallery images={lot.images} title={lot.title} />
-          </div>
-          <div className={styles.bidCol}>
-            <BidPanel lot={lot} totalBids={lot.bids.length} />
           </div>
         </div>
 
@@ -320,7 +301,7 @@ export default async function AuctionDetailPage({
           </div>
 
           <aside className={styles.sideSticky}>
-            <BidPanel lot={lot} compact totalBids={lot.bids.length} />
+            <BidPanel lot={lot} totalBids={lot.totalBids} />
           </aside>
         </div>
 
