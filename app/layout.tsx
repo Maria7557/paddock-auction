@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
+
+import MarketHeader from "@/components/shell/MarketHeader";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -30,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} antialiased`}>
+        <MarketHeader />
         {children}
       </body>
     </html>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { FEATURED_LOTS, NEXT_AUCTION, PLATFORM_STATS, CATEGORIES } from '@/src/lib/data';
+import prisma from "@/src/infrastructure/database/prisma";
 import { readHomepageLots, type AuctionLot } from '@/src/modules/ui/domain/marketplace_read_model';
 import type { Lot, LotStatus } from '@/src/types/auction';
 import AuctionTicker from '@/components/home/AuctionTicker';
@@ -86,18 +87,35 @@ function mapToHomeLot(lot: AuctionLot): Lot {
 
 export default async function HomePage() {
   const dbLots = await readHomepageLots();
+  const nextAuction = await prisma.auction.findFirst({
+    where: { state: { in: ["SCHEDULED", "LIVE"] } },
+    orderBy: { startsAt: "asc" },
+  });
+
+  const liveAuctionCount = await prisma.auction.count({
+    where: { state: { in: ["LIVE", "SCHEDULED"] } },
+  });
+
+  const tickerEvent = {
+    date: nextAuction?.startsAt.toISOString() ?? NEXT_AUCTION.date,
+    lotCount: liveAuctionCount || NEXT_AUCTION.lotCount,
+    location: "Dubai Warehouse · Al Quoz Industrial Area",
+    viewingStart: NEXT_AUCTION.viewingStart,
+    viewingEnd: NEXT_AUCTION.viewingEnd,
+  };
+
   const lots = dbLots.length > 0 ? dbLots.map(mapToHomeLot) : FEATURED_LOTS;
   const heroLot = lots.find((lot) => lot.status === 'LIVE') ?? lots[0];
 
   return (
     <>
-      <AuctionTicker event={NEXT_AUCTION} />
+      <AuctionTicker event={tickerEvent} />
       <HeroSection stats={PLATFORM_STATS} heroLot={heroLot} />
-      <LotsSection lots={lots} totalCount={Math.max(NEXT_AUCTION.lotCount, lots.length)} />
+      <LotsSection lots={lots} totalCount={Math.max(tickerEvent.lotCount, lots.length)} />
       <WhatSection />
       <WhySection />
       <HowSection />
-      <WeekSection event={NEXT_AUCTION} />
+      <WeekSection event={tickerEvent} />
       <CatsSection categories={CATEGORIES} />
       <SellSection />
       <TrustSection />
