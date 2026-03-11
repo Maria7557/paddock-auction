@@ -1,5 +1,6 @@
 "use client";
 
+import { type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Camera, Clock3 } from "lucide-react";
@@ -15,6 +16,7 @@ type LotCardProps = {
   currentBid: number;
   status: string;
   endTime: string;
+  actionSlot?: ReactNode;
 };
 
 function resolveImage(imageUrl: string): string {
@@ -38,6 +40,7 @@ export function LotCard({
   currentBid,
   status,
   endTime,
+  actionSlot,
 }: LotCardProps) {
   const heroImage = resolveImage(imageUrl);
 
@@ -80,9 +83,12 @@ export function LotCard({
           </div>
         </div>
 
-        <Link href={`/auctions/${lotId}`} className="button button-primary lot-enter">
-          Enter Lot
-        </Link>
+        <div className="lot-actions-row">
+          <Link href={`/auctions/${lotId}`} className="button button-primary lot-enter">
+            Enter Lot
+          </Link>
+          {actionSlot ? <div className="lot-action-slot">{actionSlot}</div> : null}
+        </div>
       </div>
     </Card>
   );

@@ -832,6 +832,48 @@ textarea {
   margin-top: 4px;
 }
 
+.lot-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.lot-actions-row .lot-enter {
+  flex: 1 1 auto;
+  width: auto;
+  margin-top: 0;
+}
+
+.lot-action-slot {
+  flex: 0 0 44px;
+}
+
+.lot-wishlist-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #999;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lot-wishlist-btn.is-saved {
+  background: #e8f4ee;
+  color: #116a43;
+}
+
+.lot-wishlist-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .status-badge {
   border-radius: var(--radius-pill);
   padding: 4px 9px;
