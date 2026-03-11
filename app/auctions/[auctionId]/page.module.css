@@ -4,7 +4,11 @@
 .page {
   width: var(--container, min(1280px, calc(100% - 48px)));
   margin: 0 auto;
-  padding: 20px 0 80px;
+  padding: 0 0 80px;
+}
+
+.mainTight {
+  margin-top: 0 !important;
 }
 
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
@@ -34,17 +38,6 @@
 }
 .titleLeft { min-width: 0; flex: 1; }
 
-.lotEyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin-bottom: 6px;
-  font-family: var(--font-mono);
-}
-.lotNum { color: var(--green-600); }
-
 .h1 {
   font-size: clamp(22px, 3vw, 34px);
   font-weight: 800;
@@ -56,13 +49,18 @@
 
 .quickMeta {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   font-size: 13.5px;
   color: var(--ink-secondary);
+}
+.quickMetaFacts {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   flex-wrap: wrap;
 }
-.quickMeta strong { color: var(--ink-primary); font-weight: 600; }
 .dot { color: var(--line-strong); }
 .damage { color: var(--amber-600); font-weight: 600; }
 .specPills {
@@ -130,29 +128,20 @@
 
 /* ── Body layout ──────────────────────────────────────────────────────────── */
 .body {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 20px;
-  align-items: start;
+  display: block;
 }
 .main {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.sideSticky {
-  position: sticky;
-  top: 84px;
-}
 
 /* ── Breakpoints ──────────────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
-  .hero,
-  .body {
+  .hero {
     grid-template-columns: 1fr;
   }
-  .bidCol     { position: static; }
-  .sideSticky { display: none; }
+  .bidCol { position: static; }
 }
 
 @media (max-width: 740px) {

@@ -21,8 +21,14 @@ const createVehicleSchema = z
     condition: z.string().trim().min(1).optional(),
     serviceHistory: z.string().trim().min(1).optional(),
     sellerNotes: z.string().trim().optional(),
-    color: z.string().trim().optional(),
     description: z.string().trim().optional(),
+    engine: z.string().trim().optional(),
+    driveType: z.string().trim().optional(),
+    exteriorColor: z.string().trim().optional(),
+    interiorColor: z.string().trim().optional(),
+    airbags: z.string().trim().optional(),
+    damage: z.string().trim().optional(),
+    images: z.array(z.string()).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.mileage === undefined && payload.mileageKm === undefined) {
@@ -81,6 +87,14 @@ export const POST = withStructuredMutationLogging(async (request: Request): Prom
         condition: payload.condition,
         serviceHistory: payload.serviceHistory,
         sellerNotes: payload.sellerNotes,
+        description: payload.description,
+        engine: payload.engine,
+        driveType: payload.driveType,
+        exteriorColor: payload.exteriorColor,
+        interiorColor: payload.interiorColor,
+        airbags: payload.airbags,
+        damage: payload.damage,
+        images: payload.images,
       },
     });
 

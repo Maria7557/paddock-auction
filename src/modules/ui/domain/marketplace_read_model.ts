@@ -57,6 +57,16 @@ export type AuctionLot = {
   depositReady: boolean;
   watchlisted: boolean;
   images: string[];
+  vehicle?: {
+    description: string | null;
+    engine: string | null;
+    driveType: string | null;
+    exteriorColor: string | null;
+    interiorColor: string | null;
+    airbags: string;
+    damage: string;
+    images: string[];
+  };
   specs: AuctionSpec[];
   inspectionSummary: string;
   sellerNotes: string;
@@ -739,6 +749,10 @@ function deriveLotNumber(auctionId: string): string {
 }
 
 function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
+  if (vehicle?.images && vehicle.images.length > 0) {
+    return vehicle.images;
+  }
+
   const brand = vehicle?.brand.trim().toLowerCase() ?? "";
 
   if (brand.includes("bentley")) {
@@ -818,6 +832,16 @@ function toAuctionLot({
     depositReady: true,
     watchlisted: false,
     images: deriveLotImages(vehicle, index),
+    vehicle: {
+      description: vehicle?.description ?? null,
+      engine: vehicle?.engine ?? null,
+      driveType: vehicle?.driveType ?? null,
+      exteriorColor: vehicle?.exteriorColor ?? null,
+      interiorColor: vehicle?.interiorColor ?? null,
+      airbags: vehicle?.airbags ?? "Intact",
+      damage: vehicle?.damage ?? "None",
+      images: vehicle?.images ?? [],
+    },
     specs: buildSpecs(vehicle),
     inspectionSummary:
       status === "DEFAULTED"

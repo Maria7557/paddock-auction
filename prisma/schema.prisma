@@ -89,12 +89,12 @@ model CompanyUser {
 }
 
 model Vehicle {
-  id             String  @id @default(uuid())
+  id             String   @id @default(uuid())
   brand          String
   model          String
   year           Int
   mileage        Int
-  vin            String  @unique
+  vin            String   @unique
   marketPrice    Decimal? @map("market_price") @db.Decimal(18, 2)
   fuelType       String?
   transmission   String?
@@ -103,6 +103,14 @@ model Vehicle {
   condition      String?
   serviceHistory String?
   sellerNotes    String?
+  description    String?
+  engine         String?
+  driveType      String?  @map("drive_type")
+  exteriorColor  String?  @map("exterior_color")
+  interiorColor  String?  @map("interior_color")
+  airbags        String?  @default("Intact")
+  damage         String?  @default("None")
+  images         String[] @default([])
   auctions       Auction[]
 }
 
@@ -120,6 +128,8 @@ model Auction {
   closedAt        DateTime?                @map("closed_at") @db.Timestamptz(6)
   currentPrice    Decimal                  @default(0) @map("current_price") @db.Decimal(18, 2)
   minIncrement    Decimal                  @default(1) @map("min_increment") @db.Decimal(18, 2)
+  startingPrice   Decimal                  @default(0) @map("starting_price") @db.Decimal(18, 2)
+  buyNowPrice     Decimal?                 @map("buy_now_price") @db.Decimal(18, 2)
   lastBidSequence Int                      @default(0) @map("last_bid_sequence")
   createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)

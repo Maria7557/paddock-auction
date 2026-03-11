@@ -1,0 +1,44 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.count {
+  font-size: 14px;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.opt {
+  padding: 7px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  color: var(--ink-secondary);
+  background: var(--bg-card);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.opt:hover {
+  border-color: var(--green-600);
+  color: var(--green-600);
+}
+
+.optActive {
+  background: var(--green-600);
+  border-color: var(--green-600);
+  color: #fff;
+  font-weight: 600;
+}

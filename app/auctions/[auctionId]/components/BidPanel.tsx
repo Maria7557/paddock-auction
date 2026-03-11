@@ -458,19 +458,6 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
         <span aria-hidden>🔒</span>
         <span>5,000 AED refundable deposit required · Released within 24h if you don&rsquo;t win</span>
       </div>
-
-      <div className={styles.sellerRow}>
-        <div className={styles.sellerAvatar} aria-hidden>
-          🏢
-        </div>
-        <div>
-          <div className={styles.sellerLabel}>Sold by</div>
-          <div className={styles.sellerName}>
-            {lot.sellerName}
-            {lot.sellerRef && <span className={styles.sellerRef}> {lot.sellerRef}</span>}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

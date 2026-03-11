@@ -1,0 +1,54 @@
+.page {
+  width: min(1280px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 40px 0 80px;
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.heading {
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin: 0 0 8px;
+}
+
+.sub {
+  font-size: 15px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.skeletonCard {
+  height: 320px;
+  border-radius: var(--radius-card);
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, #e9ecf0 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    width: calc(100% - 24px);
+    padding: 24px 0 60px;
+  }
+}

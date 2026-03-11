@@ -113,8 +113,9 @@ export async function GET(
   const vehicle = auction.vehicle;
   const currentPrice = Number(auction.currentPrice.toString());
   const minIncrement = Number(auction.minIncrement.toString());
+  const startingPrice = Number((auction.startingPrice ?? auction.currentPrice).toString());
   const currentBid = currentPrice;
-  const buyNowPrice = vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : 0;
+  const buyNowPrice = auction.buyNowPrice ? Number(auction.buyNowPrice.toString()) : null;
 
   return json(200, {
     id: auction.id,
@@ -125,6 +126,7 @@ export async function GET(
     endsAt: auction.endsAt.toISOString(),
     currentBid,
     currentPrice,
+    startingPrice,
     minIncrement,
     buyNowPrice,
     totalBids,
@@ -148,14 +150,17 @@ export async function GET(
           condition: vehicle.condition,
           serviceHistory: vehicle.serviceHistory,
           sellerNotes: vehicle.sellerNotes,
-          engine: null,
-          driveType: null,
+          description: vehicle.description ?? null,
+          engine: vehicle.engine ?? null,
+          driveType: vehicle.driveType ?? null,
           series: null,
-          exteriorColor: null,
-          interiorColor: null,
+          exteriorColor: vehicle.exteriorColor ?? null,
+          interiorColor: vehicle.interiorColor ?? null,
+          airbags: vehicle.airbags ?? "Intact",
+          damage: vehicle.damage ?? "None",
           features: [],
           highlights: [],
-          images: [],
+          images: vehicle.images ?? [],
         }
       : null,
     bids: bids.map((bid) => ({

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { formatAed } from "@/src/lib/utils";
@@ -9,7 +10,6 @@ import { BidPanel } from "./components/BidPanel";
 import { InspectionSection } from "./components/InspectionSection";
 import { LotGallery } from "./components/LotGallery";
 import { MobileBidBar } from "./components/MobileBidBar";
-import { SaleInfo } from "./components/SaleInfo";
 import { SimilarVehicles } from "./components/SimilarVehicles";
 import { VehicleDesc } from "./components/VehicleDesc";
 import { VehicleFeatures } from "./components/VehicleFeatures";
@@ -134,7 +134,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       lotNumber: String(auction.lotNumber ?? `LOT-${auctionId.slice(0, 8).toUpperCase()}`),
       auctionId: String(auction.id ?? auctionId),
       state: ((auction.state as LotAuctionState | undefined) ?? "SCHEDULED"),
-      title: `${Number(vehicle.year ?? 2022)} ${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim(),
+      title: `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim(),
       make: String(vehicle.brand ?? vehicle.make ?? ""),
       model: String(vehicle.model ?? ""),
       series: String(vehicle.series ?? vehicle.trim ?? ""),
@@ -239,40 +239,37 @@ export default async function AuctionDetailPage({
   const isActive = isLive || isScheduled;
 
   return (
-    <MarketShell>
+    <MarketShell mainClassName={styles.mainTight}>
       <div className={styles.page}>
         <nav className={styles.breadcrumb} aria-label="breadcrumb">
-          <a href="/">Home</a>
+          <Link href="/">Home</Link>
           <span aria-hidden>›</span>
-          <a href="/auctions">Auctions</a>
+          <Link href="/auctions">Auctions</Link>
           <span aria-hidden>›</span>
           <span>{lot.title}</span>
         </nav>
 
         <div className={styles.titleBar}>
           <div className={styles.titleLeft}>
-            <div className={styles.lotEyebrow}>
-              Lot&nbsp;<span className={styles.lotNum}>#{lot.lotNumber}</span>
-            </div>
             <h1 className={styles.h1}>{lot.title}</h1>
             <div className={styles.quickMeta}>
-              <span>
-                VIN: <strong>{maskVin(lot.vin)}</strong>
-              </span>
-              <span className={styles.dot}>·</span>
-              <span>{lot.mileageKm.toLocaleString()}&thinsp;km</span>
-              <span className={styles.dot}>·</span>
-              <span>{lot.condition}</span>
-              <span className={styles.dot}>·</span>
-              <span>{lot.regionSpec}</span>
-              <span className={styles.dot}>·</span>
-              <span>{lot.airbags} airbags</span>
-              {lot.damage !== "None" ? (
-                <>
-                  <span className={styles.dot}>·</span>
-                  <span className={styles.damage}>⚠ {lot.damage}</span>
-                </>
-              ) : null}
+              <div className={styles.quickMetaFacts}>
+                <span>{lot.year}</span>
+                <span className={styles.dot}>·</span>
+                <span>{lot.mileageKm.toLocaleString()}&thinsp;km</span>
+                <span className={styles.dot}>·</span>
+                <span>{lot.condition}</span>
+                <span className={styles.dot}>·</span>
+                <span>{lot.regionSpec}</span>
+                <span className={styles.dot}>·</span>
+                <span>{lot.airbags} airbags</span>
+                {lot.damage !== "None" ? (
+                  <>
+                    <span className={styles.dot}>·</span>
+                    <span className={styles.damage}>⚠ {lot.damage}</span>
+                  </>
+                ) : null}
+              </div>
             </div>
             <div className={styles.specPills}>
               <span className={styles.pill}>{lot.regionSpec}</span>
@@ -287,22 +284,20 @@ export default async function AuctionDetailPage({
           <div className={styles.galleryCol}>
             <LotGallery images={lot.images} title={lot.title} />
           </div>
+          <aside className={styles.bidCol}>
+            <BidPanel lot={lot} totalBids={lot.totalBids} />
+          </aside>
         </div>
 
         <div className={styles.body}>
           <div className={styles.main}>
             <VehicleInfo lot={lot} />
-            <SaleInfo lot={lot} />
             <VehicleSpecs lot={lot} />
             <VehicleFeatures features={lot.features} />
             <VehicleDesc description={lot.description} highlights={lot.highlights} />
             <InspectionSection auctionId={lot.auctionId} startsAt={lot.startsAt} />
             <BidHistory bids={lot.bids} />
           </div>
-
-          <aside className={styles.sideSticky}>
-            <BidPanel lot={lot} totalBids={lot.totalBids} />
-          </aside>
         </div>
 
         {lot.similar.length > 0 ? <SimilarVehicles lots={lot.similar} /> : null}
@@ -318,16 +313,4 @@ export default async function AuctionDetailPage({
       ) : null}
     </MarketShell>
   );
-}
-
-function maskVin(vin: string): string {
-  if (!vin || vin === "—") {
-    return "—";
-  }
-
-  if (vin.length <= 6) {
-    return vin;
-  }
-
-  return `${vin.slice(0, 11)}******`;
 }
