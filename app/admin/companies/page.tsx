@@ -45,8 +45,8 @@ async function getCompanyRows(): Promise<CompanyRow[]> {
   return companies.map((company) => ({
     id: company.id,
     name: company.name,
-    email: company.users[0]?.user.email ?? "—",
-    phone: "—",
+    email: company.users[0]?.user.email ?? "-",
+    phone: "-",
     status: normalizeCompanyStatus(company.status),
     createdAt: company.createdAt.toISOString(),
   }));

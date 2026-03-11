@@ -61,7 +61,7 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
         },
       },
       orderBy: {
-        createdAt: "desc",
+        id: "desc",
       },
     }),
     prisma.auction.findMany({

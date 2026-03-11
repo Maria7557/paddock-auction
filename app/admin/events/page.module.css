@@ -82,3 +82,31 @@
   text-align: center;
   color: var(--ink-muted);
 }
+
+.skeletonHead {
+  width: 180px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-card) 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.skeletonLine {
+  height: 14px;
+  width: 100%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-card) 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}

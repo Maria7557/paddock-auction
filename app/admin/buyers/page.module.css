@@ -42,7 +42,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 940px;
+  min-width: 980px;
 }
 
 .table th,
@@ -67,6 +67,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.pendingPill {
+  background: var(--amber-100);
+  color: var(--amber-600);
 }
 
 .metaText {

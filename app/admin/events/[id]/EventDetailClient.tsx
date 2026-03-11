@@ -175,7 +175,7 @@ export function EventDetailClient({
                           disabled={!canReorder || busy || index === 0}
                           onClick={() => void move(index, -1)}
                         >
-                          ▲
+                          Up
                         </button>
                         <button
                           type="button"
@@ -183,7 +183,7 @@ export function EventDetailClient({
                           disabled={!canReorder || busy || index === lotRows.length - 1}
                           onClick={() => void move(index, 1)}
                         >
-                          ▼
+                          Down
                         </button>
                       </div>
                     </div>

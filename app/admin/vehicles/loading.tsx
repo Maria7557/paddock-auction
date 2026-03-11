@@ -4,7 +4,7 @@ export default function LoadingVehiclesPage() {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
-        <div style={{ width: 220, height: 36, borderRadius: 10, background: "var(--bg-subtle)" }} />
+        <div className={styles.skeletonHead} />
       </div>
 
       <section className={styles.section}>
@@ -27,7 +27,7 @@ export default function LoadingVehiclesPage() {
               {[1, 2, 3, 4].map((row) => (
                 <tr key={row}>
                   <td colSpan={8}>
-                    <div style={{ height: 14, width: "100%", borderRadius: 8, background: "var(--bg-subtle)" }} />
+                    <div className={styles.skeletonLine} />
                   </td>
                 </tr>
               ))}

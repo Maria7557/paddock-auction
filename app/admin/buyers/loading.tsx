@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 
-export default function LoadingEventsPage() {
+export default function LoadingBuyersPage() {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
@@ -8,22 +8,24 @@ export default function LoadingEventsPage() {
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Loading events...</div>
+        <div className={styles.sectionTitle}>Loading buyers...</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Title</th>
-                <th>Date & Time</th>
-                <th>Status</th>
-                <th>Lots</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Company</th>
+                <th>Deposit Status</th>
+                <th>Amount</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {[1, 2, 3].map((row) => (
+              {[1, 2, 3, 4].map((row) => (
                 <tr key={row}>
-                  <td colSpan={5}>
+                  <td colSpan={7}>
                     <div className={styles.skeletonLine} />
                   </td>
                 </tr>
