@@ -35,6 +35,9 @@ export async function GET(
     where: {
       id,
     },
+    include: {
+      vehicle: true,
+    },
   });
 
   if (!auction) {
@@ -43,11 +46,54 @@ export async function GET(
     });
   }
 
-  const [vehicle, highestBid] = await Promise.all([
-    prisma.vehicle.findUnique({
+  const [company, bids, similarAuctions, highestBid] = await Promise.all([
+    prisma.company.findUnique({
       where: {
-        id: auction.vehicleId,
+        id: auction.sellerCompanyId,
       },
+      select: {
+        name: true,
+        registrationNumber: true,
+      },
+    }),
+    prisma.bid.findMany({
+      where: {
+        auctionId: id,
+      },
+      orderBy: {
+        sequenceNo: "desc",
+      },
+      take: 20,
+      select: {
+        id: true,
+        amount: true,
+        sequenceNo: true,
+        createdAt: true,
+        userId: true,
+      },
+    }),
+    prisma.auction.findMany({
+      where: {
+        id: {
+          not: id,
+        },
+        state: {
+          in: ["LIVE", "SCHEDULED"],
+        },
+      },
+      include: {
+        vehicle: {
+          select: {
+            brand: true,
+            model: true,
+            year: true,
+            mileage: true,
+            bodyType: true,
+          },
+        },
+      },
+      orderBy: [{ endsAt: "asc" }, { id: "asc" }],
+      take: 4,
     }),
     prisma.bid.aggregate({
       where: {
@@ -59,6 +105,11 @@ export async function GET(
     }),
   ]);
 
+  const vehicle = auction.vehicle;
+  const currentPrice = Number(auction.currentPrice.toString());
+  const minIncrement = Number(auction.minIncrement.toString());
+  const currentBid = currentPrice;
+
   return json(200, {
     id: auction.id,
     state: auction.state,
@@ -66,8 +117,14 @@ export async function GET(
     vehicleId: auction.vehicleId,
     startsAt: auction.startsAt.toISOString(),
     endsAt: auction.endsAt.toISOString(),
-    currentBid: Number(auction.currentPrice.toString()),
-    minIncrement: Number(auction.minIncrement.toString()),
+    currentBid,
+    currentPrice,
+    minIncrement,
+    buyNowPrice: 0,
+    sellerName: company?.name ?? "Fleet Operator",
+    sellerRef: company?.registrationNumber ?? "",
+    location: "UAE, Dubai",
+    actualCashValue: vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : 0,
     highestBid: decimalToNumber(highestBid._max.amount),
     vehicle: vehicle
       ? {
@@ -77,7 +134,45 @@ export async function GET(
           model: vehicle.model,
           year: vehicle.year,
           mileage: vehicle.mileage,
+          fuelType: vehicle.fuelType,
+          transmission: vehicle.transmission,
+          bodyType: vehicle.bodyType,
+          regionSpec: vehicle.regionSpec,
+          condition: vehicle.condition,
+          serviceHistory: vehicle.serviceHistory,
+          sellerNotes: vehicle.sellerNotes,
+          engine: null,
+          driveType: null,
+          series: null,
+          exteriorColor: null,
+          interiorColor: null,
+          features: [],
+          highlights: [],
+          images: [],
         }
       : null,
+    bids: bids.map((bid) => ({
+      id: bid.id,
+      amount: Number(bid.amount.toString()),
+      sequenceNo: bid.sequenceNo,
+      createdAt: bid.createdAt.toISOString(),
+      userId: bid.userId,
+    })),
+    similar: similarAuctions.map((similarAuction) => ({
+      id: similarAuction.id,
+      state: similarAuction.state,
+      currentPrice: Number(similarAuction.currentPrice.toString()),
+      startsAt: similarAuction.startsAt.toISOString(),
+      endsAt: similarAuction.endsAt.toISOString(),
+      vehicle: similarAuction.vehicle
+        ? {
+            brand: similarAuction.vehicle.brand,
+            model: similarAuction.vehicle.model,
+            year: similarAuction.vehicle.year,
+            mileage: similarAuction.vehicle.mileage,
+            bodyType: similarAuction.vehicle.bodyType,
+          }
+        : null,
+    })),
   });
 }

@@ -1,0 +1,41 @@
+/* app/lot/[id]/components/MobileBidBar.module.css */
+
+.bar {
+  display: none; /* hidden on desktop */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--bg-card);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.1);
+  padding: 12px 20px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.info { display: flex; flex-direction: column; gap: 2px; }
+.price {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--green-600);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.cd {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+}
+.cta {
+  flex-shrink: 0;
+  font-size: 15px !important;
+  padding: 12px 24px !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+@media (max-width: 1080px) {
+  .bar { display: flex; }
+}
