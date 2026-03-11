@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter } from "next/navigation";
 
 import { LotCard } from "@/components/auction/LotCard";
+import type { DisplaySettings } from "@/src/lib/money";
 
 import { ActiveFilters } from "./components/ActiveFilters";
 import { FilterSidebar } from "./components/FilterSidebar";
@@ -126,7 +127,13 @@ function buildUrl(pathname: string, queryString: string): string {
   return `${pathname}?${queryString}`;
 }
 
-export function AuctionsClient({ initialParams }: { initialParams: Record<string, string> }) {
+export function AuctionsClient({
+  initialParams,
+  display,
+}: {
+  initialParams: Record<string, string>;
+  display: DisplaySettings;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
@@ -137,6 +144,8 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  const isRu = display.locale === "ru";
 
   const brandToModels = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -171,9 +180,7 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
       return [];
     }
 
-    return Array.from(brandToModels.get(filters.brand) ?? []).sort((left, right) =>
-      left.localeCompare(right),
-    );
+    return Array.from(brandToModels.get(filters.brand) ?? []).sort((left, right) => left.localeCompare(right));
   }, [brandToModels, filters.brand]);
 
   const fetchLots = useCallback(async (nextFilters: Filters) => {
@@ -224,7 +231,6 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
   useEffect(() => {
     void fetchLots(filters);
     void fetchCatalogLots();
-    // Intentionally first-load only. Further updates run through applyFilters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -288,7 +294,13 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
         className={styles.mobileFilterBtn}
         onClick={() => setMobileFiltersOpen((open) => !open)}
       >
-        {mobileFiltersOpen ? "Close Filters" : `Filters${activeCount > 0 ? ` (${activeCount})` : ""}`}
+        {mobileFiltersOpen
+          ? isRu
+            ? "Скрыть фильтры"
+            : "Close Filters"
+          : isRu
+            ? `Фильтры${activeCount > 0 ? ` (${activeCount})` : ""}`
+            : `Filters${activeCount > 0 ? ` (${activeCount})` : ""}`}
       </button>
 
       <aside className={`${styles.sidebar} ${mobileFiltersOpen ? styles.sidebarOpen : ""}`}>
@@ -299,6 +311,7 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
           onChange={(key, value) => updateFilter(key as keyof Filters, value)}
           onClearAll={clearAll}
           activeCount={activeCount}
+          display={display}
         />
       </aside>
 
@@ -308,12 +321,14 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
           total={total}
           loading={loading || isPending}
           onChange={(value) => updateFilter("sort", value)}
+          locale={display.locale}
         />
 
         <ActiveFilters
           filters={filters}
           onClear={(key) => clearFilter(key as keyof Filters)}
           onClearAll={clearAll}
+          display={display}
         />
 
         {loading ? (
@@ -324,10 +339,10 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
           </div>
         ) : lots.length === 0 ? (
           <div className={styles.empty}>
-            <p className={styles.emptyTitle}>No lots found</p>
-            <p className={styles.emptySub}>Try adjusting your filters.</p>
+            <p className={styles.emptyTitle}>{isRu ? "Лоты не найдены" : "No lots found"}</p>
+            <p className={styles.emptySub}>{isRu ? "Попробуйте изменить фильтры." : "Try adjusting your filters."}</p>
             <button type="button" className={styles.clearBtn} onClick={clearAll}>
-              Clear all filters
+              {isRu ? "Сбросить фильтры" : "Clear all filters"}
             </button>
           </div>
         ) : (
@@ -344,6 +359,7 @@ export function AuctionsClient({ initialParams }: { initialParams: Record<string
                 marketPrice={lot.marketPriceAed ?? undefined}
                 status={lot.state}
                 endTime={lot.endsAt ?? lot.startsAt ?? new Date().toISOString()}
+                display={display}
               />
             ))}
           </div>

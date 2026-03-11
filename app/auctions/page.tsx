@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 
+import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
+
 import { AuctionsClient } from "./AuctionsClient";
 import styles from "./page.module.css";
 
@@ -35,20 +37,30 @@ function normalizeSearchParams(input: SearchParamsInput | undefined): Record<str
 }
 
 export default async function AuctionsPage({ searchParams }: PageProps) {
+  const display = await getPublicDisplaySettings();
   const resolvedParams = await searchParams;
   const initialParams = normalizeSearchParams(resolvedParams);
+
+  const copy =
+    display.locale === "ru"
+      ? {
+          heading: "Все лоты",
+          sub: "Автомобили от проверенных продавцов ОАЭ: live-аукционы и ближайшие лоты.",
+        }
+      : {
+          heading: "All Lots",
+          sub: "Fleet vehicles from verified UAE sellers, including live auctions and upcoming lots.",
+        };
 
   return (
     <main className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.heading}>All Lots</h1>
-        <p className={styles.sub}>
-          Fleet vehicles from verified UAE sellers, including live auctions and upcoming lots.
-        </p>
+        <h1 className={styles.heading}>{copy.heading}</h1>
+        <p className={styles.sub}>{copy.sub}</p>
       </div>
 
       <Suspense fallback={<AuctionsSkeleton />}>
-        <AuctionsClient initialParams={initialParams} />
+        <AuctionsClient initialParams={initialParams} display={display} />
       </Suspense>
     </main>
   );

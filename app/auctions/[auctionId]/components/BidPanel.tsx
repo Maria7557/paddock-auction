@@ -1,30 +1,33 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { formatAed, formatCountdown, savingPct, pad } from '@/src/lib/utils';
-import type { LotDetail } from '../page';
-import styles from './BidPanel.module.css';
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import { toIntlLocale } from "@/src/i18n/routing";
+import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
+import { formatCountdown, savingPct, pad } from "@/src/lib/utils";
+
+import type { LotDetail } from "../page";
+import styles from "./BidPanel.module.css";
 
 type Props = {
   lot: LotDetail;
   totalBids?: number;
+  display: DisplaySettings;
 };
 
-type Outcome = { type: 'success' | 'error' | 'info'; msg: string } | null;
+type Outcome = { type: "success" | "error" | "info"; msg: string } | null;
 
 function useCountdown(iso: string) {
-  const [cd, setCd] = useState(() =>
-    formatCountdown(new Date(iso).getTime() - Date.now())
-  );
+  const [cd, setCd] = useState(() => formatCountdown(new Date(iso).getTime() - Date.now()));
 
   useEffect(() => {
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       setCd(formatCountdown(new Date(iso).getTime() - Date.now()));
     }, 1_000);
 
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [iso]);
 
   return cd;
@@ -32,37 +35,34 @@ function useCountdown(iso: string) {
 
 function useToken() {
   const [token, setToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return null;
     }
 
-    return (
-      localStorage.getItem('fleetbid_token') ??
-      sessionStorage.getItem('fleetbid_token')
-    );
+    return localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
   });
 
   useEffect(() => {
     const syncToken = () => {
-      const stored =
-        localStorage.getItem('fleetbid_token') ??
-        sessionStorage.getItem('fleetbid_token');
+      const stored = localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
       setToken(stored);
     };
 
-    window.addEventListener('storage', syncToken);
-    return () => window.removeEventListener('storage', syncToken);
+    window.addEventListener("storage", syncToken);
+    return () => window.removeEventListener("storage", syncToken);
   }, []);
 
   return token;
 }
 
-export function BidPanel({ lot, totalBids = 0 }: Props) {
+export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const router = useRouter();
   const token = useToken();
 
-  const isLive = lot.state === 'LIVE' || lot.state === 'EXTENDED';
-  const isScheduled = lot.state === 'SCHEDULED';
+  const isRu = display.locale === "ru";
+
+  const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
+  const isScheduled = lot.state === "SCHEDULED";
   const isClosed = !isLive && !isScheduled;
 
   const countdownIso = isLive ? lot.endsAt : lot.startsAt;
@@ -85,11 +85,11 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
 
         const data = (await response.json()) as { currentPrice?: number };
 
-        if (typeof data.currentPrice === 'number' && data.currentPrice !== livePrice) {
+        if (typeof data.currentPrice === "number" && data.currentPrice !== livePrice) {
           setLivePrice(data.currentPrice);
         }
       } catch {
-        // Network hiccup: keep current UI state.
+        // Keep existing UI state on transient errors.
       }
     }, 3_000);
 
@@ -120,7 +120,7 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
   const placeBid = useCallback(
     async (amount: number) => {
       if (!token) {
-        router.push('/login');
+        router.push("/login");
         return;
       }
 
@@ -128,12 +128,12 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
 
       try {
         const idempotencyKey = `bid-${lot.auctionId}-${amount}-${Date.now()}`;
-        const response = await fetch('/api/bids', {
-          method: 'POST',
+        const response = await fetch("/api/bids", {
+          method: "POST",
           headers: {
-            'content-type': 'application/json',
+            "content-type": "application/json",
             authorization: `Bearer ${token}`,
-            'Idempotency-Key': idempotencyKey,
+            "Idempotency-Key": idempotencyKey,
           },
           body: JSON.stringify({
             auctionId: lot.auctionId,
@@ -144,32 +144,37 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
         const payload = (await response.json()) as { error?: string; message?: string };
 
         if (response.ok) {
-          showOutcome({ type: 'success', msg: `Bid placed: ${formatAed(amount)}` });
+          showOutcome({
+            type: "success",
+            msg: isRu
+              ? `Ставка принята: ${formatMoneyFromAed(amount, display)}`
+              : `Bid placed: ${formatMoneyFromAed(amount, display)}`,
+          });
           setLivePrice(amount);
           return;
         }
 
         showOutcome({
-          type: 'error',
-          msg: payload.message ?? payload.error ?? 'Bid failed. Please try again.',
+          type: "error",
+          msg:
+            payload.message ??
+            payload.error ??
+            (isRu ? "Не удалось отправить ставку. Попробуйте снова." : "Bid failed. Please try again."),
         });
       } catch {
-        showOutcome({ type: 'error', msg: 'Network error. Check connection.' });
+        showOutcome({ type: "error", msg: isRu ? "Ошибка сети. Проверьте соединение." : "Network error. Check connection." });
       } finally {
         setBusy(false);
       }
     },
-    [lot.auctionId, router, token]
+    [display, isRu, lot.auctionId, router, token],
   );
 
   const handleBuyNow = useCallback(async () => {
-    const authToken =
-      token ??
-      localStorage.getItem('fleetbid_token') ??
-      sessionStorage.getItem('fleetbid_token');
+    const authToken = token ?? localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
 
     if (!authToken) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
@@ -177,36 +182,41 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
 
     try {
       const response = await fetch(`/api/auctions/${lot.auctionId}/buy-now`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
       });
 
-      const payload =
-        ((await response.json().catch(() => ({}))) as { message?: string }) ?? {};
+      const payload = ((await response.json().catch(() => ({}))) as { message?: string }) ?? {};
 
       if (response.ok) {
         setBuyNowSuccess(true);
-        showOutcome({ type: 'success', msg: payload.message ?? 'Purchase confirmed' });
+        showOutcome({
+          type: "success",
+          msg: payload.message ?? (isRu ? "Покупка подтверждена" : "Purchase confirmed"),
+        });
         return;
       }
 
-      showOutcome({ type: 'error', msg: payload.message ?? 'Buy Now failed' });
+      showOutcome({
+        type: "error",
+        msg: payload.message ?? (isRu ? "Buy Now не выполнен" : "Buy Now failed"),
+      });
     } catch {
-      showOutcome({ type: 'error', msg: 'Network error. Check connection.' });
+      showOutcome({ type: "error", msg: isRu ? "Ошибка сети. Проверьте соединение." : "Network error. Check connection." });
     } finally {
       setBusy(false);
     }
-  }, [lot.auctionId, router, token]);
+  }, [isRu, lot.auctionId, router, token]);
 
   const toggleWatchlist = useCallback(async () => {
     if (!token) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
-    const method = saved ? 'DELETE' : 'POST';
+    const method = saved ? "DELETE" : "POST";
 
     try {
       await fetch(`/api/buyer/wishlist/${lot.auctionId}`, {
@@ -217,24 +227,23 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
       });
       setSaved(!saved);
     } catch {
-      // Silently ignore watchlist errors.
+      // Ignore watchlist errors in UI.
     }
   }, [lot.auctionId, router, saved, token]);
 
   const nextBid = livePrice + lot.minStepAed;
   const saving = savingPct(lot.buyNowAed || lot.currentBidAed * 1.3, livePrice);
-  const countdownDone =
-    cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
+  const countdownDone = cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
 
   const countdownDate = new Date(countdownIso);
-  const countdownDateLabel = countdownDate.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
+  const countdownDateLabel = countdownDate.toLocaleDateString(toIntlLocale(display.locale), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
   });
-  const countdownTimeLabel = countdownDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
+  const countdownTimeLabel = countdownDate.toLocaleTimeString(toIntlLocale(display.locale), {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   return (
@@ -243,34 +252,29 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
         {isLive && (
           <div className={styles.liveStatus}>
             <span className={styles.liveDot} aria-hidden />
-            <span className={styles.liveLabel}>LIVE AUCTION</span>
+            <span className={styles.liveLabel}>{isRu ? "АУКЦИОН В ЭФИРЕ" : "LIVE AUCTION"}</span>
           </div>
         )}
         {isScheduled && (
           <div className={styles.schedStatus}>
-            <span className={styles.calIcon} aria-hidden>
-              📅
-            </span>
-            <span>UPCOMING</span>
+            <span>{isRu ? "СКОРО" : "UPCOMING"}</span>
           </div>
         )}
         {isClosed && (
-          <div className={styles.closedStatus}>
-            {lot.state === 'PAYMENT_PENDING' ? '⏳ Payment Pending' : 'Auction Ended'}
-          </div>
+          <div className={styles.closedStatus}>{lot.state === "PAYMENT_PENDING" ? (isRu ? "Ожидается оплата" : "Payment Pending") : isRu ? "Аукцион завершён" : "Auction Ended"}</div>
         )}
       </div>
 
       {!isClosed && !countdownDone && (
-        <div className={styles.countdown} aria-live="polite" aria-label="Countdown">
-          <div className={styles.cdLabel}>{isLive ? 'Ends in' : 'Starts in'}</div>
+        <div className={styles.countdown} aria-live="polite" aria-label={isRu ? "Таймер" : "Countdown"}>
+          <div className={styles.cdLabel}>{isLive ? (isRu ? "До конца" : "Ends in") : isRu ? "До старта" : "Starts in"}</div>
 
           <div className={styles.cdTimer}>
             {cd.days > 0 && (
               <>
                 <div className={styles.cdUnit}>
                   <div className={styles.cdNum}>{cd.days}</div>
-                  <div className={styles.cdLbl}>day{cd.days !== 1 ? 's' : ''}</div>
+                  <div className={styles.cdLbl}>{isRu ? "дн" : `day${cd.days !== 1 ? "s" : ""}`}</div>
                 </div>
                 <span className={styles.cdColon} aria-hidden>
                   :
@@ -280,53 +284,47 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
 
             <div className={styles.cdUnit}>
               <div className={styles.cdNum}>{pad(cd.hours)}</div>
-              <div className={styles.cdLbl}>hrs</div>
+              <div className={styles.cdLbl}>{isRu ? "ч" : "hrs"}</div>
             </div>
             <span className={styles.cdColon} aria-hidden>
               :
             </span>
             <div className={styles.cdUnit}>
               <div className={styles.cdNum}>{pad(cd.minutes)}</div>
-              <div className={styles.cdLbl}>min</div>
+              <div className={styles.cdLbl}>{isRu ? "мин" : "min"}</div>
             </div>
             <span className={styles.cdColon} aria-hidden>
               :
             </span>
             <div className={styles.cdUnit}>
               <div className={styles.cdNum}>{pad(cd.seconds)}</div>
-              <div className={styles.cdLbl}>sec</div>
+              <div className={styles.cdLbl}>{isRu ? "сек" : "sec"}</div>
             </div>
           </div>
 
           <div className={styles.bidMeta}>
             {totalBids > 0 ? (
-              <span>
-                🔨 {totalBids} bid{totalBids !== 1 ? 's' : ''}
-              </span>
+              <span>{isRu ? `${formatInteger(totalBids, display.locale)} ставок` : `${formatInteger(totalBids, display.locale)} bid${totalBids !== 1 ? "s" : ""}`}</span>
             ) : (
               <span />
             )}
             <span>
-              {isLive ? 'Ends' : 'Starts'} {countdownDateLabel}, {countdownTimeLabel} GST
+              {isLive ? (isRu ? "Конец" : "Ends") : isRu ? "Старт" : "Starts"} {countdownDateLabel}, {countdownTimeLabel} GST
             </span>
           </div>
         </div>
       )}
 
-      {!isClosed && countdownDone && (
-        <div className={styles.cdEnded}>
-          {isLive ? 'Bidding has closed' : 'Auction is starting…'}
-        </div>
-      )}
+      {!isClosed && countdownDone && <div className={styles.cdEnded}>{isLive ? (isRu ? "Приём ставок завершён" : "Bidding has closed") : isRu ? "Аукцион начинается…" : "Auction is starting…"}</div>}
 
       <div className={styles.priceBlock}>
         <div className={styles.priceRow}>
           <div className={styles.priceCell}>
-            <div className={styles.priceLabel}>Current bid</div>
-            <div className={styles.currentPrice}>{formatAed(livePrice)}</div>
+            <div className={styles.priceLabel}>{isRu ? "Текущая ставка" : "Current bid"}</div>
+            <div className={styles.currentPrice}>{formatMoneyFromAed(livePrice, display)}</div>
             {lot.minStepAed > 0 && (
               <div className={styles.minIncrement}>
-                Min. increment: <strong>{formatAed(lot.minStepAed)}</strong>
+                {isRu ? "Мин. шаг:" : "Min. increment:"} <strong>{formatMoneyFromAed(lot.minStepAed, display)}</strong>
               </div>
             )}
           </div>
@@ -334,16 +332,16 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
           {lot.buyNowAed > 0 && (
             <div className={styles.priceCell}>
               <div className={styles.priceLabel}>Buy Now</div>
-              <div className={styles.buyNowPrice}>{formatAed(lot.buyNowAed)}</div>
-              {saving > 0 && <div className={styles.savingBadge}>−{saving}% below market</div>}
+              <div className={styles.buyNowPrice}>{formatMoneyFromAed(lot.buyNowAed, display)}</div>
+              {saving > 0 && <div className={styles.savingBadge}>{isRu ? `−${saving}% ниже рынка` : `−${saving}% below market`}</div>}
             </div>
           )}
         </div>
 
         {isLive && (
           <div className={styles.nextBid}>
-            <span>Minimum next bid</span>
-            <strong>{formatAed(nextBid)}</strong>
+            <span>{isRu ? "Минимальная следующая ставка" : "Minimum next bid"}</span>
+            <strong>{formatMoneyFromAed(nextBid, display)}</strong>
           </div>
         )}
       </div>
@@ -351,46 +349,45 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
       {!token ? (
         <>
           <div className={styles.authGate} role="alert">
-            <div className={styles.authIcon} aria-hidden>
-              🔐
-            </div>
             <div className={styles.authText}>
-              <p>You are not logged in.</p>
+              <p>{isRu ? "Вы не авторизованы." : "You are not logged in."}</p>
               <p>
-                <Link href="/login">Sign in</Link> or{' '}
-                <Link href="/register/buyer">register</Link> to place a bid.
+                <Link href="/login">{isRu ? "Войдите" : "Sign in"}</Link> {isRu ? "или" : "or"} <Link href="/register/buyer">{isRu ? "зарегистрируйтесь" : "register"}</Link> {isRu ? "чтобы сделать ставку." : "to place a bid."}
               </p>
             </div>
             <div className={styles.depositNotice}>
-              A refundable deposit of <strong>5,000 AED</strong> is required to participate in
-              auctions.
+              {isRu
+                ? "Для участия требуется возвратный депозит 5 000 AED."
+                : "A refundable deposit of 5,000 AED is required to participate in auctions."}
             </div>
             <Link href="/login" className={`btn btn-primary btn-full ${styles.signInBtn}`}>
-              Sign In to Bid
+              {isRu ? "Войти и сделать ставку" : "Sign In to Bid"}
             </Link>
             <p className={styles.whoCanBid}>
-              Anyone with a verified account and a refundable 5,000 AED deposit can participate.
+              {isRu
+                ? "Участвовать могут только верифицированные аккаунты с возвратным депозитом 5 000 AED."
+                : "Anyone with a verified account and a refundable 5,000 AED deposit can participate."}
             </p>
           </div>
 
           <div className={styles.howToBid}>
-            <p className={styles.howToBidTitle}>How to Place a Bid?</p>
+            <p className={styles.howToBidTitle}>{isRu ? "Как сделать ставку" : "How to Place a Bid?"}</p>
             <ol className={styles.howToBidList}>
               <li>
-                <strong>1. Sign In or Register</strong>
-                <span>Create your buyer account in minutes — it&apos;s free.</span>
+                <strong>{isRu ? "1. Войдите или зарегистрируйтесь" : "1. Sign In or Register"}</strong>
+                <span>{isRu ? "Создайте аккаунт покупателя за несколько минут." : "Create your buyer account in minutes — it's free."}</span>
               </li>
               <li>
-                <strong>2. Add Security Deposit</strong>
-                <span>Deposit 5,000 AED — fully refunded if you don&apos;t win.</span>
+                <strong>{isRu ? "2. Внесите депозит" : "2. Add Security Deposit"}</strong>
+                <span>{isRu ? "Депозит 5 000 AED полностью возвращается, если вы не выиграли." : "Deposit 5,000 AED — fully refunded if you don't win."}</span>
               </li>
               <li>
-                <strong>3. Place Your Bid</strong>
-                <span>Once deposited, you&apos;re ready to bid on any live lot.</span>
+                <strong>{isRu ? "3. Сделайте ставку" : "3. Place Your Bid"}</strong>
+                <span>{isRu ? "После депозита вы можете участвовать в любом live-лоте." : "Once deposited, you're ready to bid on any live lot."}</span>
               </li>
             </ol>
             <Link href="/register/buyer" className={styles.registerLink}>
-              Register as a Buyer →
+              {isRu ? "Регистрация покупателя" : "Register as a Buyer"}
             </Link>
           </div>
         </>
@@ -398,13 +395,8 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
         <>
           <div className={styles.actions}>
             {isLive && (
-              <button
-                className={`btn btn-primary ${styles.bidBtn}`}
-                onClick={() => placeBid(nextBid)}
-                disabled={busy}
-                aria-busy={busy}
-              >
-                {busy ? 'Placing bid…' : `Place Bid · ${formatAed(nextBid)}`}
+              <button className={`btn btn-primary ${styles.bidBtn}`} onClick={() => placeBid(nextBid)} disabled={busy} aria-busy={busy}>
+                {busy ? (isRu ? "Отправка ставки…" : "Placing bid…") : isRu ? `Сделать ставку · ${formatMoneyFromAed(nextBid, display)}` : `Place Bid · ${formatMoneyFromAed(nextBid, display)}`}
               </button>
             )}
 
@@ -413,50 +405,46 @@ export function BidPanel({ lot, totalBids = 0 }: Props) {
                 className={`btn btn-primary ${styles.bidBtn}`}
                 onClick={() =>
                   showOutcome({
-                    type: 'info',
-                    msg: 'Pre-bid will be registered when the auction starts.',
+                    type: "info",
+                    msg: isRu
+                      ? "Пред-ставка будет зарегистрирована при старте аукциона."
+                      : "Pre-bid will be registered when the auction starts.",
                   })
                 }
               >
-                Pre-Bid Now
+                {isRu ? "Сделать пред-ставку" : "Pre-Bid Now"}
               </button>
             )}
 
             {lot.buyNowAed > 0 && !isClosed && (
-              <button
-                className={styles.buyNowBtn}
-                onClick={handleBuyNow}
-                disabled={busy || buyNowSuccess}
-              >
-                {buyNowSuccess ? 'Purchase Confirmed' : `Buy Now — ${formatAed(lot.buyNowAed)}`}
+              <button className={styles.buyNowBtn} onClick={handleBuyNow} disabled={busy || buyNowSuccess}>
+                {buyNowSuccess
+                  ? isRu
+                    ? "Покупка подтверждена"
+                    : "Purchase Confirmed"
+                  : `Buy Now — ${formatMoneyFromAed(lot.buyNowAed, display)}`}
               </button>
             )}
           </div>
 
           {outcome && (
-            <div
-              className={`${styles.feedback} ${styles[`fb_${outcome.type}`]}`}
-              role="status"
-              aria-live="polite"
-            >
+            <div className={`${styles.feedback} ${styles[`fb_${outcome.type}`]}`} role="status" aria-live="polite">
               {outcome.msg}
             </div>
           )}
 
-          <button
-            className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ''}`}
-            onClick={toggleWatchlist}
-            aria-pressed={saved}
-          >
-            <span aria-hidden>{saved ? '♥' : '♡'}</span>
-            {saved ? 'Saved to Watchlist' : 'Add to Watchlist'}
+          <button className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ""}`} onClick={toggleWatchlist} aria-pressed={saved}>
+            {saved ? (isRu ? "Сохранено в избранное" : "Saved to Watchlist") : isRu ? "Добавить в избранное" : "Add to Watchlist"}
           </button>
         </>
       )}
 
       <div className={styles.depositInfo}>
-        <span aria-hidden>🔒</span>
-        <span>5,000 AED refundable deposit required · Released within 24h if you don&rsquo;t win</span>
+        <span>
+          {isRu
+            ? "Возвратный депозит 5 000 AED обязателен · возврат в течение 24 часов, если вы не выиграли"
+            : "5,000 AED refundable deposit required · Released within 24h if you don't win"}
+        </span>
       </div>
     </div>
   );

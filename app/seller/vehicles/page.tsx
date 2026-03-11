@@ -1,245 +1,161 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getToken, logout } from "@/src/lib/auth_client";
+import { SellerTabs } from "@/components/seller/SellerTabs";
+import { VehicleListCard } from "@/components/seller/VehicleListCard";
 
 type SellerVehiclesResponse = {
+  total: number;
   vehicles: Array<{
     id: string;
-    vin: string;
     brand: string;
     model: string;
     year: number;
-    mileage: number;
+    vin: string;
+    mileageKm: number;
+    images: string[];
     latestAuction: {
       id: string;
       state: string;
+      createdAt: string;
       startsAt: string;
       endsAt: string;
-      currentBid: number;
+      currentBidAed: number;
     } | null;
   }>;
 };
 
-function formatAmountAed(value: number): string {
-  return new Intl.NumberFormat("en-AE", {
-    style: "currency",
-    currency: "AED",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function auctionStateBadge(state: string): { className: string; label: string; pulse: boolean } {
-  const normalized = state.toUpperCase();
-
-  if (normalized === "LIVE") {
-    return {
-      className: "admin-status-badge admin-status-good",
-      label: "LIVE",
-      pulse: true,
-    };
-  }
-
-  if (normalized === "SCHEDULED") {
-    return {
-      className: "admin-status-badge seller-status-scheduled",
-      label: "SCHEDULED",
-      pulse: false,
-    };
-  }
-
-  if (normalized === "PAYMENT_PENDING") {
-    return {
-      className: "admin-status-badge admin-status-warn",
-      label: "PAYMENT_PENDING",
-      pulse: false,
-    };
-  }
-
-  if (normalized === "PAID" || normalized === "SOLD") {
-    return {
-      className: "admin-status-badge admin-status-good",
-      label: normalized,
-      pulse: false,
-    };
-  }
-
-  if (normalized === "DRAFT") {
-    return {
-      className: "admin-status-badge",
-      label: "DRAFT",
-      pulse: false,
-    };
-  }
-
-  return {
-    className: "admin-status-badge",
-    label: normalized,
-    pulse: false,
-  };
-}
+const STATUS_OPTIONS = ["ALL", "DRAFT", "SCHEDULED", "LIVE", "ENDED"] as const;
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "price_asc", label: "Price ↑" },
+  { value: "price_desc", label: "Price ↓" },
+] as const;
 
 export default function SellerVehiclesPage() {
-  const [token, setToken] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("ALL");
+  const [sort, setSort] = useState<(typeof SORT_OPTIONS)[number]["value"]>("newest");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<SellerVehiclesResponse | null>(null);
+  const [data, setData] = useState<SellerVehiclesResponse>({ total: 0, vehicles: [] });
 
-  const loadVehicles = useCallback(async (authToken: string): Promise<void> => {
+  const loadVehicles = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/seller/vehicles", {
-        headers: {
-          authorization: `Bearer ${authToken}`,
-        },
-      });
+      const params = new URLSearchParams();
 
-      const payload = (await response.json().catch(() => null)) as
-        | SellerVehiclesResponse
-        | { error?: string; message?: string }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(
-          (payload as { message?: string; error?: string } | null)?.message ??
-            (payload as { message?: string; error?: string } | null)?.error ??
-            "Failed to load seller vehicles",
-        );
+      if (search.trim()) {
+        params.set("q", search.trim());
       }
 
-      setData(payload as SellerVehiclesResponse);
+      if (status !== "ALL") {
+        params.set("status", status);
+      }
+
+      params.set("sort", sort);
+
+      const response = await fetch(`/api/seller/vehicles?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      const payload = (await response.json().catch(() => null)) as SellerVehiclesResponse | { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load vehicles");
+      }
+
+      setData((payload as SellerVehiclesResponse) ?? { total: 0, vehicles: [] });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, status, sort]);
 
   useEffect(() => {
-    const authToken = getToken();
-
-    if (!authToken) {
-      window.location.href = "/login/seller";
-      return;
-    }
-
-    setToken(authToken);
-    void loadVehicles(authToken);
+    void loadVehicles();
   }, [loadVehicles]);
 
-  return (
-    <section className="market-shell">
-      <header className="surface-panel seller-dashboard-header">
-        <div>
-          <h1>My Vehicles</h1>
-          <p className="text-muted">Track vehicle inventory and linked auction states.</p>
-        </div>
+  const summary = useMemo(() => {
+    if (loading) {
+      return "Loading vehicles...";
+    }
 
-        <div className="inline-actions" style={{ justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className="button button-secondary"
-            style={{ borderColor: "#f0ccca", color: "var(--red-600)", minHeight: "40px", padding: "8px 14px" }}
-            onClick={logout}
-          >
-            Logout
+    return `${data.total} vehicle${data.total === 1 ? "" : "s"}`;
+  }, [data.total, loading]);
+
+  return (
+    <section className="seller-section-stack">
+      <SellerTabs />
+
+      <section className="surface-panel seller-section-block">
+        <div className="seller-filter-row">
+          <label className="seller-filter-field seller-filter-grow">
+            Search
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Make, model, VIN"
+            />
+          </label>
+
+          <label className="seller-filter-field">
+            Status
+            <select value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="seller-filter-field">
+            Sort
+            <select value={sort} onChange={(event) => setSort(event.target.value as (typeof SORT_OPTIONS)[number]["value"])}>
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="button" className="button button-secondary" onClick={() => void loadVehicles()}>
+            Apply
           </button>
         </div>
-      </header>
 
-      <nav className="surface-panel seller-dashboard-nav" aria-label="Seller navigation">
-        <Link href="/seller/dashboard" className="button button-secondary">
-          Dashboard
-        </Link>
-        <Link href="/seller/vehicles" className="button button-secondary">
-          My Vehicles
-        </Link>
-        <Link href="/seller/dashboard#add-vehicle" className="button button-primary">
-          Add Vehicle
-        </Link>
-      </nav>
+        <p className="text-muted" style={{ marginTop: "10px" }}>
+          {summary}
+        </p>
+      </section>
 
-      {loading ? (
-        <div className="surface-panel">
-          <p className="text-muted">Loading vehicles...</p>
-        </div>
-      ) : null}
+      {error ? <p className="inline-note tone-error">{error}</p> : null}
 
-      {error ? (
-        <div className="surface-panel">
-          <p className="inline-note tone-error">{error}</p>
-        </div>
-      ) : null}
+      {loading ? <p className="text-muted">Loading...</p> : null}
 
-      {data && !loading ? (
-        <section className="surface-panel">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Vehicle</th>
-                <th>VIN</th>
-                <th>Mileage</th>
-                <th>Auction State</th>
-                <th>Starting Price</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.vehicles.map((vehicle) => {
-                const stateInfo = vehicle.latestAuction
-                  ? auctionStateBadge(vehicle.latestAuction.state)
-                  : {
-                      className: "admin-status-badge",
-                      label: "No auction",
-                      pulse: false,
-                    };
-
-                return (
-                  <tr key={vehicle.id}>
-                    <td>{`${vehicle.brand} ${vehicle.model} ${vehicle.year}`}</td>
-                    <td>{vehicle.vin}</td>
-                    <td>{vehicle.mileage.toLocaleString("en-AE")} km</td>
-                    <td>
-                      <span className={stateInfo.className}>
-                        {stateInfo.pulse ? <span className="seller-live-dot" aria-hidden="true" /> : null}
-                        {stateInfo.label}
-                      </span>
-                    </td>
-                    <td>{vehicle.latestAuction ? formatAmountAed(vehicle.latestAuction.currentBid) : "-"}</td>
-                    <td>
-                      {vehicle.latestAuction ? (
-                        <Link href={`/auctions/${vehicle.latestAuction.id}`} className="button button-secondary">
-                          View
-                        </Link>
-                      ) : (
-                        <button type="button" className="button button-secondary" disabled>
-                          View
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {data.vehicles.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="admin-empty-cell">
-                    No vehicles available.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+      {!loading && data.vehicles.length === 0 ? (
+        <section className="surface-panel seller-section-block">
+          <p className="text-muted">No vehicles found.</p>
+          <Link href="/seller/vehicles/new" className="button button-primary">
+            + Add Vehicle
+          </Link>
         </section>
       ) : null}
 
-      {!token ? (
-        <div className="surface-panel">
-          <p className="text-muted">Redirecting to login...</p>
-        </div>
+      {!loading && data.vehicles.length > 0 ? (
+        <section className="seller-vehicle-list">
+          {data.vehicles.map((vehicle) => (
+            <VehicleListCard key={vehicle.id} vehicle={vehicle} />
+          ))}
+        </section>
       ) : null}
     </section>
   );

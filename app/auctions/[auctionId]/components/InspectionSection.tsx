@@ -1,55 +1,57 @@
-// app/lot/[id]/components/InspectionSection.tsx
-// Client component — buttons fire API calls / navigation
+"use client";
 
-'use client';
+import { useState } from "react";
 
-import { useState } from 'react';
-import styles from './Sections.module.css';
+import type { SupportedLocale } from "@/src/i18n/routing";
+import { toIntlLocale } from "@/src/i18n/routing";
 
-type Props = { auctionId: string; startsAt: string };
+import styles from "./Sections.module.css";
 
-export function InspectionSection({ auctionId, startsAt }: Props) {
+type Props = {
+  auctionId: string;
+  startsAt: string;
+  locale: SupportedLocale;
+};
+
+export function InspectionSection({ auctionId, startsAt, locale }: Props) {
   const [requested, setRequested] = useState(false);
   const [scheduled, setScheduled] = useState(false);
 
+  const isRu = locale === "ru";
   const viewDate = new Date(startsAt);
-  const viewEnd  = new Date(viewDate.getTime() - 86_400_000); // day before
-  const viewStart = new Date(viewDate.getTime() - 2 * 86_400_000); // 2 days before
+  const viewEnd = new Date(viewDate.getTime() - 86_400_000);
+  const viewStart = new Date(viewDate.getTime() - 2 * 86_400_000);
 
   const handleDownload = () => {
-    window.open(`/api/auctions/${auctionId}/inspection-report`, '_blank');
+    window.open(`/api/auctions/${auctionId}/inspection-report`, "_blank");
   };
-  const handleRequest  = () => setRequested(true);
+  const handleRequest = () => setRequested(true);
   const handleSchedule = () => setScheduled(true);
 
   return (
     <section className={styles.card} aria-labelledby="ins-heading">
-      <h2 id="ins-heading" className={styles.cardTitle}>Inspection</h2>
+      <h2 id="ins-heading" className={styles.cardTitle}>
+        {isRu ? "Инспекция" : "Inspection"}
+      </h2>
 
       <div className={styles.inspectLayout}>
-        {/* Viewing window */}
         <div className={styles.inspectInfo}>
-          <div className={styles.inspectSubhead}>Preview Window</div>
+          <div className={styles.inspectSubhead}>{isRu ? "Окно просмотра" : "Preview Window"}</div>
           <div className={styles.inspectDates}>
-            <strong>Viewing Dates</strong>
+            <strong>{isRu ? "Даты просмотра" : "Viewing Dates"}</strong>
             <p>
-              {viewStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              {viewStart.toLocaleDateString(toIntlLocale(locale), { day: "numeric", month: "short" })}
               &nbsp;–&nbsp;
-              {viewEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              {viewEnd.toLocaleDateString(toIntlLocale(locale), { day: "numeric", month: "short" })}
             </p>
             <p className={styles.inspectTime}>10:00 – 17:00 GST</p>
             <p className={styles.inspectAddr}>Dubai Warehouse · Al Quoz Industrial Area 2</p>
           </div>
         </div>
 
-        {/* Actions */}
         <div className={styles.inspectActions}>
-          <button
-            className={`btn btn-primary ${styles.inspectBtn}`}
-            onClick={handleDownload}
-          >
-            <span aria-hidden>📄</span>
-            Download Inspection Report
+          <button className={`btn btn-primary ${styles.inspectBtn}`} onClick={handleDownload}>
+            {isRu ? "Скачать отчёт инспекции" : "Download Inspection Report"}
           </button>
 
           <button
@@ -58,8 +60,7 @@ export function InspectionSection({ auctionId, startsAt }: Props) {
             disabled={requested}
             aria-pressed={requested}
           >
-            <span aria-hidden>{requested ? '✓' : '🔍'}</span>
-            {requested ? 'Inspection Requested' : 'Request Inspection'}
+            {requested ? (isRu ? "Запрос отправлен" : "Inspection Requested") : isRu ? "Запросить инспекцию" : "Request Inspection"}
           </button>
 
           <button
@@ -68,8 +69,7 @@ export function InspectionSection({ auctionId, startsAt }: Props) {
             disabled={scheduled}
             aria-pressed={scheduled}
           >
-            <span aria-hidden>{scheduled ? '✓' : '📅'}</span>
-            {scheduled ? 'Viewing Scheduled' : 'Schedule Viewing'}
+            {scheduled ? (isRu ? "Просмотр запланирован" : "Viewing Scheduled") : isRu ? "Запланировать просмотр" : "Schedule Viewing"}
           </button>
         </div>
       </div>

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { formatAed } from "@/src/lib/utils";
+import { withLocalePath } from "@/src/i18n/routing";
+import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
+import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 import { BidHistory } from "./components/BidHistory";
@@ -133,7 +135,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       id: String(auction.id ?? auctionId),
       lotNumber: String(auction.lotNumber ?? `LOT-${auctionId.slice(0, 8).toUpperCase()}`),
       auctionId: String(auction.id ?? auctionId),
-      state: ((auction.state as LotAuctionState | undefined) ?? "SCHEDULED"),
+      state: (auction.state as LotAuctionState | undefined) ?? "SCHEDULED",
       title: `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim(),
       make: String(vehicle.brand ?? vehicle.make ?? ""),
       model: String(vehicle.model ?? ""),
@@ -200,21 +202,21 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
   }
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ auctionId: string }>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ auctionId: string }> }): Promise<Metadata> {
   const { auctionId } = await params;
   const lot = await getLot(auctionId);
+  const display = await getPublicDisplaySettings();
 
   if (!lot) {
-    return { title: "Lot Not Found — FleetBid" };
+    return { title: display.locale === "ru" ? "Лот не найден — FleetBid" : "Lot Not Found — FleetBid" };
   }
 
   return {
     title: `${lot.title} — FleetBid Auction`,
-    description: `${lot.title}, ${lot.mileageKm.toLocaleString()} km, ${lot.regionSpec} spec. Current bid ${formatAed(lot.currentBidAed)}.`,
+    description:
+      display.locale === "ru"
+        ? `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} км, спецификация ${lot.regionSpec}. Текущая ставка ${formatMoneyFromAed(lot.currentBidAed, display)}.`
+        : `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} km, ${lot.regionSpec} spec. Current bid ${formatMoneyFromAed(lot.currentBidAed, display)}.`,
     openGraph: {
       title: `${lot.title} — Lot #${lot.lotNumber}`,
       images: lot.images[0] ? [lot.images[0]] : [],
@@ -222,13 +224,11 @@ export async function generateMetadata({
   };
 }
 
-export default async function AuctionDetailPage({
-  params,
-}: {
-  params: Promise<{ auctionId: string }>;
-}) {
+export default async function AuctionDetailPage({ params }: { params: Promise<{ auctionId: string }> }) {
   const { auctionId } = await params;
   const lot = await getLot(auctionId);
+  const display = await getPublicDisplaySettings();
+  const isRu = display.locale === "ru";
 
   if (!lot) {
     notFound();
@@ -242,9 +242,9 @@ export default async function AuctionDetailPage({
     <MarketShell mainClassName={styles.mainTight}>
       <div className={styles.page}>
         <nav className={styles.breadcrumb} aria-label="breadcrumb">
-          <Link href="/">Home</Link>
+          <Link href={withLocalePath("/", display.locale)}>{isRu ? "Главная" : "Home"}</Link>
           <span aria-hidden>›</span>
-          <Link href="/auctions">Auctions</Link>
+          <Link href={withLocalePath("/auctions", display.locale)}>{isRu ? "Аукционы" : "Auctions"}</Link>
           <span aria-hidden>›</span>
           <span>{lot.title}</span>
         </nav>
@@ -254,19 +254,23 @@ export default async function AuctionDetailPage({
             <h1 className={styles.h1}>{lot.title}</h1>
             <div className={styles.quickMeta}>
               <div className={styles.quickMetaFacts}>
-                <span>{lot.year}</span>
+                <span>{formatInteger(lot.year, display.locale)}</span>
                 <span className={styles.dot}>·</span>
-                <span>{lot.mileageKm.toLocaleString()}&thinsp;km</span>
+                <span>
+                  {formatInteger(lot.mileageKm, display.locale)}&thinsp;{isRu ? "км" : "km"}
+                </span>
                 <span className={styles.dot}>·</span>
                 <span>{lot.condition}</span>
                 <span className={styles.dot}>·</span>
                 <span>{lot.regionSpec}</span>
                 <span className={styles.dot}>·</span>
-                <span>{lot.airbags} airbags</span>
+                <span>
+                  {lot.airbags} {isRu ? "подушек" : "airbags"}
+                </span>
                 {lot.damage !== "None" ? (
                   <>
                     <span className={styles.dot}>·</span>
-                    <span className={styles.damage}>⚠ {lot.damage}</span>
+                    <span className={styles.damage}>{lot.damage}</span>
                   </>
                 ) : null}
               </div>
@@ -277,7 +281,6 @@ export default async function AuctionDetailPage({
               <span className={styles.pill}>{lot.bodyStyle}</span>
             </div>
           </div>
-
         </div>
 
         <div className={styles.hero}>
@@ -285,22 +288,22 @@ export default async function AuctionDetailPage({
             <LotGallery images={lot.images} title={lot.title} />
           </div>
           <aside className={styles.bidCol}>
-            <BidPanel lot={lot} totalBids={lot.totalBids} />
+            <BidPanel lot={lot} totalBids={lot.totalBids} display={display} />
           </aside>
         </div>
 
         <div className={styles.body}>
           <div className={styles.main}>
-            <VehicleInfo lot={lot} />
-            <VehicleSpecs lot={lot} />
-            <VehicleFeatures features={lot.features} />
-            <VehicleDesc description={lot.description} highlights={lot.highlights} />
-            <InspectionSection auctionId={lot.auctionId} startsAt={lot.startsAt} />
-            <BidHistory bids={lot.bids} />
+            <VehicleInfo lot={lot} locale={display.locale} />
+            <VehicleSpecs lot={lot} locale={display.locale} />
+            <VehicleFeatures features={lot.features} locale={display.locale} />
+            <VehicleDesc description={lot.description} highlights={lot.highlights} locale={display.locale} />
+            <InspectionSection auctionId={lot.auctionId} startsAt={lot.startsAt} locale={display.locale} />
+            <BidHistory bids={lot.bids} display={display} />
           </div>
         </div>
 
-        {lot.similar.length > 0 ? <SimilarVehicles lots={lot.similar} /> : null}
+        {lot.similar.length > 0 ? <SimilarVehicles lots={lot.similar} display={display} /> : null}
       </div>
 
       {isActive ? (
@@ -309,6 +312,7 @@ export default async function AuctionDetailPage({
           state={lot.state}
           currentBidAed={lot.currentBidAed}
           endsAt={lot.endsAt}
+          display={display}
         />
       ) : null}
     </MarketShell>

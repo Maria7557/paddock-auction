@@ -1,19 +1,9 @@
 "use client";
 
-import styles from "./ActiveFilters.module.css";
+import type { DisplaySettings } from "@/src/lib/money";
+import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
 
-const LABELS: Record<string, string> = {
-  brand: "Brand",
-  model: "Model",
-  status: "Status",
-  minPrice: "Min price",
-  maxPrice: "Max price",
-  region: "Region",
-  bodyType: "Body",
-  fuelType: "Fuel",
-  maxMileage: "Max km",
-  minYear: "From year",
-};
+import styles from "./ActiveFilters.module.css";
 
 const DEFAULT: Record<string, string> = {
   brand: "",
@@ -29,21 +19,48 @@ const DEFAULT: Record<string, string> = {
   sort: "ending_soon",
 };
 
-function formatValue(key: string, value: string): string {
+function getLabels(isRu: boolean): Record<string, string> {
+  return {
+    brand: isRu ? "Бренд" : "Brand",
+    model: isRu ? "Модель" : "Model",
+    status: isRu ? "Статус" : "Status",
+    minPrice: isRu ? "Мин. цена" : "Min price",
+    maxPrice: isRu ? "Макс. цена" : "Max price",
+    region: isRu ? "Регион" : "Region",
+    bodyType: isRu ? "Кузов" : "Body",
+    fuelType: isRu ? "Топливо" : "Fuel",
+    maxMileage: isRu ? "Пробег до" : "Max km",
+    minYear: isRu ? "Год от" : "From year",
+  };
+}
+
+function formatValue(key: string, value: string, display: DisplaySettings): string {
+  const isRu = display.locale === "ru";
+
   if (key === "status") {
-    return value === "LIVE" ? "Live now" : "Upcoming";
+    if (value === "LIVE") {
+      return isRu ? "Сейчас в эфире" : "Live now";
+    }
+
+    return isRu ? "Скоро" : "Upcoming";
   }
 
   if (key === "minPrice") {
-    return `from AED ${Number(value).toLocaleString()}`;
+    return isRu
+      ? `от ${formatMoneyFromAed(Number(value), display)}`
+      : `from ${formatMoneyFromAed(Number(value), display)}`;
   }
 
   if (key === "maxPrice") {
-    return `up to AED ${Number(value).toLocaleString()}`;
+    return isRu
+      ? `до ${formatMoneyFromAed(Number(value), display)}`
+      : `up to ${formatMoneyFromAed(Number(value), display)}`;
   }
 
   if (key === "maxMileage") {
-    return `under ${Number(value).toLocaleString()} km`;
+    return isRu
+      ? `до ${formatInteger(Number(value), display.locale)} км`
+      : `under ${formatInteger(Number(value), display.locale)} km`;
   }
 
   if (key === "minYear") {
@@ -57,9 +74,13 @@ type Props = {
   filters: Record<string, string>;
   onClear: (key: string) => void;
   onClearAll: () => void;
+  display: DisplaySettings;
 };
 
-export function ActiveFilters({ filters, onClear, onClearAll }: Props) {
+export function ActiveFilters({ filters, onClear, onClearAll, display }: Props) {
+  const isRu = display.locale === "ru";
+  const labels = getLabels(isRu);
+
   const active = Object.entries(filters).filter(([key, value]) => {
     if (key === "sort") {
       return false;
@@ -76,8 +97,8 @@ export function ActiveFilters({ filters, onClear, onClearAll }: Props) {
     <div className={styles.row}>
       {active.map(([key, value]) => (
         <span key={key} className={styles.chip}>
-          <span className={styles.chipLabel}>{LABELS[key] ?? key}:</span>
-          <span className={styles.chipValue}>{formatValue(key, value)}</span>
+          <span className={styles.chipLabel}>{labels[key] ?? key}:</span>
+          <span className={styles.chipValue}>{formatValue(key, value, display)}</span>
           <button type="button" className={styles.chipX} onClick={() => onClear(key)}>
             x
           </button>
@@ -86,7 +107,7 @@ export function ActiveFilters({ filters, onClear, onClearAll }: Props) {
 
       {active.length > 1 ? (
         <button type="button" className={styles.clearAll} onClick={onClearAll}>
-          Clear all
+          {isRu ? "Сбросить всё" : "Clear all"}
         </button>
       ) : null}
     </div>
