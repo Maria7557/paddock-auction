@@ -1,0 +1,69 @@
+.page {
+  display: grid;
+  gap: 16px;
+}
+
+.heading {
+  margin: 0;
+  font-size: clamp(28px, 3.2vw, 38px);
+  font-weight: 800;
+  color: var(--ink-primary);
+  letter-spacing: -0.03em;
+}
+
+.section {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-primary);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-subtle);
+}
+
+.row {
+  display: flex;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  gap: 16px;
+}
+
+.rowLabel {
+  flex: 0 0 160px;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.rowValue {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.rowValue textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  resize: vertical;
+}
+
+.actions {
+  padding: 16px 20px;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--red-600);
+}

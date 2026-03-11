@@ -1,54 +1,37 @@
-"use client";
+import type { ReactNode } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { PropsWithChildren, useEffect, useState } from "react";
+import { verifyJwt } from "@/src/lib/auth";
 
-import { getRole, getToken } from "@/src/lib/auth_client";
+import { AdminNav } from "./components/AdminNav";
+import styles from "./layout.module.css";
 
-export default function AdminLayout({ children }: PropsWithChildren) {
-  const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
+type AdminLayoutProps = {
+  children: ReactNode;
+};
 
-  useEffect(() => {
-    const token = getToken();
-    const role = getRole();
+export default async function AdminLayout({ children }: AdminLayoutProps) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value?.trim();
 
-    if (!token || role !== "ADMIN") {
-      router.replace("/login");
-      return;
-    }
+  if (!token) {
+    redirect("/login");
+  }
 
-    setAuthorized(true);
-  }, [router]);
+  const session = await verifyJwt(token);
 
-  if (!authorized) {
-    return null;
+  if (!session || session.role !== "ADMIN") {
+    redirect("/login");
   }
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar" aria-label="Admin navigation">
-        <h1>FleetBid Admin</h1>
-        <nav>
-          <ul>
-            <li>
-              <Link href="/admin">Dashboard</Link>
-            </li>
-            <li>
-              <Link href="/admin#companies">Companies</Link>
-            </li>
-            <li>
-              <Link href="/admin#users">Users</Link>
-            </li>
-            <li>
-              <Link href="/admin#deposits">Deposits</Link>
-            </li>
-          </ul>
-        </nav>
+    <div className={styles.shell}>
+      <aside className={styles.sidebar} aria-label="Admin navigation">
+        <div className={styles.brand}>FleetBid Admin</div>
+        <AdminNav />
       </aside>
-
-      <main className="admin-main">{children}</main>
+      <main className={styles.main}>{children}</main>
     </div>
   );
 }

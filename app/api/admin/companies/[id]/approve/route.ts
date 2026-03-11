@@ -1,109 +1,88 @@
 export const runtime = "nodejs";
 
-import prisma from "@/src/infrastructure/database/prisma";
-import { withStructuredMutationLogging } from "@/src/modules/platform/transport/structured_logging_middleware";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-import { createAuditLog, json, requireAdmin } from "../../../_lib/admin_route_utils";
+import prisma from "@/src/infrastructure/database/prisma";
+
+import { createAuditLog } from "@/app/api/admin/_lib/admin_route_utils";
+import { requireAdminSession } from "@/app/api/admin/_lib/admin_session";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-async function resolveCompanyId(context: RouteContext): Promise<string> {
-  const resolved = await context.params;
-  return resolved.id;
-}
+export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const session = await requireAdminSession(request);
 
-export const POST = withStructuredMutationLogging(
-  async (request: Request, context: RouteContext): Promise<Response> => {
-    const adminContext = requireAdmin(request);
+  if (session instanceof NextResponse) {
+    return session;
+  }
 
-    if (adminContext instanceof Response) {
-      return adminContext;
-    }
+  const { id } = await context.params;
 
-    const companyId = (await resolveCompanyId(context)).trim();
+  if (!id?.trim()) {
+    return NextResponse.json({ error: "INVALID_COMPANY_ID" }, { status: 400 });
+  }
 
-    if (!companyId) {
-      return json(400, {
-        error: "INVALID_COMPANY_ID",
-      });
-    }
-
-    const correlationId = request.headers.get("x-correlation-id")?.trim();
-    const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-
-    const result = await prisma.$transaction(async (tx) => {
-      const company = await tx.company.findUnique({
-        where: {
-          id: companyId,
-        },
-        include: {
-          users: {
-            where: {
-              role: "SELLER_MANAGER",
-            },
-            select: {
-              userId: true,
-            },
+  const updated = await prisma.$transaction(async (tx) => {
+    const company = await tx.company.findUnique({
+      where: { id },
+      include: {
+        users: {
+          where: {
+            role: "SELLER_MANAGER",
+          },
+          select: {
+            userId: true,
           },
         },
-      });
+      },
+    });
 
-      if (!company) {
-        return null;
-      }
+    if (!company) {
+      return null;
+    }
 
-      await tx.company.update({
+    await tx.company.update({
+      where: { id },
+      data: {
+        status: "ACTIVE",
+      },
+    });
+
+    const sellerUserIds = company.users.map((link) => link.userId);
+
+    if (sellerUserIds.length > 0) {
+      await tx.user.updateMany({
         where: {
-          id: companyId,
+          id: {
+            in: sellerUserIds,
+          },
         },
         data: {
           status: "ACTIVE",
         },
       });
-
-      const sellerUserIds = company.users.map((membership) => membership.userId);
-
-      if (sellerUserIds.length > 0) {
-        await tx.user.updateMany({
-          where: {
-            id: {
-              in: sellerUserIds,
-            },
-          },
-          data: {
-            status: "ACTIVE",
-          },
-        });
-      }
-
-      await createAuditLog(tx, {
-        actorId: adminContext.actorId,
-        action: "COMPANY_APPROVED",
-        entityType: "Company",
-        entityId: companyId,
-        correlationId,
-        idempotencyKey,
-        payload: {
-          companyId,
-          status: "ACTIVE",
-          sellerUserIds,
-        },
-      });
-
-      return {
-        companyId,
-        status: "ACTIVE",
-      } as const;
-    });
-
-    if (!result) {
-      return json(404, {
-        error: "COMPANY_NOT_FOUND",
-      });
     }
 
-    return json(200, result);
-  },
-);
+    await createAuditLog(tx, {
+      actorId: session.actorId,
+      action: "COMPANY_APPROVED",
+      entityType: "Company",
+      entityId: id,
+      payload: {
+        companyId: id,
+        status: "ACTIVE",
+      },
+    });
+
+    return true;
+  });
+
+  if (!updated) {
+    return NextResponse.json({ error: "COMPANY_NOT_FOUND" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true });
+}
