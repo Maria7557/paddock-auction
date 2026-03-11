@@ -6,9 +6,14 @@ interface Props { event: AuctionWeekEvent; }
 export default function AuctionTicker({ event }: Props) {
   const date = new Date(event.date);
   const dateStr = date.toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Dubai',
     day: 'numeric', month: 'long', year: 'numeric',
   });
-  const timeStr = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = date.toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Dubai',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   const item = (
     <div className={styles.item}>
@@ -22,7 +27,7 @@ export default function AuctionTicker({ event }: Props) {
       <span className={styles.sep}>·</span>
       {event.location}
       <span className={styles.sep}>·</span>
-      Starting from AED 35,000
+      Starting from AED {event.startingFromAed.toLocaleString('en-US')}
     </div>
   );
 

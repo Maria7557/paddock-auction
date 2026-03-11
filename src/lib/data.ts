@@ -3,6 +3,7 @@ import type { Lot, AuctionWeekEvent, PlatformStats } from '@/src/types/auction';
 export const NEXT_AUCTION: AuctionWeekEvent = {
   date:         '2026-03-20T15:00:00+04:00',
   lotCount:     14,
+  startingFromAed: 35_000,
   location:     'Dubai Warehouse · Al Quoz Industrial Area',
   viewingStart: '2026-03-18T10:00:00+04:00',
   viewingEnd:   '2026-03-19T17:00:00+04:00',

@@ -29,6 +29,7 @@ export interface Lot {
 export interface AuctionWeekEvent {
   date: string;
   lotCount: number;
+  startingFromAed: number;
   location: string;
   viewingStart: string;
   viewingEnd: string;

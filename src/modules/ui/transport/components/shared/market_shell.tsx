@@ -37,7 +37,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function MarketShell({
   children,
-  hideHeader = false,
+  hideHeader = true,
   shellClassName,
   mainClassName,
 }: MarketShellProps) {

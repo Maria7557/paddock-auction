@@ -87,6 +87,7 @@ function mapToHomeLot(lot: AuctionLot): Lot {
 
 export default async function HomePage() {
   const dbLots = await readHomepageLots();
+  const now = new Date();
   const nextAuction = await prisma.auction.findFirst({
     where: { state: { in: ["SCHEDULED", "LIVE"] } },
     orderBy: { startsAt: "asc" },
@@ -96,9 +97,33 @@ export default async function HomePage() {
     where: { state: { in: ["LIVE", "SCHEDULED"] } },
   });
 
+  const upcomingStartPrice = await prisma.auction.aggregate({
+    where: {
+      state: "SCHEDULED",
+      startsAt: { gte: now },
+    },
+    _min: {
+      currentPrice: true,
+    },
+  });
+
+  const fallbackStartPrice = await prisma.auction.aggregate({
+    where: { state: { in: ["LIVE", "SCHEDULED"] } },
+    _min: {
+      currentPrice: true,
+    },
+  });
+
+  const startingFromAed = Number(
+    upcomingStartPrice._min.currentPrice ??
+      fallbackStartPrice._min.currentPrice ??
+      NEXT_AUCTION.startingFromAed,
+  );
+
   const tickerEvent = {
     date: nextAuction?.startsAt.toISOString() ?? NEXT_AUCTION.date,
     lotCount: liveAuctionCount || NEXT_AUCTION.lotCount,
+    startingFromAed,
     location: "Dubai Warehouse · Al Quoz Industrial Area",
     viewingStart: NEXT_AUCTION.viewingStart,
     viewingEnd: NEXT_AUCTION.viewingEnd,
