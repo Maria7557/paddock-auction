@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { formatAed } from "@/src/lib/utils";
@@ -20,6 +20,13 @@ type EventLot = {
 type CandidateVehicle = {
   id: string;
   label: string;
+};
+
+type VehiclesResponse = {
+  vehicles?: {
+    id: string;
+    label: string;
+  }[];
 };
 
 type EventDetailClientProps = {
@@ -55,10 +62,59 @@ export function EventDetailClient({
   const router = useRouter();
 
   const [lotRows, setLotRows] = useState<EventLot[]>(lots);
+  const [candidateOptions, setCandidateOptions] = useState<CandidateVehicle[]>(candidates);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(candidates[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
 
   const canReorder = lotRows.length > 1;
+  const availableCandidates = useMemo(() => {
+    const lotVehicleIds = new Set(lotRows.map((lot) => lot.vehicleId));
+    return candidateOptions.filter((candidate) => !lotVehicleIds.has(candidate.id));
+  }, [candidateOptions, lotRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCandidates(): Promise<void> {
+      try {
+        const response = await fetch("/api/admin/vehicles?status=APPROVED&unassigned=true", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as VehiclesResponse;
+        const nextCandidates = (payload.vehicles ?? []).map((vehicle) => ({
+          id: vehicle.id,
+          label: vehicle.label,
+        }));
+
+        if (!cancelled) {
+          setCandidateOptions(nextCandidates);
+        }
+      } catch {
+        // Keep server-rendered options when fetch fails.
+      }
+    }
+
+    void loadCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (availableCandidates.some((candidate) => candidate.id === selectedVehicleId)) {
+      return;
+    }
+
+    const fallback = availableCandidates[0]?.id ?? "";
+    setSelectedVehicleId(fallback);
+  }, [availableCandidates, selectedVehicleId]);
 
   async function callMutation(path: string, body: Record<string, unknown>): Promise<void> {
     setBusy(true);
@@ -174,16 +230,18 @@ export function EventDetailClient({
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === 0}
                           onClick={() => void move(index, -1)}
+                          aria-label="Move lot up"
                         >
-                          Up
+                          ▲
                         </button>
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === lotRows.length - 1}
                           onClick={() => void move(index, 1)}
+                          aria-label="Move lot down"
                         >
-                          Down
+                          ▼
                         </button>
                       </div>
                     </div>
@@ -228,10 +286,10 @@ export function EventDetailClient({
           <select
             value={selectedVehicleId}
             onChange={(event) => setSelectedVehicleId(event.target.value)}
-            disabled={busy || candidates.length === 0}
+            disabled={busy || availableCandidates.length === 0}
           >
             <option value="">Select vehicle</option>
-            {candidates.map((candidate) => (
+            {availableCandidates.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.label}
               </option>

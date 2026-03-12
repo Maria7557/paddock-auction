@@ -135,7 +135,11 @@ export default async function EventDetailPage({
       }
 
       const latestState = vehicle.auctions[0]?.state ?? "DRAFT";
-      return latestState !== "CANCELED";
+      const isApproved = latestState !== "DRAFT" && latestState !== "CANCELED";
+      const isUnassigned =
+        latestState !== "SCHEDULED" && latestState !== "LIVE" && latestState !== "EXTENDED";
+
+      return isApproved && isUnassigned;
     })
     .map((vehicle) => ({
       id: vehicle.id,

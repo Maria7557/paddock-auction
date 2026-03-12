@@ -14,13 +14,13 @@ export default function NewEventPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [startTime, setStartTime] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function createEvent(): Promise<void> {
-    if (!title.trim() || !date || !time) {
+    if (!title.trim() || !date || !startTime) {
       setError("Title, date, and start time are required.");
       return;
     }
@@ -37,7 +37,7 @@ export default function NewEventPage() {
         body: JSON.stringify({
           title,
           date,
-          time,
+          startTime,
           description,
         }),
       });
@@ -86,7 +86,11 @@ export default function NewEventPage() {
         <div className={styles.row}>
           <div className={styles.rowLabel}>Start Time</div>
           <div className={styles.rowValue}>
-            <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+            />
           </div>
         </div>
 

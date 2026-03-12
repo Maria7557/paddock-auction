@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
@@ -28,6 +28,14 @@ type EventOption = {
   label: string;
 };
 
+type EventsResponse = {
+  events?: {
+    id: string;
+    title: string;
+    startsAt: string;
+  }[];
+};
+
 type VehiclesTableProps = {
   rows: VehicleRow[];
   events: EventOption[];
@@ -40,6 +48,48 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceDraftById, setPriceDraftById] = useState<Record<string, string>>({});
   const [eventDraftById, setEventDraftById] = useState<Record<string, string>>({});
+  const [eventOptions, setEventOptions] = useState<EventOption[]>(events);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEvents(): Promise<void> {
+      try {
+        const response = await fetch("/api/admin/events?status=SCHEDULED", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as EventsResponse;
+        const nextOptions = (payload.events ?? []).map((event) => ({
+          id: event.id,
+          label: `${event.title} • ${new Date(event.startsAt).toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`,
+        }));
+
+        if (!cancelled) {
+          setEventOptions(nextOptions);
+        }
+      } catch {
+        // Keep server-rendered options when fetch fails.
+      }
+    }
+
+    void loadEvents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     if (tab === "all") {
@@ -235,7 +285,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           }
                         >
                           <option value="">Select event</option>
-                          {events.map((event) => (
+                          {eventOptions.map((event) => (
                             <option key={event.id} value={event.id}>
                               {event.label}
                             </option>

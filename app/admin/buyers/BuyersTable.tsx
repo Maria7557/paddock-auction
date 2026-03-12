@@ -89,7 +89,7 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
                   <td>
                     {buyer.depositStatus === "NONE" ? <span className="pill">None</span> : null}
                     {buyer.depositStatus === "PENDING" ? (
-                      <span className={`pill ${styles.pendingPill}`}>Pending</span>
+                      <span className="pill pill-sched">Pending</span>
                     ) : null}
                     {buyer.depositStatus === "APPROVED" ? (
                       <span className="pill pill-green">Approved</span>
