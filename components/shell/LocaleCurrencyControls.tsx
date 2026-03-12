@@ -54,6 +54,11 @@ export function LocaleCurrencyControls({ locale, currency, labels }: Props) {
       : `/${nextLocale}`;
 
     const targetUrl = `${targetPath}${currentQuery ? `?${currentQuery}` : ""}${hash}`;
+    if (typeof window !== "undefined") {
+      window.location.assign(targetUrl);
+      return;
+    }
+
     router.push(targetUrl);
   };
 

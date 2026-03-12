@@ -16,8 +16,18 @@ function decimalToNumber(value: Prisma.Decimal | null): number {
   return Number(value.toString());
 }
 
+function resolveStartingPriceAed(startingPrice: Prisma.Decimal | null, currentPrice: Prisma.Decimal): number {
+  const starting = decimalToNumber(startingPrice);
+
+  if (starting > 0) {
+    return starting;
+  }
+
+  return decimalToNumber(currentPrice);
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -75,6 +85,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         startsAt: true,
         endsAt: true,
         startingPrice: true,
+        currentPrice: true,
         vehicle: {
           select: {
             brand: true,
@@ -98,7 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       id: auction.id,
       vehicle: auction.vehicle ? `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}` : "-",
       state: auction.state,
-      startingPriceAed: decimalToNumber(auction.startingPrice),
+      startingPriceAed: resolveStartingPriceAed(auction.startingPrice, auction.currentPrice),
       startsAt: auction.startsAt.toISOString(),
       endsAt: auction.endsAt.toISOString(),
     })),

@@ -27,11 +27,18 @@ export function formatMoneyFromAed(
   const rate = Number.isFinite(options.usdPerAed) ? options.usdPerAed ?? AED_USD_PEG_RATE : AED_USD_PEG_RATE;
   const amount = options.currency === "USD" ? amountAed * rate : amountAed;
 
-  return new Intl.NumberFormat(intlLocale, {
+  const formatted = new Intl.NumberFormat(intlLocale, {
     style: "currency",
     currency: options.currency,
+    currencyDisplay: "narrowSymbol",
     maximumFractionDigits: 0,
   }).format(amount);
+
+  if (options.currency === "USD") {
+    return formatted.replace("US$", "$");
+  }
+
+  return formatted;
 }
 
 export function formatInteger(value: number, locale: SupportedLocale): string {

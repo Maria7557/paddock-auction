@@ -12,7 +12,7 @@ type RouteContext = {
 };
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;

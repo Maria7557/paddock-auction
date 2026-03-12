@@ -22,6 +22,16 @@ function decimalLikeToNumber(value: { toString(): string } | number | null | und
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function resolveStartingPrice(value: { toString(): string } | number | null | undefined, current: { toString(): string } | number | null | undefined): number {
+  const starting = decimalLikeToNumber(value);
+
+  if (starting > 0) {
+    return starting;
+  }
+
+  return decimalLikeToNumber(current);
+}
+
 export default async function SellerDashboardPage() {
   const session = await requireSellerSession("/seller/dashboard");
 
@@ -107,7 +117,7 @@ export default async function SellerDashboardPage() {
                   <td>
                     <AuctionStatusBadge state={auction.state} />
                   </td>
-                  <td>{formatAed(decimalLikeToNumber(auction.startingPrice ?? auction.currentPrice))}</td>
+                  <td>{formatAed(resolveStartingPrice(auction.startingPrice, auction.currentPrice))}</td>
                   <td>{formatSellerDateTime(auction.startsAt)}</td>
                   <td>{formatSellerDateTime(auction.endsAt)}</td>
                 </tr>

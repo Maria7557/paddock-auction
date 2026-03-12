@@ -39,6 +39,16 @@ function decimalToNumber(value: Prisma.Decimal | null): number {
   return Number(value.toString());
 }
 
+function resolveStartingPriceAed(startingPrice: Prisma.Decimal | null, currentPrice: Prisma.Decimal): number {
+  const starting = decimalToNumber(startingPrice);
+
+  if (starting > 0) {
+    return starting;
+  }
+
+  return decimalToNumber(currentPrice);
+}
+
 async function getCompanyAuctionForVehicle(companyId: string, vehicleId: string) {
   return prisma.auction.findFirst({
     where: {
@@ -73,7 +83,7 @@ function isDraftLikeState(state: AuctionState): boolean {
 }
 
 export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -127,7 +137,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
     auction: {
       id: auction.id,
       state: auction.state,
-      startingPriceAed: decimalToNumber(auction.startingPrice),
+      startingPriceAed: resolveStartingPriceAed(auction.startingPrice, auction.currentPrice),
       buyNowPriceAed: decimalToNumber(auction.buyNowPrice),
       currentBidAed: topBid ? decimalToNumber(topBid.amount) : decimalToNumber(auction.currentPrice),
       startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
@@ -142,7 +152,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -232,7 +242,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;

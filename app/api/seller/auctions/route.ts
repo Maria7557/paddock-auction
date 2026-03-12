@@ -16,6 +16,16 @@ function decimalToNumber(value: Prisma.Decimal | null): number {
   return Number(value.toString());
 }
 
+function resolveStartingPriceAed(startingPrice: Prisma.Decimal | null, currentPrice: Prisma.Decimal): number {
+  const starting = decimalToNumber(startingPrice);
+
+  if (starting > 0) {
+    return starting;
+  }
+
+  return decimalToNumber(currentPrice);
+}
+
 function matchesState(state: string, filter: string): boolean {
   const normalized = filter.toUpperCase();
 
@@ -31,7 +41,7 @@ function matchesState(state: string, filter: string): boolean {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -97,7 +107,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       state: auction.state,
       vehicleId: auction.vehicleId,
       vehicleLabel: auction.vehicle ? `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}` : auction.vehicleId,
-      startingPriceAed: decimalToNumber(auction.startingPrice),
+      startingPriceAed: resolveStartingPriceAed(auction.startingPrice, auction.currentPrice),
       currentBidAed: decimalToNumber(auction.currentPrice),
       bidsCount: auction._count.bids,
       startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),

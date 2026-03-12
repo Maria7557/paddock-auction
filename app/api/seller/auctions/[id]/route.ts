@@ -29,8 +29,18 @@ function decimalToNumber(value: Prisma.Decimal | null): number {
   return Number(value.toString());
 }
 
+function resolveStartingPriceAed(startingPrice: Prisma.Decimal | null, currentPrice: Prisma.Decimal): number {
+  const starting = decimalToNumber(startingPrice);
+
+  if (starting > 0) {
+    return starting;
+  }
+
+  return decimalToNumber(currentPrice);
+}
+
 export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -93,7 +103,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
       viewingEndsAt: auction.viewingEndsAt?.toISOString() ?? null,
       auctionStartsAt: auction.auctionStartsAt?.toISOString() ?? null,
       auctionEndsAt: auction.auctionEndsAt?.toISOString() ?? null,
-      startingPriceAed: decimalToNumber(auction.startingPrice),
+      startingPriceAed: resolveStartingPriceAed(auction.startingPrice, auction.currentPrice),
       buyNowPriceAed: decimalToNumber(auction.buyNowPrice),
       currentBidAed: decimalToNumber(auction.currentPrice),
       totalBids: auction._count.bids,
@@ -118,7 +128,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;

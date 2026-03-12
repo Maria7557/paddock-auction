@@ -27,7 +27,7 @@ function toCompanyRole(role: "OWNER" | "ADMIN" | "VIEWER"): CompanyUserRole {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;

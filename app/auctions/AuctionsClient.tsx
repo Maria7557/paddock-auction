@@ -354,6 +354,7 @@ export function AuctionsClient({
                 title={lot.title}
                 year={lot.year}
                 mileage={lot.mileageKm}
+                regionSpec={lot.vehicle.regionSpec}
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
                 marketPrice={lot.marketPriceAed ?? undefined}

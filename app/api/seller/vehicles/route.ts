@@ -113,96 +113,107 @@ function applySort(items: VehicleListItem[], sort: string): VehicleListItem[] {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
   }
 
-  const { searchParams } = new URL(request.url);
-  const status = searchParams.get("status")?.trim() ?? "ALL";
-  const query = searchParams.get("q")?.trim().toLowerCase() ?? "";
-  const sort = searchParams.get("sort")?.trim() ?? "newest";
+  try {
+    console.log("[seller/vehicles] session", {
+      userId: auth.userId,
+      companyId: auth.companyId,
+    });
 
-  const auctions = await prisma.auction.findMany({
-    where: {
-      sellerCompanyId: auth.companyId,
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    include: {
-      vehicle: {
-        include: {
-          media: {
-            where: {
-              type: "PHOTO",
-            },
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-            select: {
-              url: true,
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get("status")?.trim() ?? "ALL";
+    const query = searchParams.get("q")?.trim().toLowerCase() ?? "";
+    const sort = searchParams.get("sort")?.trim() ?? "newest";
+
+    const auctions = await prisma.auction.findMany({
+      where: {
+        sellerCompanyId: auth.companyId,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      include: {
+        vehicle: {
+          include: {
+            media: {
+              where: {
+                type: "PHOTO",
+              },
+              orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+              select: {
+                url: true,
+              },
             },
           },
         },
       },
-    },
-  });
-
-  const latestByVehicle = new Map<string, VehicleListItem>();
-
-  for (const auction of auctions) {
-    if (latestByVehicle.has(auction.vehicleId)) {
-      continue;
-    }
-
-    const vehicle = auction.vehicle;
-
-    if (!vehicle) {
-      continue;
-    }
-
-    latestByVehicle.set(auction.vehicleId, {
-      id: vehicle.id,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      year: vehicle.year,
-      vin: vehicle.vin,
-      mileageKm: vehicle.mileage,
-      images: vehicle.media.length > 0 ? vehicle.media.map((item) => item.url) : vehicle.images,
-      latestAuction: {
-        id: auction.id,
-        state: auction.state,
-        createdAt: auction.createdAt.toISOString(),
-        startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
-        endsAt: (auction.auctionEndsAt ?? auction.endsAt).toISOString(),
-        currentBidAed: decimalToNumber(auction.currentPrice),
-      },
     });
+
+    const latestByVehicle = new Map<string, VehicleListItem>();
+
+    for (const auction of auctions) {
+      if (latestByVehicle.has(auction.vehicleId)) {
+        continue;
+      }
+
+      const vehicle = auction.vehicle;
+
+      if (!vehicle) {
+        continue;
+      }
+
+      latestByVehicle.set(auction.vehicleId, {
+        id: vehicle.id,
+        brand: vehicle.brand,
+        model: vehicle.model,
+        year: vehicle.year,
+        vin: vehicle.vin,
+        mileageKm: vehicle.mileage,
+        images: vehicle.media.length > 0 ? vehicle.media.map((item) => item.url) : vehicle.images,
+        latestAuction: {
+          id: auction.id,
+          state: auction.state,
+          createdAt: auction.createdAt.toISOString(),
+          startsAt: (auction.auctionStartsAt ?? auction.startsAt).toISOString(),
+          endsAt: (auction.auctionEndsAt ?? auction.endsAt).toISOString(),
+          currentBidAed: decimalToNumber(auction.currentPrice),
+        },
+      });
+    }
+
+    const filtered = [...latestByVehicle.values()].filter((item) => {
+      const state = item.latestAuction?.state;
+
+      if (!state || !matchesStatus(state, status)) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const searchable = `${item.brand} ${item.model} ${item.vin}`.toLowerCase();
+      return searchable.includes(query);
+    });
+
+    const sorted = applySort(filtered, sort);
+    console.log("[seller/vehicles] found", sorted.length);
+
+    return NextResponse.json({
+      total: sorted.length,
+      vehicles: sorted,
+    });
+  } catch (error) {
+    console.error("[seller/vehicles] FATAL", error);
+    return NextResponse.json({ error: "Failed to load vehicles" }, { status: 500 });
   }
-
-  const filtered = [...latestByVehicle.values()].filter((item) => {
-    const state = item.latestAuction?.state;
-
-    if (!state || !matchesStatus(state, status)) {
-      return false;
-    }
-
-    if (!query) {
-      return true;
-    }
-
-    const searchable = `${item.brand} ${item.model} ${item.vin}`.toLowerCase();
-    return searchable.includes(query);
-  });
-
-  const sorted = applySort(filtered, sort);
-
-  return NextResponse.json({
-    total: sorted.length,
-    vehicles: sorted,
-  });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const auth = requireSellerApiAuth(request);
+  const auth = await requireSellerApiAuth(request);
 
   if (auth instanceof NextResponse) {
     return auth;
@@ -273,6 +284,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const viewingEndsAt = addDays(dropoffDate, 2);
   const auctionStartsAt = addDays(dropoffDate, 2);
   const auctionEndsAt = addDays(dropoffDate, 3);
+  const startingPrice = new Prisma.Decimal(payload.startingPriceAed);
+  const buyNowPrice = payload.buyNowPriceAed !== undefined ? new Prisma.Decimal(payload.buyNowPriceAed) : null;
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -331,9 +344,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           viewingEndsAt,
           auctionStartsAt,
           auctionEndsAt,
-          startingPrice: payload.startingPriceAed,
-          currentPrice: payload.startingPriceAed,
-          buyNowPrice: payload.buyNowPriceAed,
+          startingPrice,
+          currentPrice: startingPrice,
+          buyNowPrice,
           minIncrement: 500,
         },
       });

@@ -15,6 +15,7 @@ type LotCardProps = {
   title: string;
   year: number;
   mileage: number;
+  regionSpec?: string;
   imageUrl: string;
   currentBid: number;
   status: string;
@@ -77,6 +78,7 @@ export function LotCard({
   title,
   year,
   mileage,
+  regionSpec,
   imageUrl,
   currentBid,
   status,
@@ -115,6 +117,7 @@ export function LotCard({
         <div className={styles.title}>{title}</div>
         <div className={styles.meta}>
           {formatInteger(year, display.locale)} · {formatInteger(mileage, display.locale)} {isRu ? "км" : "KM"}
+          {regionSpec ? ` · ${regionSpec}` : ""}
         </div>
 
         <div className={styles.strip}>
@@ -124,7 +127,7 @@ export function LotCard({
             {saving > 0 && (
               <div className={styles.saving}>
                 <IconPercent size={11} color="var(--green-600)" />
-                {isRu ? `−${saving}% дешевле` : `−${saving}% cheaper`}
+                {isRu ? `На ${saving}% дешевле` : `${saving}% cheaper`}
               </div>
             )}
           </div>
