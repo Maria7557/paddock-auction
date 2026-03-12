@@ -4058,85 +4058,225 @@ select:focus-visible {
   color: #d97706;
 }
 
-.damage-svg {
-  width: 100%;
-  max-width: 240px;
+.damage-diagram-root {
+  margin-top: 2px;
+}
+
+.damage-view-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+
+.damage-view-btn {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1.5px solid #dde5df;
+  background: #fff;
+  color: #6b7c6e;
   cursor: pointer;
+  transition: all 0.15s;
 }
 
-.damage-svg rect {
+.damage-view-btn.active {
+  background: #116a43;
+  border-color: #116a43;
+  color: #fff;
+}
+
+.damage-diagram-wrapper {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.damage-car-diagram {
+  flex-shrink: 0;
+  width: 220px;
+  position: relative;
+}
+
+.damage-svg-detailed {
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.07));
+}
+
+.zone {
+  transition: fill 0.18s, stroke 0.18s, filter 0.18s;
+  cursor: pointer;
   stroke-width: 1.5;
-  transition: fill 0.15s, stroke 0.15s;
 }
 
-.damage-svg rect:hover {
-  opacity: 0.8;
+.zone:hover {
+  filter: brightness(0.92);
+}
+
+.zone.none {
+  fill: #f0f4f1;
+  stroke: #b8c9bc;
+}
+
+.zone.minor {
+  fill: #fef3c7;
+  stroke: #f59e0b;
+}
+
+.zone.major {
+  fill: #fee2e2;
+  stroke: #ef4444;
+}
+
+.zone-label {
+  font-size: 7px;
+  font-weight: 600;
+  fill: #6b7c6e;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  letter-spacing: 0.01em;
+}
+
+.damage-diagram-right {
+  flex: 1;
+  min-width: 0;
 }
 
 .damage-legend {
   display: flex;
   gap: 16px;
-  font-size: 12px;
-  color: var(--color-ink-sec);
-  margin-top: 10px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
-.legend-dot {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  margin-right: 4px;
-  vertical-align: middle;
-  border: 1.5px solid;
+.damage-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #4a5c4e;
+  user-select: none;
 }
 
-.legend-dot.minor {
+.damage-legend-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid;
+  flex-shrink: 0;
+}
+
+.damage-legend-swatch.none {
+  background: #f0f4f1;
+  border-color: #b8c9bc;
+}
+
+.damage-legend-swatch.minor {
   background: #fef3c7;
   border-color: #f59e0b;
 }
 
-.legend-dot.major {
+.damage-legend-swatch.major {
   background: #fee2e2;
   border-color: #ef4444;
 }
 
-.legend-dot.none {
-  background: #fff;
-  border-color: #dde5df;
+.damage-list-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7c6e;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
 }
 
-.damage-summary {
-  margin-top: 14px;
-  padding: 12px 14px;
-  background: #fff8f0;
-  border: 1px solid #fed7aa;
+.damage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.no-damage-msg {
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+  padding: 12px 0;
+}
+
+.damage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
 }
 
-.damage-chip {
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12px;
+.damage-item.minor {
+  background: #fef9ec;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+}
+
+.damage-item.major {
+  background: #fff1f2;
+  border: 1px solid #fca5a5;
+  color: #7f1d1d;
+}
+
+.damage-item-label {
   font-weight: 500;
 }
 
-.damage-chip.minor {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fcd34d;
+.damage-item-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.damage-chip.major {
+.damage-item-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.damage-item.minor .damage-item-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.damage-item.major .damage-item-badge {
   background: #fee2e2;
   color: #991b1b;
-  border: 1px solid #fca5a5;
+}
+
+.damage-item-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.damage-item-remove:hover {
+  color: #ef4444;
+}
+
+.damage-view-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b7c6e;
 }
 
 .seller-doc-grid {
@@ -4342,6 +4482,11 @@ select:focus-visible {
 
   .mulkiya-upload-row {
     grid-template-columns: 1fr;
+  }
+
+  .damage-diagram-wrapper {
+    flex-direction: column;
+    gap: 18px;
   }
 
   .seller-vehicle-card {
