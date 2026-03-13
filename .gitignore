@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/backend/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -15,6 +16,7 @@
 # production builds
 /build
 /dist
+/backend/dist
 
 # testing
 /coverage
