@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 
 import { prisma } from "./db";
 import { authRoutes } from "./routes/auth";
+import { bidsRoutes } from "./routes/bids";
 
 let activeServer: FastifyInstance | null = null;
 let isShuttingDown = false;
@@ -136,6 +137,8 @@ export async function buildServer(): Promise<FastifyInstance> {
       await api.register(authRoutes, {
         prefix: "/auth",
       });
+
+      await api.register(bidsRoutes);
     },
     {
       prefix: "/api",
