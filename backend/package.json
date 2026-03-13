@@ -24,6 +24,7 @@
     "bcryptjs": "^3",
     "fastify": "^4",
     "jose": "^6",
+    "node-cron": "^4.2.1",
     "redis": "^5",
     "zod": "^4"
   },

@@ -3,10 +3,12 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { prisma } from "./db";
+import { setSchedulerLogger, startScheduler, stopScheduler } from "./scheduler";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { bidsRoutes } from "./routes/bids";
 import { sellerRoutes } from "./routes/seller";
+import { walletRoutes } from "./routes/wallet";
 
 let activeServer: FastifyInstance | null = null;
 let isShuttingDown = false;
@@ -54,6 +56,8 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   isShuttingDown = true;
 
   try {
+    await stopScheduler();
+
     if (activeServer) {
       activeServer.log.info({ signal }, "Shutting down server");
       await activeServer.close();
@@ -143,6 +147,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       await api.register(bidsRoutes);
       await api.register(sellerRoutes);
       await api.register(adminRoutes);
+      await api.register(walletRoutes);
     },
     {
       prefix: "/api",
@@ -166,6 +171,8 @@ export async function start(): Promise<void> {
   });
 
   server.log.info({ port }, "Server started");
+  await setSchedulerLogger(server.log);
+  await startScheduler();
 }
 
 async function main(): Promise<void> {
