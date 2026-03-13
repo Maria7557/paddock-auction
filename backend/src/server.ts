@@ -3,8 +3,10 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { prisma } from "./db";
+import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { bidsRoutes } from "./routes/bids";
+import { sellerRoutes } from "./routes/seller";
 
 let activeServer: FastifyInstance | null = null;
 let isShuttingDown = false;
@@ -139,6 +141,8 @@ export async function buildServer(): Promise<FastifyInstance> {
       });
 
       await api.register(bidsRoutes);
+      await api.register(sellerRoutes);
+      await api.register(adminRoutes);
     },
     {
       prefix: "/api",
