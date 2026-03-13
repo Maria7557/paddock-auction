@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fleetbid-postgres
+    environment:
+      POSTGRES_USER: fleetbid
+      POSTGRES_PASSWORD: fleetbid
+      POSTGRES_DB: fleetbid
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetbid -d fleetbid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - fleetbid-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: postgresql://fleetbid:fleetbid@postgres:5432/fleetbid
+      JWT_SECRET: changeme
+      PORT: "4000"
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    networks:
+      - fleetbid-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    env_file:
+      - .env.docker
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:4000
+      NODE_ENV: production
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - fleetbid-network
+
+volumes:
+  postgres_data:
+
+networks:
+  fleetbid-network:
+    driver: bridge
