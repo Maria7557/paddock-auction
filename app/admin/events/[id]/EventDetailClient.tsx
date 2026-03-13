@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { api } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -77,16 +78,9 @@ export function EventDetailClient({
 
     async function loadCandidates(): Promise<void> {
       try {
-        const response = await fetch("/api/admin/vehicles?status=APPROVED&unassigned=true", {
-          method: "GET",
+        const payload = await api.admin.vehicles.list<VehiclesResponse>({ status: "APPROVED", unassigned: true }, {
           cache: "no-store",
         });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as VehiclesResponse;
         const nextCandidates = (payload.vehicles ?? []).map((vehicle) => ({
           id: vehicle.id,
           label: vehicle.label,
@@ -116,17 +110,21 @@ export function EventDetailClient({
     setSelectedVehicleId(fallback);
   }, [availableCandidates, selectedVehicleId]);
 
-  async function callMutation(path: string, body: Record<string, unknown>): Promise<void> {
+  async function callMutation(
+    action: "reorder" | "remove-vehicle" | "add-vehicle",
+    body: Record<string, unknown>,
+  ): Promise<void> {
     setBusy(true);
 
     try {
-      await fetch(path, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      if (action === "reorder") {
+        await api.admin.events.reorder(eventId, body);
+      } else if (action === "remove-vehicle") {
+        await api.admin.events.removeVehicle(eventId, body);
+      } else {
+        await api.admin.events.addVehicle(eventId, body);
+      }
+
       router.refresh();
     } finally {
       setBusy(false);
@@ -143,13 +141,13 @@ export function EventDetailClient({
     const reordered = reorderLots(lotRows, index, target);
     setLotRows(reordered);
 
-    await callMutation(`/api/admin/events/${eventId}/reorder`, {
+    await callMutation("reorder", {
       vehicleIds: reordered.map((lot) => lot.vehicleId),
     });
   }
 
   async function removeVehicle(vehicleId: string): Promise<void> {
-    await callMutation(`/api/admin/events/${eventId}/remove-vehicle`, {
+    await callMutation("remove-vehicle", {
       vehicleId,
     });
   }
@@ -159,7 +157,7 @@ export function EventDetailClient({
       return;
     }
 
-    await callMutation(`/api/admin/events/${eventId}/add-vehicle`, {
+    await callMutation("add-vehicle", {
       vehicleId: selectedVehicleId,
     });
   }

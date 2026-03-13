@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { BidLadder } from "@/components/seller/BidLadder";
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
 
@@ -97,14 +98,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     setError(null);
 
     try {
-      const response = await fetch(`/api/seller/auctions/${auctionId}`, { cache: "no-store" });
-      const payload = (await response.json().catch(() => null)) as AuctionDetailResponse | { error?: string } | null;
-
-      if (!response.ok) {
-        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load auction");
-      }
-
-      const parsed = payload as AuctionDetailResponse;
+      const parsed = await api.seller.auctions.get<AuctionDetailResponse>(auctionId, { cache: "no-store" });
       setData(parsed);
       setEditForm({
         startsAt: parsed.auction.startsAt.slice(0, 16),
@@ -113,7 +107,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
         buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
       });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
+      setError(getApiErrorMessage(requestError, "Unexpected error"));
     } finally {
       setLoading(false);
     }
@@ -178,23 +172,11 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
         }
       }
 
-      const response = await fetch(`/api/seller/auctions/${auctionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const result = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
-
-      if (!response.ok) {
-        throw new Error(result?.message ?? result?.error ?? "Auction update failed");
-      }
+      await api.seller.auctions.update(auctionId, payload);
 
       await loadAuction();
     } catch (patchError) {
-      setError(patchError instanceof Error ? patchError.message : "Auction update failed");
+      setError(getApiErrorMessage(patchError, "Auction update failed"));
     } finally {
       setBusy(false);
     }

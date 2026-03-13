@@ -7,8 +7,10 @@ import { buildServer } from "../server";
 let server: FastifyInstance;
 
 beforeAll(async () => {
-  process.env.JWT_SECRET = "test-secret-32-chars-long-enough!!";
-  process.env.NODE_ENV = "test";
+  const env = process.env as Record<string, string | undefined>;
+
+  env.JWT_SECRET = "test-secret-32-chars-long-enough!!";
+  env.NODE_ENV = "test";
   server = await buildServer();
   await server.ready();
 });

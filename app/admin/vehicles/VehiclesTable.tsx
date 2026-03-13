@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
+import { api } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -55,16 +56,9 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
 
     async function loadEvents(): Promise<void> {
       try {
-        const response = await fetch("/api/admin/events?status=SCHEDULED", {
-          method: "GET",
+        const payload = await api.admin.events.list<EventsResponse>({ status: "SCHEDULED" }, {
           cache: "no-store",
         });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as EventsResponse;
         const nextOptions = (payload.events ?? []).map((event) => ({
           id: event.id,
           label: `${event.title} • ${new Date(event.startsAt).toLocaleString("en-GB", {
@@ -106,9 +100,12 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/${action}`, {
-        method: "POST",
-      });
+      if (action === "approve") {
+        await api.admin.vehicles.approve(id);
+      } else {
+        await api.admin.vehicles.reject(id);
+      }
+
       router.refresh();
     } finally {
       setBusyId(null);
@@ -126,15 +123,10 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/set-market-price`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          priceAed: value,
-        }),
+      await api.admin.vehicles.setMarketPrice(id, {
+        priceAed: value,
       });
+
       setEditingPriceId(null);
       router.refresh();
     } finally {
@@ -146,15 +138,10 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/assign-event`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          eventId,
-        }),
+      await api.admin.vehicles.assignEvent(id, {
+        eventId,
       });
+
       router.refresh();
     } finally {
       setBusyId(null);

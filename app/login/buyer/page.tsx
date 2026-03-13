@@ -4,14 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
-
-type LoginResponse = {
-  token?: string;
-  role?: string;
-  error?: string;
-  status?: string;
-};
 
 export default function BuyerLoginPage() {
   const router = useRouter();
@@ -27,44 +21,23 @@ export default function BuyerLoginPage() {
     setFeedback(null);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
+      const { user } = await api.auth.login(email, password);
 
-      const payload = (await response.json().catch(() => null)) as LoginResponse | null;
-
-      if (!response.ok) {
-        if (payload?.error === "ACCOUNT_PENDING_APPROVAL") {
-          setFeedback("Account is pending admin approval.");
-          return;
-        }
-
-        setFeedback("Invalid credentials.");
-        return;
-      }
-
-      if (!payload?.token) {
-        setFeedback("Login response did not include token.");
-        return;
-      }
-
-      if (payload.role !== "BUYER") {
+      if (user.role !== "BUYER") {
         setFeedback("This login page is for buyer accounts.");
         return;
       }
 
-      window.localStorage.setItem("fleetbid_token", payload.token);
-      document.cookie = `token=${payload.token}; Path=/; SameSite=Lax`;
       router.push("/dashboard");
-    } catch {
-      setFeedback("Login failed due to network error.");
+    } catch (error) {
+      const payload = getApiErrorPayload<{ error?: string }>(error);
+
+      if (payload?.error === "ACCOUNT_PENDING_APPROVAL") {
+        setFeedback("Account is pending admin approval.");
+        return;
+      }
+
+      setFeedback(getApiErrorMessage(error, "Login failed due to network error."));
     } finally {
       setIsSubmitting(false);
     }

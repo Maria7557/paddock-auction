@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import styles from "./page.module.css";
-
-type CreateEventResponse = {
-  id?: string;
-  error?: string;
-};
 
 export default function NewEventPage() {
   const router = useRouter();
@@ -29,29 +25,21 @@ export default function NewEventPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/admin/events", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+      const payload = await api.admin.events.create<{ id?: string }>({
           title,
           date,
           startTime,
           description,
-        }),
       });
 
-      const payload = (await response.json().catch(() => null)) as CreateEventResponse | null;
-
-      if (!response.ok || !payload?.id) {
-        setError(payload?.error ?? "Failed to create event.");
+      if (!payload?.id) {
+        setError("Failed to create event.");
         return;
       }
 
       router.push(`/admin/events/${payload.id}`);
-    } catch {
-      setError("Failed to create event.");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Failed to create event."));
     } finally {
       setBusy(false);
     }

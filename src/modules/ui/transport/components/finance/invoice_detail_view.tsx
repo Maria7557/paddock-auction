@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import {
   describeInvoiceDeadline,
   formatAed,
@@ -41,29 +42,20 @@ export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
     setFeedback(null);
 
     try {
-      const response = await fetch(`/api/payments/invoices/${invoice.id}/intent`, {
-        method: "POST",
-        headers: {
-          "idempotency-key": idempotencyKey.trim(),
-        },
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | { replayed?: boolean; stripe_payment_intent_id?: string; message?: string; error_code?: string }
-        | null;
-
-      if (!response.ok) {
-        setFeedback(payload?.message ?? payload?.error_code ?? "Payment intent creation failed.");
-        return;
-      }
+      const payload = await api.payments.invoice.createIntent<{
+        replayed?: boolean;
+        stripe_payment_intent_id?: string;
+        message?: string;
+        error_code?: string;
+      }>(invoice.id, idempotencyKey.trim());
 
       if (payload?.replayed) {
         setFeedback(`Payment intent replayed: ${payload?.stripe_payment_intent_id ?? "existing intent"}.`);
       } else {
         setFeedback(`Payment intent created: ${payload?.stripe_payment_intent_id ?? "ready"}.`);
       }
-    } catch {
-      setFeedback("Network error. Retry safely with the same key.");
+    } catch (error) {
+      setFeedback(getApiErrorMessage(error, "Network error. Retry safely with the same key."));
     } finally {
       setIsSubmitting(false);
     }

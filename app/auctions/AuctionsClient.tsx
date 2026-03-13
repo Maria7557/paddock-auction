@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter } from "next/navigation";
 
 import { LotCard } from "@/components/auction/LotCard";
+import { api } from "@/src/lib/api-client";
 import type { DisplaySettings } from "@/src/lib/money";
 
 import { ActiveFilters } from "./components/ActiveFilters";
@@ -188,20 +189,12 @@ export function AuctionsClient({
 
     try {
       const queryString = serializeFilters(nextFilters);
-      const response = await fetch(`/api/auctions${queryString ? `?${queryString}` : ""}`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        setLots([]);
-        setTotal(0);
-        return;
-      }
-
-      const data = (await response.json()) as {
+      const data = await api.auctions.list<{
         lots?: Lot[];
         total?: number;
-      };
+      }>(queryString, {
+        cache: "no-store",
+      });
 
       setLots(data.lots ?? []);
       setTotal(data.total ?? 0);
@@ -215,13 +208,7 @@ export function AuctionsClient({
 
   const fetchCatalogLots = useCallback(async () => {
     try {
-      const response = await fetch("/api/auctions", { cache: "no-store" });
-
-      if (!response.ok) {
-        return;
-      }
-
-      const data = (await response.json()) as { lots?: Lot[] };
+      const data = await api.auctions.list<{ lots?: Lot[] }>(undefined, { cache: "no-store" });
       setCatalogLots(data.lots ?? []);
     } catch {
       setCatalogLots([]);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 
+import { ApiError, api, getApiErrorPayload } from "@/src/lib/api-client";
 import { formatAed } from "@/src/modules/ui/domain/marketplace_read_model";
 import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live_countdown";
 
@@ -122,19 +123,9 @@ export function StickyBidModule({
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/ui/auctions/${auctionId}`, {
-          method: "GET",
+        const payload = await api.ui.auctions.get(auctionId, {
           cache: "no-store",
         });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as {
-          current_bid_aed?: number;
-          ends_at?: string;
-        };
 
         if (!active) {
           return;
@@ -194,26 +185,11 @@ export function StickyBidModule({
     setFeedback(null);
 
     try {
-      const response = await fetch("/api/bids", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": idempotencyKey.trim(),
-        },
-        body: JSON.stringify({
-          auction_id: auctionId,
-          company_id: companyId.trim(),
-          user_id: userId.trim(),
-          amount: numericAmount,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as BidApiPayload | null;
-
-      if (!response.ok) {
-        setFeedback(mapBidFailure(response.status, payload?.error_code, payload?.message));
-        return;
-      }
+      const payload = await api.bids.place<{
+        bid?: {
+          sequenceNo?: number;
+        };
+      }>(auctionId, numericAmount, idempotencyKey.trim());
 
       setLastMineBidAed(numericAmount);
       setCurrentBidAed((previous) => Math.max(previous, numericAmount));
@@ -222,11 +198,17 @@ export function StickyBidModule({
         tone: "success",
         title: "Bid placed",
         detail:
-          typeof payload?.sequence_no === "number"
-            ? `Your bid is recorded as sequence #${payload.sequence_no}.`
+          typeof payload.bid?.sequenceNo === "number"
+            ? `Your bid is recorded as sequence #${payload.bid.sequenceNo}.`
             : "Your bid request was accepted.",
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const payload = getApiErrorPayload<BidApiPayload>(error);
+        setFeedback(mapBidFailure(error.statusCode, payload?.error_code, payload?.message));
+        return;
+      }
+
       setFeedback({
         tone: "error",
         title: "Connection interrupted",

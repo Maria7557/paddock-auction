@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getToken } from "@/src/lib/auth_client";
+import { ApiError, api } from "@/src/lib/api-client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -213,42 +213,24 @@ function BidPanel({
   const [justBid, setJustBid] = useState(false);
 
   async function placeBid() {
-    const token = getToken();
-    if (!token) {
-      setError("Please log in to bid");
-      return;
-    }
-
     setBidding(true);
     setError(null);
 
     try {
       const idempotencyKey = `bid-${auctionId}-${live.nextBidAmount}-${Date.now()}`;
-      const res = await fetch("/api/bids", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          auctionId,
-          amount: live.nextBidAmount,
-          idempotencyKey,
-        }),
-      });
-
-      const data = (await res.json()) as { error?: string; message?: string };
-
-      if (!res.ok) {
-        setError(data.message ?? data.error ?? "Bid failed");
-        return;
-      }
+      await api.bids.place(auctionId, live.nextBidAmount, idempotencyKey);
 
       setJustBid(true);
       setTimeout(() => setJustBid(false), 2000);
       onBidSuccess();
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (error) {
+      if (error instanceof ApiError && error.statusCode === 401) {
+        setError("Please log in to bid");
+      } else if (error instanceof Error && error.message.trim()) {
+        setError(error.message);
+      } else {
+        setError("Network error. Please try again.");
+      }
     } finally {
       setBidding(false);
     }
@@ -390,13 +372,10 @@ export function LiveClient({ auctionId, vehicle, images, initialState }: LiveCli
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const poll = useCallback(async () => {
-    const token = getToken();
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/live`, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
+      const data = await api.auctions.liveState<LiveState>(auctionId, {
+        cache: "no-store",
       });
-      if (!res.ok) return;
-      const data = (await res.json()) as LiveState;
       setLive(data);
 
       // Stop polling when auction is over
