@@ -1,10 +1,11 @@
-import { PrismaClient, type Prisma } from "@prisma/client";
+const { PrismaClient } = require("../../node_modules/@prisma/client") as typeof import("../../node_modules/@prisma/client");
+type PrismaClientOptions = NonNullable<ConstructorParameters<typeof PrismaClient>[0]>;
 
 const globalForPrisma = globalThis as typeof globalThis & {
-  prisma?: PrismaClient;
+  prisma?: InstanceType<typeof PrismaClient>;
 };
 
-const prismaLogLevels: Prisma.LogLevel[] =
+const prismaLogLevels: PrismaClientOptions["log"] =
   process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"];
 
 export const prisma =
