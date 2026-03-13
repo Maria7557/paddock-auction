@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { prisma } from "./db";
+import { authRoutes } from "./routes/auth";
 
 let activeServer: FastifyInstance | null = null;
 let isShuttingDown = false;
@@ -130,6 +131,10 @@ export async function buildServer(): Promise<FastifyInstance> {
           status: "ok",
           timestamp: new Date().toISOString(),
         };
+      });
+
+      await api.register(authRoutes, {
+        prefix: "/auth",
       });
     },
     {
