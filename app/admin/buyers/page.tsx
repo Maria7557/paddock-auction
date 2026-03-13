@@ -1,6 +1,9 @@
-import prisma from "@/src/lib/prisma";
+import { api } from "@/src/lib/api-client";
+import { withServerCookies } from "@/src/lib/server-api-options";
 
 import { BuyersTable } from "./BuyersTable";
+
+export const dynamic = "force-dynamic";
 
 type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
 
@@ -53,41 +56,59 @@ function inferName(email: string): string {
 }
 
 async function getBuyerRows(): Promise<BuyerRow[]> {
-  const users = await prisma.user.findMany({
-    where: {
-      role: "BUYER",
-    },
-    include: {
-      wallet: {
-        select: {
-          balance: true,
-        },
-      },
-      companyUsers: {
-        include: {
-          company: {
-            select: {
-              name: true,
-            },
-          },
-        },
-        take: 1,
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+  const statuses = ["ACTIVE", "PENDING_APPROVAL", "BLOCKED", "PENDING_KYC"] as const;
+  const responses = await Promise.all(
+    statuses.map((status) =>
+      api.admin.users.pending<{
+        users?: Array<{
+          id: string;
+          email: string;
+          role: string;
+          status: string;
+          kycVerified: boolean;
+          walletBalance?: number | null;
+          companyUsers?: Array<{
+            companyName?: string;
+          }>;
+        }>;
+      }>({ status }, requestOptions).catch(() => ({ users: [] })),
+    ),
+  );
+  const usersById = new Map<
+    string,
+    {
+      id: string;
+      email: string;
+      role: string;
+      status: string;
+      kycVerified: boolean;
+      walletBalance?: number | null;
+      companyUsers?: Array<{
+        companyName?: string;
+      }>;
+    }
+  >();
 
-  return users.map((user) => {
-    const amountAed = toNumber(user.wallet?.balance ?? null);
+  for (const response of responses) {
+    for (const user of response.users ?? []) {
+      if (user.role !== "BUYER") {
+        continue;
+      }
+
+      usersById.set(user.id, user);
+    }
+  }
+
+  return [...usersById.values()].map((user) => {
+    const amountAed = toNumber(user.walletBalance ?? null);
 
     return {
       id: user.id,
       name: inferName(user.email),
       phone: "-",
       email: user.email,
-      company: user.companyUsers[0]?.company.name ?? "-",
+      company: user.companyUsers?.[0]?.companyName ?? "-",
       depositStatus: resolveDepositStatus(user.status, user.kycVerified, amountAed),
       amountAed,
     };

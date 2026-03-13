@@ -188,11 +188,10 @@ export function AuctionsClient({
     setLoading(true);
 
     try {
-      const queryString = serializeFilters(nextFilters);
       const data = await api.auctions.list<{
         lots?: Lot[];
         total?: number;
-      }>(queryString, {
+      }>(nextFilters, {
         cache: "no-store",
       });
 
@@ -341,7 +340,6 @@ export function AuctionsClient({
                 title={lot.title}
                 year={lot.year}
                 mileage={lot.mileageKm}
-                regionSpec={lot.vehicle.regionSpec}
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
                 marketPrice={lot.marketPriceAed ?? undefined}

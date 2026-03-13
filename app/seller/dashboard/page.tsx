@@ -4,7 +4,8 @@ import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { MetricTile } from "@/components/seller/MetricTile";
 import { SellerTabs } from "@/components/seller/SellerTabs";
 import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
-import prisma from "@/src/infrastructure/database/prisma";
+import { api } from "@/src/lib/api-client";
+import { withServerCookies } from "@/src/lib/server-api-options";
 import { requireSellerSession } from "@/src/lib/seller_session";
 
 export const dynamic = "force-dynamic";
@@ -34,61 +35,43 @@ function resolveStartingPrice(value: { toString(): string } | number | null | un
 
 export default async function SellerDashboardPage() {
   const session = await requireSellerSession("/seller/dashboard");
-
-  const [distinctVehicles, draftAuctions, liveAuctions, soldAuctions, recentAuctions] = await Promise.all([
-    prisma.auction.findMany({
-      where: { sellerCompanyId: session.companyId },
-      distinct: ["vehicleId"],
-      select: { vehicleId: true },
-    }),
-    prisma.auction.count({
-      where: {
-        sellerCompanyId: session.companyId,
-        state: "DRAFT",
-      },
-    }),
-    prisma.auction.count({
-      where: {
-        sellerCompanyId: session.companyId,
-        state: "LIVE",
-      },
-    }),
-    prisma.auction.count({
-      where: {
-        sellerCompanyId: session.companyId,
-        state: "ENDED",
-        highestBidId: {
-          not: null,
-        },
-      },
-    }),
-    prisma.auction.findMany({
-      where: {
-        sellerCompanyId: session.companyId,
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      take: 10,
-      include: {
-        vehicle: {
-          select: {
-            brand: true,
-            model: true,
-            year: true,
-          },
-        },
-      },
-    }),
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+  const [dashboard, recentAuctionsPayload] = await Promise.all([
+    api.seller.dashboard<{
+      metrics?: {
+        totalVehicles?: number;
+        activeLots?: number;
+        completedLots?: number;
+        revenue?: number;
+      };
+    }>(requestOptions),
+    api.seller.auctions.list<{
+      auctions?: Array<{
+        id: string;
+        state: string;
+        vehicleLabel: string;
+        currentPrice: number;
+        startingPrice: number;
+        startsAt: string;
+        endsAt: string;
+      }>;
+    }>({ sort: "newest" }, requestOptions),
   ]);
+  const metrics = dashboard.metrics ?? {};
+  const allAuctions = recentAuctionsPayload.auctions ?? [];
+  const recentAuctions = allAuctions.slice(0, 10);
+  const draftAuctions = allAuctions.filter((auction) => auction.state === "DRAFT").length;
+  const liveAuctions = allAuctions.filter((auction) => auction.state === "LIVE" || auction.state === "EXTENDED").length;
 
   return (
     <section className="seller-section-stack">
       <SellerTabs />
 
       <section className="seller-metrics-row">
-        <MetricTile label="Total Vehicles" value={distinctVehicles.length} />
+        <MetricTile label="Total Vehicles" value={metrics.totalVehicles ?? 0} />
         <MetricTile label="Draft Auctions" value={draftAuctions} />
         <MetricTile label="Live Auctions" value={liveAuctions} />
-        <MetricTile label="Sold" value={soldAuctions} />
+        <MetricTile label="Sold" value={metrics.completedLots ?? 0} />
       </section>
 
       <section className="surface-panel seller-section-block">
@@ -113,13 +96,13 @@ export default async function SellerDashboardPage() {
             <tbody>
               {recentAuctions.map((auction) => (
                 <tr key={auction.id}>
-                  <td>{auction.vehicle ? `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}` : auction.vehicleId}</td>
+                  <td>{auction.vehicleLabel}</td>
                   <td>
                     <AuctionStatusBadge state={auction.state} />
                   </td>
                   <td>{formatAed(resolveStartingPrice(auction.startingPrice, auction.currentPrice))}</td>
-                  <td>{formatSellerDateTime(auction.startsAt)}</td>
-                  <td>{formatSellerDateTime(auction.endsAt)}</td>
+                  <td>{formatSellerDateTime(new Date(auction.startsAt))}</td>
+                  <td>{formatSellerDateTime(new Date(auction.endsAt))}</td>
                 </tr>
               ))}
               {recentAuctions.length === 0 ? (

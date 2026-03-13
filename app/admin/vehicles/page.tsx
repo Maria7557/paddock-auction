@@ -1,6 +1,9 @@
-import prisma from "@/src/lib/prisma";
+import { api } from "@/src/lib/api-client";
+import { withServerCookies } from "@/src/lib/server-api-options";
 
 import { VehiclesTable } from "./VehiclesTable";
+
+export const dynamic = "force-dynamic";
 
 type VehicleStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -24,14 +27,6 @@ type EventOption = {
   endsAt: string;
 };
 
-function toNumber(value: { toString(): string } | null): number {
-  if (!value) {
-    return 0;
-  }
-
-  return Number(value.toString());
-}
-
 function resolveVehicleStatus(state: string | null): VehicleStatus {
   if (!state || state === "DRAFT") {
     return "PENDING";
@@ -45,54 +40,43 @@ function resolveVehicleStatus(state: string | null): VehicleStatus {
 }
 
 async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
-  const [vehicles, scheduledEvents] = await Promise.all([
-    prisma.vehicle.findMany({
-      include: {
-        auctions: {
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
-          select: {
-            id: true,
-            state: true,
-            startsAt: true,
-            endsAt: true,
-            sellerCompanyId: true,
-          },
-        },
-      },
-      orderBy: {
-        id: "desc",
-      },
-    }),
-    prisma.auction.findMany({
-      where: {
-        state: "SCHEDULED",
-      },
-      select: {
-        id: true,
-        startsAt: true,
-        endsAt: true,
-      },
-      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-    }),
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+  const [vehiclesPayload, scheduledEventsPayload] = await Promise.all([
+    api.admin.vehicles.list<{
+      vehicles?: Array<{
+        id: string;
+        brand: string;
+        model: string;
+        year: number;
+        vin: string;
+        marketPriceAed: number;
+        status: string;
+        imageUrl: string | null;
+        label: string;
+        latestAuctionId?: string | null;
+      }>;
+    }>({ status: "ALL" }, requestOptions),
+    api.admin.events.list<{
+      events?: Array<{
+        id: string;
+        title: string;
+        startsAt: string;
+        endsAt: string;
+      }>;
+    }>({ status: "SCHEDULED" }, requestOptions).catch(() => ({ events: [] })),
   ]);
-
-  const sellerCompanyIds = [...new Set(vehicles.map((v) => v.auctions[0]?.sellerCompanyId).filter(Boolean))] as string[];
-
-  const companies = await prisma.company.findMany({
-    where: {
-      id: {
-        in: sellerCompanyIds,
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-    },
-  });
-
-  const companyById = new Map(companies.map((company) => [company.id, company.name]));
-
+  const scheduledEvents = scheduledEventsPayload.events ?? [];
+  const eventDetails = await Promise.all(
+    scheduledEvents.map((event) =>
+      api.admin.events.get<{
+        id: string;
+        lots?: Array<{
+          vehicleId: string;
+        }>;
+      }>(event.id, requestOptions).catch(() => null),
+    ),
+  );
+  const eventByVehicleId = new Map<string, EventOption>();
   const events: EventOption[] = scheduledEvents.map((event) => ({
     id: event.id,
     label: new Date(event.startsAt).toLocaleString("en-GB", {
@@ -102,32 +86,29 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
       hour: "2-digit",
       minute: "2-digit",
     }),
-    startsAt: event.startsAt.toISOString(),
-    endsAt: event.endsAt.toISOString(),
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
   }));
 
-  const rows: VehicleRow[] = vehicles.map((vehicle) => {
-    const latestAuction = vehicle.auctions[0] ?? null;
-    const matchingEvent =
-      latestAuction && latestAuction.state === "SCHEDULED"
-        ? events.find(
-            (event) =>
-              event.startsAt === latestAuction.startsAt.toISOString() &&
-              event.endsAt === latestAuction.endsAt.toISOString(),
-          )
-        : undefined;
+  scheduledEvents.forEach((event, index) => {
+    for (const lot of eventDetails[index]?.lots ?? []) {
+      eventByVehicleId.set(lot.vehicleId, events[index]);
+    }
+  });
+
+  const rows: VehicleRow[] = (vehiclesPayload.vehicles ?? []).map((vehicle) => {
+    const title = vehicle.label?.trim() || `${vehicle.brand} ${vehicle.model} ${vehicle.year}`.trim();
+    const matchingEvent = eventByVehicleId.get(vehicle.id);
 
     return {
       id: vehicle.id,
-      imageUrl: vehicle.images[0] ?? null,
-      title: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
+      imageUrl: vehicle.imageUrl ?? null,
+      title,
       vin: vehicle.vin,
-      status: resolveVehicleStatus(latestAuction?.state ?? null),
-      companyName: latestAuction?.sellerCompanyId
-        ? companyById.get(latestAuction.sellerCompanyId) ?? "Fleet Operator"
-        : "Fleet Operator",
-      marketPriceAed: toNumber(vehicle.marketPrice),
-      auctionId: latestAuction?.id ?? null,
+      status: resolveVehicleStatus(vehicle.status ?? null),
+      companyName: "Fleet Operator",
+      marketPriceAed: Number(vehicle.marketPriceAed ?? 0),
+      auctionId: vehicle.latestAuctionId ?? null,
       assignedEventId: matchingEvent?.id ?? null,
       assignedEventLabel: matchingEvent?.label ?? null,
     };

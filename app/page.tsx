@@ -13,7 +13,6 @@ import {
 } from "@/components/home/HomeSections";
 import LotsSection from "@/components/home/LotsSection";
 import GlobalFooter from "@/components/shell/GlobalFooter";
-import prisma from "@/src/infrastructure/database/prisma";
 import { FEATURED_LOTS, NEXT_AUCTION, PLATFORM_STATS, CATEGORIES } from "@/src/lib/data";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
@@ -100,40 +99,20 @@ function mapToHomeLot(lot: AuctionLot): Lot {
 export default async function HomePage() {
   const display = await getPublicDisplaySettings();
   const dbLots = await readHomepageLots();
-  const now = new Date();
-  const nextAuction = await prisma.auction.findFirst({
-    where: { state: { in: ["SCHEDULED", "LIVE"] } },
-    orderBy: { startsAt: "asc" },
-  });
-
-  const liveAuctionCount = await prisma.auction.count({
-    where: { state: { in: ["LIVE", "SCHEDULED"] } },
-  });
-
-  const upcomingStartPrice = await prisma.auction.aggregate({
-    where: {
-      state: "SCHEDULED",
-      startsAt: { gte: now },
-    },
-    _min: {
-      currentPrice: true,
-    },
-  });
-
-  const fallbackStartPrice = await prisma.auction.aggregate({
-    where: { state: { in: ["LIVE", "SCHEDULED"] } },
-    _min: {
-      currentPrice: true,
-    },
-  });
-
-  const startingFromAed = Number(
-    upcomingStartPrice._min.currentPrice ?? fallbackStartPrice._min.currentPrice ?? NEXT_AUCTION.startingFromAed,
-  );
+  const activeLots = dbLots.filter((lot) => lot.status === "LIVE" || lot.status === "SCHEDULED");
+  const nextAuction = [...activeLots].sort(
+    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
+  )[0];
+  const scheduledLots = activeLots.filter((lot) => lot.status === "SCHEDULED");
+  const pricePool = scheduledLots.length > 0 ? scheduledLots : activeLots;
+  const startingFromAed =
+    pricePool.length > 0
+      ? Math.min(...pricePool.map((lot) => lot.currentBidAed))
+      : NEXT_AUCTION.startingFromAed;
 
   const tickerEvent = {
-    date: nextAuction?.startsAt.toISOString() ?? NEXT_AUCTION.date,
-    lotCount: liveAuctionCount || NEXT_AUCTION.lotCount,
+    date: nextAuction?.startsAt ?? NEXT_AUCTION.date,
+    lotCount: activeLots.length || NEXT_AUCTION.lotCount,
     startingFromAed,
     location: "Dubai Warehouse · Al Quoz Industrial Area",
     viewingStart: NEXT_AUCTION.viewingStart,

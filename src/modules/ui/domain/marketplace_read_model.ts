@@ -1,9 +1,60 @@
 // Temporary frontend read model for marketplace UX.
 // Replace with backend GET read endpoints when those contracts are available.
 
-import type { AuctionState, Auction as DbAuction, Company as DbCompany, Vehicle as DbVehicle } from "@prisma/client";
+import { api } from "@/src/lib/api-client";
 
-import prisma from "@/src/infrastructure/database/prisma";
+type AuctionState = string;
+type DecimalValue =
+  | number
+  | string
+  | null
+  | undefined
+  | {
+      toString(): string;
+    };
+
+type DbAuction = {
+  id: string;
+  vehicleId: string;
+  sellerCompanyId: string;
+  state: AuctionState;
+  currentPrice: DecimalValue;
+  minIncrement: DecimalValue;
+  endsAt: Date;
+  startsAt: Date;
+  createdAt: Date;
+};
+
+type DbVehicle = {
+  id: string;
+  brand: string;
+  model: string;
+  year: number;
+  mileage: number;
+  vin: string;
+  marketPrice: DecimalValue;
+  fuelType: string | null;
+  transmission: string | null;
+  bodyType: string | null;
+  regionSpec: string | null;
+  condition: string | null;
+  serviceHistory: string | null;
+  description: string | null;
+  engine: string | null;
+  driveType: string | null;
+  exteriorColor: string | null;
+  interiorColor: string | null;
+  airbags: string | null;
+  damage: string | null;
+  images: string[];
+};
+
+type DbCompany = {
+  id: string;
+  name: string;
+  country: string;
+  createdAt: Date;
+};
 
 export type AuctionStatus =
   | "LIVE"
@@ -802,8 +853,8 @@ function toAuctionLot({
 }): AuctionLot {
   const title = `${vehicle?.brand ?? "Vehicle"} ${vehicle?.model ?? auction.id.slice(0, 6)}`.trim();
   const status = normalizeAuctionStatus(auction.state);
-  const currentBidAed = Number(auction.currentPrice.toString());
-  const minimumStepAed = Number(auction.minIncrement.toString());
+  const currentBidAed = toNumberValue(auction.currentPrice);
+  const minimumStepAed = toNumberValue(auction.minIncrement, 500);
   const sellerVerifiedYears = company
     ? Math.max(1, new Date().getUTCFullYear() - company.createdAt.getUTCFullYear())
     : 1;
@@ -853,117 +904,182 @@ function toAuctionLot({
 }
 
 async function hydrateAuctionLots(auctions: DbAuction[]): Promise<AuctionLot[]> {
-  if (auctions.length === 0) {
-    return [];
-  }
-
-  const vehicleIds = [...new Set(auctions.map((auction) => auction.vehicleId))];
-  const companyIds = [...new Set(auctions.map((auction) => auction.sellerCompanyId))];
-
-  const [vehicles, companies] = await Promise.all([
-    prisma.vehicle.findMany({
-      where: {
-        id: {
-          in: vehicleIds,
-        },
-      },
-    }),
-    prisma.company.findMany({
-      where: {
-        id: {
-          in: companyIds,
-        },
-      },
-    }),
-  ]);
-
-  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
-  const companyById = new Map(companies.map((company) => [company.id, company]));
-
   return auctions.map((auction, index) =>
     toAuctionLot({
       auction,
-      vehicle: vehicleById.get(auction.vehicleId) ?? null,
-      company: companyById.get(auction.sellerCompanyId) ?? null,
+      vehicle: null,
+      company: null,
       index,
     }),
   );
 }
 
-export async function readHomepageLots(): Promise<AuctionLot[]> {
-  const auctions = await prisma.auction.findMany({
-    where: {
-      state: {
-        in: HOMEPAGE_AUCTION_STATES,
-      },
-    },
-    orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
-    take: 6,
-  });
+function toNumberValue(value: DecimalValue, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
 
-  const lots = await hydrateAuctionLots(auctions);
-  const statusRank: Record<AuctionStatus, number> = {
-    LIVE: 0,
-    SCHEDULED: 1,
-    PAYMENT_PENDING: 2,
-    DEFAULTED: 3,
-    ENDED: 4,
+  if (typeof value === "string") {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (value && typeof value === "object") {
+    const parsed = Number(value.toString());
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+function toDateString(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  return fallback;
+}
+
+function toApiAuctionLot(
+  source: Record<string, unknown>,
+  index: number,
+): AuctionLot {
+  const now = new Date().toISOString();
+  const vehicleSource =
+    source.vehicle && typeof source.vehicle === "object"
+      ? (source.vehicle as Record<string, unknown>)
+      : source;
+  const normalizedVehicle: DbVehicle | null = {
+    id: String(vehicleSource.id ?? source.vehicleId ?? source.id ?? `vehicle-${index}`),
+    brand: String(vehicleSource.brand ?? vehicleSource.make ?? "Vehicle"),
+    model: String(vehicleSource.model ?? source.id ?? "Model"),
+    year: Number(vehicleSource.year ?? new Date().getUTCFullYear()),
+    mileage: Number(vehicleSource.mileage ?? vehicleSource.mileageKm ?? 0),
+    vin: String(vehicleSource.vin ?? "PENDING"),
+    marketPrice: (vehicleSource.marketPrice ?? source.marketPriceAed ?? null) as DecimalValue,
+    fuelType: typeof vehicleSource.fuelType === "string" ? vehicleSource.fuelType : null,
+    transmission: typeof vehicleSource.transmission === "string" ? vehicleSource.transmission : null,
+    bodyType: typeof vehicleSource.bodyType === "string" ? vehicleSource.bodyType : null,
+    regionSpec: typeof vehicleSource.regionSpec === "string" ? vehicleSource.regionSpec : null,
+    condition: typeof vehicleSource.condition === "string" ? vehicleSource.condition : null,
+    serviceHistory: typeof vehicleSource.serviceHistory === "string" ? vehicleSource.serviceHistory : null,
+    description: typeof vehicleSource.description === "string" ? vehicleSource.description : null,
+    engine: typeof vehicleSource.engine === "string" ? vehicleSource.engine : null,
+    driveType: typeof vehicleSource.driveType === "string" ? vehicleSource.driveType : null,
+    exteriorColor: typeof vehicleSource.exteriorColor === "string" ? vehicleSource.exteriorColor : null,
+    interiorColor: typeof vehicleSource.interiorColor === "string" ? vehicleSource.interiorColor : null,
+    airbags: typeof vehicleSource.airbags === "string" ? vehicleSource.airbags : null,
+    damage: typeof vehicleSource.damage === "string" ? vehicleSource.damage : null,
+    images: Array.isArray(vehicleSource.images) ? vehicleSource.images.filter((item): item is string => typeof item === "string") : [],
   };
 
-  return lots.sort((left, right) => {
-    const rankDelta = statusRank[left.status] - statusRank[right.status];
+  const title = `${normalizedVehicle.brand} ${normalizedVehicle.model}`.trim();
+  const status = normalizeAuctionStatus(String(source.state ?? "ENDED"));
+  const currentBidAed = toNumberValue((source.currentPrice ?? source.currentBidAed) as DecimalValue);
+  const minimumStepAed = toNumberValue((source.minIncrement ?? source.minStepAed) as DecimalValue, 500);
+  const sellerName =
+    typeof source.sellerName === "string"
+      ? source.sellerName
+      : typeof source.seller === "string"
+        ? source.seller
+        : "Verified Seller";
+  const location =
+    typeof source.location === "string"
+      ? source.location
+      : typeof vehicleSource.location === "string"
+        ? vehicleSource.location
+        : "UAE";
 
-    if (rankDelta !== 0) {
-      return rankDelta;
-    }
+  return {
+    id: String(source.id ?? `auction-${index}`),
+    lotNumber: deriveLotNumber(String(source.id ?? `auction-${index}`)),
+    title,
+    make: normalizedVehicle.brand,
+    model: normalizedVehicle.model,
+    year: normalizedVehicle.year,
+    mileageKm: normalizedVehicle.mileage,
+    location,
+    seller: sellerName,
+    sellerVerifiedYears: 3,
+    sellerCompletionRate: 96,
+    vin: normalizedVehicle.vin,
+    status,
+    currentBidAed,
+    marketPriceAed: toNumberValue(normalizedVehicle.marketPrice, 0),
+    minimumStepAed,
+    endsAt: toDateString(source.endsAt, new Date(Date.now() + HOUR).toISOString()),
+    startsAt: toDateString(source.startsAt, now),
+    listedAt: toDateString(source.createdAt, now),
+    depositRequiredAed: 5000,
+    depositReady: true,
+    watchlisted: false,
+    images: deriveLotImages(normalizedVehicle, index),
+    vehicle: {
+      description: normalizedVehicle.description,
+      engine: normalizedVehicle.engine,
+      driveType: normalizedVehicle.driveType,
+      exteriorColor: normalizedVehicle.exteriorColor,
+      interiorColor: normalizedVehicle.interiorColor,
+      airbags: normalizedVehicle.airbags ?? "Intact",
+      damage: normalizedVehicle.damage ?? "None",
+      images: normalizedVehicle.images,
+    },
+    specs: buildSpecs(normalizedVehicle),
+    inspectionSummary: "Operational fleet vehicle with verified ownership and service records.",
+    sellerNotes: normalizedVehicle.description ?? "Vehicle sourced from verified UAE fleet operator.",
+    documents: [{ id: `doc-${String(source.id ?? index)}`, label: "Inspection report", fileType: "PDF" }],
+  };
+}
 
-    return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
-  });
+export async function readHomepageLots(): Promise<AuctionLot[]> {
+  try {
+    const payload = await api.auctions.list<{
+      auctions?: Array<Record<string, unknown>>;
+      lots?: Array<Record<string, unknown>>;
+    }>(undefined, { cache: "no-store" });
+    const rawLots = payload.auctions ?? payload.lots ?? [];
+
+    return rawLots
+      .slice(0, 6)
+      .map((auction, index) => toApiAuctionLot(auction, index))
+      .filter((lot) => HOMEPAGE_AUCTION_STATES.includes(lot.status));
+  } catch {
+    return [];
+  }
 }
 
 export async function readAuctionListing(): Promise<AuctionLot[]> {
-  const auctions = await prisma.auction.findMany({
-    where: {
-      state: {
-        in: LISTING_AUCTION_STATES,
-      },
-    },
-    orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
-  });
+  try {
+    const payload = await api.auctions.list<{
+      auctions?: Array<Record<string, unknown>>;
+      lots?: Array<Record<string, unknown>>;
+    }>(undefined, { cache: "no-store" });
+    const rawLots = payload.auctions ?? payload.lots ?? [];
 
-  return hydrateAuctionLots(auctions);
+    return rawLots
+      .map((auction, index) => toApiAuctionLot(auction, index))
+      .filter((lot) => LISTING_AUCTION_STATES.includes(lot.status));
+  } catch {
+    return [];
+  }
 }
 
 export async function readAuctionDetail(auctionId: string): Promise<AuctionLot | null> {
-  const auction = await prisma.auction.findUnique({
-    where: {
-      id: auctionId,
-    },
-  });
+  try {
+    const payload = await api.auctions.get<Record<string, unknown>>(auctionId, {
+      cache: "no-store",
+    });
 
-  if (!auction) {
+    return toApiAuctionLot(payload, 0);
+  } catch {
     return null;
   }
-
-  const [vehicle, company] = await Promise.all([
-    prisma.vehicle.findUnique({
-      where: {
-        id: auction.vehicleId,
-      },
-    }),
-    prisma.company.findUnique({
-      where: {
-        id: auction.sellerCompanyId,
-      },
-    }),
-  ]);
-
-  return toAuctionLot({
-    auction,
-    vehicle,
-    company,
-    index: 0,
-  });
 }
 
 export async function readBidHistory(auctionId: string): Promise<AuctionBidHistoryEntry[]> {

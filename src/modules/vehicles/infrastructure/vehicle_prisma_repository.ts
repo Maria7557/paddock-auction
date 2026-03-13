@@ -1,35 +1,8 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
-
-import prisma from "../../../infrastructure/database/prisma";
 import { DomainConflictError } from "../../../lib/domain_errors";
 import type { CreateVehicleCommand, Vehicle, VehicleRepository } from "../application/vehicle_service";
 import { vehicleErrorCodes } from "../domain/vehicle_error_codes";
 
-type VehicleDbClient = Pick<PrismaClient, "vehicle">;
-
-function isVehicleVinConflictError(error: unknown): boolean {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
-    return false;
-  }
-
-  if (error.code !== "P2002") {
-    return false;
-  }
-
-  const target = error.meta?.target;
-
-  if (Array.isArray(target)) {
-    return target.some((entry) => String(entry).toLowerCase().includes("vin"));
-  }
-
-  if (typeof target === "string") {
-    return target.toLowerCase().includes("vin");
-  }
-
-  return false;
-}
-
-function mapVehicle(vehicle: {
+type VehicleRecord = {
   id: string;
   brand: string;
   model: string;
@@ -42,7 +15,57 @@ function mapVehicle(vehicle: {
   regionSpec: string | null;
   condition: string | null;
   serviceHistory: string | null;
-}): Vehicle {
+};
+
+type VehicleDbClient = {
+  vehicle: {
+    create(args: {
+      data: {
+        brand: string;
+        model: string;
+        year: number;
+        mileage: number;
+        vin: string;
+        fuelType?: string;
+        transmission?: string;
+        bodyType?: string;
+        regionSpec?: string;
+        condition?: string;
+        serviceHistory?: string;
+      };
+    }): Promise<VehicleRecord>;
+    findMany(args: {
+      orderBy: Array<Record<string, "asc" | "desc">>;
+    }): Promise<VehicleRecord[]>;
+  };
+};
+
+function isVehicleVinConflictError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  const target =
+    "meta" in error && typeof error.meta === "object" && error.meta !== null && "target" in error.meta
+      ? error.meta.target
+      : null;
+
+  if ((error as { code?: string }).code !== "P2002") {
+    return false;
+  }
+
+  if (Array.isArray(target)) {
+    return target.some((entry) => String(entry).toLowerCase().includes("vin"));
+  }
+
+  if (typeof target === "string") {
+    return target.toLowerCase().includes("vin");
+  }
+
+  return false;
+}
+
+function mapVehicle(vehicle: VehicleRecord): Vehicle {
   return {
     id: vehicle.id,
     brand: vehicle.brand,
@@ -59,11 +82,19 @@ function mapVehicle(vehicle: {
   };
 }
 
-export function createVehicleRepository(dbClient: VehicleDbClient = prisma): VehicleRepository {
+function requireDbClient(dbClient: VehicleDbClient | null): VehicleDbClient {
+  if (!dbClient) {
+    throw new Error("Vehicle persistence has been moved out of the Next.js frontend.");
+  }
+
+  return dbClient;
+}
+
+export function createVehicleRepository(dbClient: VehicleDbClient | null = null): VehicleRepository {
   return {
     async createVehicle(input: CreateVehicleCommand): Promise<Vehicle> {
       try {
-        const vehicle = await dbClient.vehicle.create({
+        const vehicle = await requireDbClient(dbClient).vehicle.create({
           data: {
             brand: input.brand,
             model: input.model,
@@ -93,7 +124,7 @@ export function createVehicleRepository(dbClient: VehicleDbClient = prisma): Veh
     },
 
     async listVehicles(): Promise<Vehicle[]> {
-      const vehicles = await dbClient.vehicle.findMany({
+      const vehicles = await requireDbClient(dbClient).vehicle.findMany({
         orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }, { id: "asc" }],
       });
 

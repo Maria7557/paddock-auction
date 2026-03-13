@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import prisma from "@/src/infrastructure/database/prisma";
 import { verifyJwt } from "@/src/lib/auth";
+import { api } from "@/src/lib/api-client";
+import { withServerCookies } from "@/src/lib/server-api-options";
 
 export type SellerSession = {
   userId: string;
@@ -29,23 +30,30 @@ export async function requireSellerSession(nextPath: string): Promise<SellerSess
     loginRedirect(nextPath);
   }
 
-  const company = await prisma.company.findUnique({
-    where: { id: auth.companyId },
-    select: {
-      id: true,
-      name: true,
-      status: true,
-    },
-  });
+  const response = await api.auth.me<{
+    user?: {
+      companyUsers?: Array<{
+        companyId?: string;
+        company?: {
+          name?: string;
+          status?: string;
+        } | null;
+      }>;
+    };
+  }>(await withServerCookies({ cache: "no-store" })).catch(() => null);
 
-  if (!company) {
+  const company = response?.user?.companyUsers?.find((companyUser) => companyUser.companyId === auth.companyId)?.company;
+  const companyName = company?.name?.trim();
+  const companyStatus = company?.status?.trim();
+
+  if (!companyName || !companyStatus) {
     loginRedirect(nextPath);
   }
 
   return {
     userId: auth.userId,
     companyId: auth.companyId,
-    companyName: company.name,
-    companyStatus: company.status,
+    companyName,
+    companyStatus,
   };
 }

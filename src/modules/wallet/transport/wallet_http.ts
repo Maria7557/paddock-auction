@@ -1,7 +1,11 @@
-import { Prisma, type Wallet } from "@prisma/client";
 import { z } from "zod";
 
-type WalletValue = Prisma.Decimal | number | string;
+type WalletValue =
+  | number
+  | string
+  | {
+      toString(): string;
+    };
 
 type WalletLike = {
   id: string;
@@ -50,31 +54,30 @@ export function resolveWalletUserId(request: Request, payload?: Partial<WalletMu
 }
 
 function toMoneyNumber(value: WalletValue): number {
-  if (value instanceof Prisma.Decimal) {
-    return Number(value.toString());
-  }
-
   if (typeof value === "string") {
     return Number(value);
   }
 
-  return value;
+  if (typeof value === "number") {
+    return value;
+  }
+
+  return Number(value.toString());
 }
 
 function normalizeMoneyNumber(amount: number): number {
   return Number(amount.toFixed(2));
 }
 
-export function normalizeMoneyDecimal(amount: number): Prisma.Decimal {
-  const normalized = normalizeMoneyNumber(amount);
-  return new Prisma.Decimal(normalized.toFixed(2));
+export function normalizeMoneyDecimal(amount: number): number {
+  return normalizeMoneyNumber(amount);
 }
 
 export function formatValidationIssues(issues: z.ZodIssue[]): string {
   return issues.map((issue) => issue.message).join("; ");
 }
 
-export function mapWalletDto(wallet: WalletLike | Pick<Wallet, "id" | "userId" | "balance" | "lockedBalance">): WalletDto {
+export function mapWalletDto(wallet: WalletLike): WalletDto {
   const balance = normalizeMoneyNumber(toMoneyNumber(wallet.balance));
   const lockedBalance = normalizeMoneyNumber(toMoneyNumber(wallet.lockedBalance));
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, api } from "@/src/lib/api-client";
+import { api, getApiErrorPayload } from "@/src/lib/api-client";
+import { getToken } from "@/src/lib/auth_client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -213,24 +214,34 @@ function BidPanel({
   const [justBid, setJustBid] = useState(false);
 
   async function placeBid() {
+    const token = getToken();
+    if (!token) {
+      setError("Please log in to bid");
+      return;
+    }
+
     setBidding(true);
     setError(null);
 
     try {
       const idempotencyKey = `bid-${auctionId}-${live.nextBidAmount}-${Date.now()}`;
-      await api.bids.place(auctionId, live.nextBidAmount, idempotencyKey);
+      await api.bids.place(
+        auctionId,
+        live.nextBidAmount,
+        idempotencyKey,
+        {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+        },
+      );
 
       setJustBid(true);
       setTimeout(() => setJustBid(false), 2000);
       onBidSuccess();
     } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 401) {
-        setError("Please log in to bid");
-      } else if (error instanceof Error && error.message.trim()) {
-        setError(error.message);
-      } else {
-        setError("Network error. Please try again.");
-      }
+      const payload = getApiErrorPayload<{ error?: string; message?: string }>(error);
+      setError(payload?.message ?? payload?.error ?? "Network error. Please try again.");
     } finally {
       setBidding(false);
     }
@@ -372,9 +383,11 @@ export function LiveClient({ auctionId, vehicle, images, initialState }: LiveCli
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const poll = useCallback(async () => {
+    const token = getToken();
     try {
       const data = await api.auctions.liveState<LiveState>(auctionId, {
         cache: "no-store",
+        headers: token ? { authorization: `Bearer ${token}` } : {},
       });
       setLive(data);
 

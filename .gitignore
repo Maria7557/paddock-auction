@@ -30,6 +30,7 @@ yarn-error.log*
 # environment
 .env*
 !.env.example
+.env.neon
 
 # local tooling
 /.vercel

@@ -1,6 +1,22 @@
-import type { LedgerType, Prisma, Wallet, WalletLedger } from "@prisma/client";
+export type LedgerType = string;
 
-import prisma from "../../infrastructure/database/prisma";
+export type Wallet = {
+  id: string;
+  userId: string;
+  balance: number;
+  lockedBalance: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+export type WalletLedger = {
+  id: string;
+  walletId: string;
+  type: LedgerType;
+  amount: number;
+  reference?: string | null;
+  createdAt?: Date;
+};
 
 export type AddLedgerEntryInput = {
   walletId: string;
@@ -16,13 +32,48 @@ export type UpdateWalletBalanceInput = {
 };
 
 type WalletModel = {
-  create(args: Prisma.WalletCreateArgs): Promise<Wallet>;
-  findUnique(args: Prisma.WalletFindUniqueArgs): Promise<Wallet | null>;
-  update(args: Prisma.WalletUpdateArgs): Promise<Wallet>;
+  create(args: {
+    data: {
+      user: {
+        connect: {
+          id: string;
+        };
+      };
+    };
+  }): Promise<Wallet>;
+  findUnique(args: {
+    where: {
+      userId: string;
+    };
+  }): Promise<Wallet | null>;
+  update(args: {
+    where: {
+      userId: string;
+    };
+    data: {
+      balance: {
+        increment: number;
+      };
+      lockedBalance: {
+        increment: number;
+      };
+    };
+  }): Promise<Wallet>;
 };
 
 type WalletLedgerModel = {
-  create(args: Prisma.WalletLedgerCreateArgs): Promise<WalletLedger>;
+  create(args: {
+    data: {
+      wallet: {
+        connect: {
+          id: string;
+        };
+      };
+      type: LedgerType;
+      amount: number;
+      reference: string | null;
+    };
+  }): Promise<WalletLedger>;
 };
 
 export type WalletRepositoryClient = {
@@ -43,10 +94,18 @@ function assertInteger(value: number, fieldName: string): void {
   }
 }
 
-export function createWalletRepository(dbClient: WalletRepositoryClient = prisma): WalletRepository {
+function requireDbClient(dbClient: WalletRepositoryClient | null): WalletRepositoryClient {
+  if (!dbClient) {
+    throw new Error("Wallet persistence has been moved out of the Next.js frontend.");
+  }
+
+  return dbClient;
+}
+
+export function createWalletRepository(dbClient: WalletRepositoryClient | null = null): WalletRepository {
   return {
     async createWalletForUser(userId: string): Promise<Wallet> {
-      return dbClient.wallet.create({
+      return requireDbClient(dbClient).wallet.create({
         data: {
           user: {
             connect: {
@@ -58,7 +117,7 @@ export function createWalletRepository(dbClient: WalletRepositoryClient = prisma
     },
 
     async getWalletByUserId(userId: string): Promise<Wallet | null> {
-      return dbClient.wallet.findUnique({
+      return requireDbClient(dbClient).wallet.findUnique({
         where: {
           userId,
         },
@@ -68,7 +127,7 @@ export function createWalletRepository(dbClient: WalletRepositoryClient = prisma
     async addLedgerEntry(input: AddLedgerEntryInput): Promise<WalletLedger> {
       assertInteger(input.amount, "amount");
 
-      return dbClient.walletLedger.create({
+      return requireDbClient(dbClient).walletLedger.create({
         data: {
           wallet: {
             connect: {
@@ -89,7 +148,7 @@ export function createWalletRepository(dbClient: WalletRepositoryClient = prisma
       assertInteger(balanceDelta, "balanceDelta");
       assertInteger(lockedBalanceDelta, "lockedBalanceDelta");
 
-      return dbClient.wallet.update({
+      return requireDbClient(dbClient).wallet.update({
         where: {
           userId: input.userId,
         },

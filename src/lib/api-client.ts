@@ -267,7 +267,8 @@ export const api = {
       postJson<{ user: ApiUser }>("/api/auth/login", { email, password }),
     register: async <T = unknown>(payload: Record<string, unknown>): Promise<T> =>
       postJson<T>("/api/auth/register", payload),
-    me: async (): Promise<{ user: ApiUser }> => getRequest<{ user: ApiUser }>("/api/auth/me"),
+    me: async <T = { user: ApiUser }>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/auth/me", options),
     logout: async (): Promise<void> => postJson<void>("/api/auth/logout"),
   },
   health: {
@@ -445,12 +446,24 @@ export const api = {
         postJson<T>(`/api/admin/events/${id}/add-vehicle`, payload, options),
     },
     companies: {
+      list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
+        getRequest<T>(appendSearchParams("/api/admin/companies", query), options),
       pending: async <T = unknown>(options?: RequestInit): Promise<T> =>
         getRequest<T>("/api/admin/companies/pending", options),
       approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/companies/${id}/approve`, undefined, options),
       reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/companies/${id}/reject`, undefined, options),
+    },
+    users: {
+      pending: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
+        getRequest<T>(appendSearchParams("/api/admin/users/pending", query), options),
+      approveKyc: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/users/${id}/approve-kyc`, undefined, options),
+      block: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/users/${id}/block`, payload, options),
+      unblock: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/users/${id}/unblock`, payload, options),
     },
     buyers: {
       approveDeposit: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
