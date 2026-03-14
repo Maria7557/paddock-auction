@@ -1,5 +1,3 @@
-import { jwtVerify, SignJWT } from "jose";
-
 const encoder = new TextEncoder();
 
 export type AuthJwtPayload = {
@@ -20,6 +18,7 @@ function getJwtSecret(): Uint8Array | null {
 }
 
 export async function signJwt(payload: AuthJwtPayload): Promise<string> {
+  const { SignJWT } = await import("jose");
   const secret = getJwtSecret();
 
   if (!secret) {
@@ -40,6 +39,7 @@ export async function signJwt(payload: AuthJwtPayload): Promise<string> {
 
 export async function verifyJwt(token: string): Promise<AuthJwtPayload | null> {
   try {
+    const { jwtVerify } = await import("jose");
     const secret = getJwtSecret();
 
     if (!secret) {
