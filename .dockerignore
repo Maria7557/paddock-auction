@@ -1,5 +1,15 @@
 node_modules
+**/node_modules
 .next
 dist
+**/dist
 .env*
 *.log
+.git
+.tmp
+.vercel
+coverage
+**/coverage
+*.tsbuildinfo
+*.icloud
+.DS_Store

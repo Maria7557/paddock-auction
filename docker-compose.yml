@@ -21,13 +21,12 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     env_file:
       - .env.docker
     environment:
       DATABASE_URL: postgresql://fleetbid:fleetbid@postgres:5432/fleetbid
-      JWT_SECRET: changeme
       PORT: "4000"
       NODE_ENV: production
     depends_on:
@@ -47,6 +46,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://backend:4000
       NODE_ENV: production
+      PORT: "3000"
     depends_on:
       - backend
     ports:

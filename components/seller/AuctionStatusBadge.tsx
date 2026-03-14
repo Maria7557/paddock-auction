@@ -1,7 +1,18 @@
-import type { AuctionState } from "@prisma/client";
+type AuctionStateValue =
+  | "DRAFT"
+  | "SCHEDULED"
+  | "LIVE"
+  | "EXTENDED"
+  | "CLOSED"
+  | "PAYMENT_PENDING"
+  | "PAID"
+  | "DEFAULTED"
+  | "CANCELED"
+  | "RELISTED"
+  | "ENDED";
 
 type AuctionStatusBadgeProps = {
-  state: AuctionState | string;
+  state: AuctionStateValue | string;
 };
 
 function normalize(state: string): string {
