@@ -69,11 +69,6 @@
   gap: 8px;
 }
 
-.pendingPill {
-  background: var(--amber-100);
-  color: var(--amber-600);
-}
-
 .metaText {
   font-size: 13px;
   color: var(--ink-muted);

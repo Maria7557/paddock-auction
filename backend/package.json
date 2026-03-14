@@ -1,0 +1,45 @@
+{
+  "name": "fleetbid-backend",
+  "version": "1.0.0",
+  "main": "dist/server.js",
+  "scripts": {
+    "prisma:generate:local": "sh -c 'if [ -f prisma/schema.prisma ]; then prisma generate --schema=prisma/schema.prisma; else tmp_dir=.prisma-local; rm -rf \"$tmp_dir\"; mkdir -p \"$tmp_dir\"; cp ../prisma/schema.prisma \"$tmp_dir/schema.prisma\"; prisma generate --schema=\"$tmp_dir/schema.prisma\"; rm -rf \"$tmp_dir\"; fi'",
+    "prebuild": "npm run prisma:generate:local",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "postbuild": "mkdir -p dist/lib && cp src/lib/jose-runtime.cjs dist/lib/jose-runtime.cjs",
+    "start": "node dist/server.js",
+    "pretest": "npm run prisma:generate:local",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --reporter=verbose",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate"
+  },
+  "prisma": {
+    "schema": "../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9",
+    "@fastify/cors": "^9",
+    "@prisma/client": "^6",
+    "bcryptjs": "^3",
+    "fastify": "^4",
+    "jose": "^6",
+    "node-cron": "^4.2.1",
+    "redis": "^5",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2",
+    "@types/node": "^20",
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "prisma": "^6",
+    "supertest": "^7.2.2",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.0"
+  }
+}

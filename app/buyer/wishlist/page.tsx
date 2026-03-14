@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { getToken } from "@/src/lib/auth_client";
+import { api } from "@/src/lib/api-client";
 
 type WishlistItem = {
   id: string;
@@ -23,29 +23,22 @@ export default function WishlistPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      window.location.href = "/login";
-      return;
+    async function loadWishlist(): Promise<void> {
+      try {
+        const data = await api.buyer.wishlist.list<{ items?: WishlistItem[] }>();
+        setItems(data.items ?? []);
+      } catch {
+        window.location.href = "/login";
+      } finally {
+        setLoading(false);
+      }
     }
 
-    fetch("/api/buyer/wishlist", {
-      headers: { authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data: { items?: WishlistItem[] }) => {
-        setItems(data.items ?? []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    void loadWishlist();
   }, []);
 
-  async function remove(auctionId: string) {
-    const token = getToken();
-    await fetch(`/api/buyer/wishlist/${auctionId}`, {
-      method: "DELETE",
-      headers: { authorization: `Bearer ${token ?? ""}` },
-    });
+  async function remove(auctionId: string): Promise<void> {
+    await api.buyer.wishlist.remove(auctionId);
     setItems((prev) => prev.filter((i) => i.auctionId !== auctionId));
   }
 

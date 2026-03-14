@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DocumentUploadCard } from "@/components/seller/DocumentUploadCard";
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
 type SellerDocument = {
   id: string;
@@ -35,16 +36,10 @@ export default function SellerSettingsDocumentsPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/seller/documents", { cache: "no-store" });
-      const payload = (await response.json().catch(() => null)) as DocumentsResponse | { error?: string } | null;
-
-      if (!response.ok) {
-        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load documents");
-      }
-
-      setDocuments((payload as DocumentsResponse)?.documents ?? []);
+      const payload = await api.seller.documents.list<DocumentsResponse>({ cache: "no-store" });
+      setDocuments(payload.documents ?? []);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
+      setError(getApiErrorMessage(requestError, "Unexpected error"));
     } finally {
       setLoading(false);
     }
@@ -74,21 +69,12 @@ export default function SellerSettingsDocumentsPage() {
       formData.set("type", type);
       formData.set("file", file);
 
-      const response = await fetch("/api/seller/documents", {
-        method: "POST",
-        body: formData,
-      });
-
-      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
-
-      if (!response.ok) {
-        throw new Error(payload?.message ?? payload?.error ?? "Failed to upload document");
-      }
+      await api.seller.documents.upload(formData);
 
       setNotice("Document uploaded");
       await loadDocuments();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
+      setError(getApiErrorMessage(uploadError, "Upload failed"));
     } finally {
       setUploadingType(null);
     }

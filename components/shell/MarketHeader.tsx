@@ -52,7 +52,7 @@ export default async function MarketHeader() {
           <Link href={withLocalePath("/auctions", locale)} className={styles.navLink}>
             {t.auctions}
           </Link>
-          <Link href="/how-it-works" className={styles.navLink}>
+          <Link href={`${withLocalePath("/", locale)}#how-it-works`} className={styles.navLink}>
             {t.how}
           </Link>
           <Link href={`${withLocalePath("/", locale)}#sell`} className={styles.navLink}>

@@ -55,6 +55,7 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
               title={lot.title}
               year={lot.year}
               mileage={lot.mileageKm}
+              regionSpec={lot.regionSpec}
               imageUrl={lot.imageUrl}
               currentBid={lot.currentBidAed}
               marketPrice={lot.marketPriceAed}

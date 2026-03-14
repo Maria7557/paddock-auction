@@ -3,24 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import styles from "./page.module.css";
-
-type CreateEventResponse = {
-  id?: string;
-  error?: string;
-};
 
 export default function NewEventPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [startTime, setStartTime] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function createEvent(): Promise<void> {
-    if (!title.trim() || !date || !time) {
+    if (!title.trim() || !date || !startTime) {
       setError("Title, date, and start time are required.");
       return;
     }
@@ -29,29 +25,21 @@ export default function NewEventPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/admin/events", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+      const payload = await api.admin.events.create<{ id?: string }>({
           title,
           date,
-          time,
+          startTime,
           description,
-        }),
       });
 
-      const payload = (await response.json().catch(() => null)) as CreateEventResponse | null;
-
-      if (!response.ok || !payload?.id) {
-        setError(payload?.error ?? "Failed to create event.");
+      if (!payload?.id) {
+        setError("Failed to create event.");
         return;
       }
 
       router.push(`/admin/events/${payload.id}`);
-    } catch {
-      setError("Failed to create event.");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Failed to create event."));
     } finally {
       setBusy(false);
     }
@@ -86,7 +74,11 @@ export default function NewEventPage() {
         <div className={styles.row}>
           <div className={styles.rowLabel}>Start Time</div>
           <div className={styles.rowValue}>
-            <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+            />
           </div>
         </div>
 

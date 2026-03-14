@@ -4,18 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues, VehicleForm } from "@/components/seller/VehicleForm";
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
 export default function SellerNewVehiclePage() {
   const router = useRouter();
   const [notice, setNotice] = useState<string | null>(null);
 
   async function handleSubmit(values: SellerVehicleFormValues): Promise<void> {
-    const response = await fetch("/api/seller/vehicles", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
+    try {
+      const payload = await api.seller.vehicles.create<{ vehicleId?: string }>({
         brand: values.brand,
         model: values.model,
         year: Number(values.year),
@@ -37,19 +34,17 @@ export default function SellerNewVehiclePage() {
         startingPriceAed: Number(values.startingPriceAed),
         buyNowPriceAed: values.buyNowPriceAed ? Number(values.buyNowPriceAed) : undefined,
         inspectionDropoffDate: values.inspectionDropoffDate,
-      }),
-    });
+      });
 
-    const payload = (await response.json().catch(() => null)) as
-      | { vehicleId?: string; message?: string; error?: string }
-      | null;
+      if (!payload?.vehicleId) {
+        throw new Error("Failed to create vehicle");
+      }
 
-    if (!response.ok || !payload?.vehicleId) {
-      throw new Error(payload?.message ?? payload?.error ?? "Failed to create vehicle");
+      setNotice("Vehicle added and auction draft created");
+      router.push(`/seller/vehicles/${payload.vehicleId}?created=1`);
+    } catch (error) {
+      throw new Error(getApiErrorMessage(error, "Failed to create vehicle"));
     }
-
-    setNotice("Vehicle added and auction draft created");
-    router.push(`/seller/vehicles/${payload.vehicleId}?created=1`);
   }
 
   return (

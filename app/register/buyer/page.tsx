@@ -3,11 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
+import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
-
-type RegisterResponse = {
-  error?: string;
-};
 
 export default function BuyerRegisterPage() {
   const [email, setEmail] = useState("");
@@ -29,36 +26,25 @@ export default function BuyerRegisterPage() {
     setFeedback(null);
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          role: "BUYER",
-          emirate,
-        }),
+      await api.auth.register({
+        email,
+        password,
+        role: "BUYER",
+        emirate,
       });
-
-      const payload = (await response.json().catch(() => null)) as RegisterResponse | null;
-
-      if (!response.ok) {
-        if (payload?.error === "EMAIL_ALREADY_EXISTS") {
-          setFeedback("Email is already registered.");
-          return;
-        }
-
-        setFeedback("Registration failed.");
-        return;
-      }
 
       setFeedback("Account created. Pending admin approval.");
       setPassword("");
       setConfirmPassword("");
-    } catch {
-      setFeedback("Registration failed due to network error.");
+    } catch (error) {
+      const payload = getApiErrorPayload<{ error?: string }>(error);
+
+      if (payload?.error === "EMAIL_ALREADY_EXISTS") {
+        setFeedback("Email is already registered.");
+        return;
+      }
+
+      setFeedback(getApiErrorMessage(error, "Registration failed due to network error."));
     } finally {
       setIsSubmitting(false);
     }

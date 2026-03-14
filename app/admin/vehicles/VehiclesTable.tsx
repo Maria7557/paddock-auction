@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
+import { api } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -28,6 +29,14 @@ type EventOption = {
   label: string;
 };
 
+type EventsResponse = {
+  events?: {
+    id: string;
+    title: string;
+    startsAt: string;
+  }[];
+};
+
 type VehiclesTableProps = {
   rows: VehicleRow[];
   events: EventOption[];
@@ -40,6 +49,41 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceDraftById, setPriceDraftById] = useState<Record<string, string>>({});
   const [eventDraftById, setEventDraftById] = useState<Record<string, string>>({});
+  const [eventOptions, setEventOptions] = useState<EventOption[]>(events);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEvents(): Promise<void> {
+      try {
+        const payload = await api.admin.events.list<EventsResponse>({ status: "SCHEDULED" }, {
+          cache: "no-store",
+        });
+        const nextOptions = (payload.events ?? []).map((event) => ({
+          id: event.id,
+          label: `${event.title} • ${new Date(event.startsAt).toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`,
+        }));
+
+        if (!cancelled) {
+          setEventOptions(nextOptions);
+        }
+      } catch {
+        // Keep server-rendered options when fetch fails.
+      }
+    }
+
+    void loadEvents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     if (tab === "all") {
@@ -56,9 +100,12 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/${action}`, {
-        method: "POST",
-      });
+      if (action === "approve") {
+        await api.admin.vehicles.approve(id);
+      } else {
+        await api.admin.vehicles.reject(id);
+      }
+
       router.refresh();
     } finally {
       setBusyId(null);
@@ -76,15 +123,10 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/set-market-price`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          priceAed: value,
-        }),
+      await api.admin.vehicles.setMarketPrice(id, {
+        priceAed: value,
       });
+
       setEditingPriceId(null);
       router.refresh();
     } finally {
@@ -96,15 +138,10 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     setBusyId(id);
 
     try {
-      await fetch(`/api/admin/vehicles/${id}/assign-event`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          eventId,
-        }),
+      await api.admin.vehicles.assignEvent(id, {
+        eventId,
       });
+
       router.refresh();
     } finally {
       setBusyId(null);
@@ -235,7 +272,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           }
                         >
                           <option value="">Select event</option>
-                          {events.map((event) => (
+                          {eventOptions.map((event) => (
                             <option key={event.id} value={event.id}>
                               {event.label}
                             </option>

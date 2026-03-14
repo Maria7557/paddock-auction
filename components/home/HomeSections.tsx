@@ -267,8 +267,8 @@ export function WhySection({ locale = "en" }: LocaleProps) {
             <Link href={withLocalePath("/auctions", locale)} className="btn btn-white">
               {isRu ? "Смотреть инвентарь" : "Browse Inventory"}
             </Link>
-            <Link href="/how-it-works" className="btn btn-ghost-white">
-              {isRu ? "Смотреть отчёты инспекции" : "View Inspection Reports"}
+            <Link href={withLocalePath("/auctions", locale)} className="btn btn-ghost-white">
+              {isRu ? "Забронировать физический осмотр" : "Book Physical Inspection"}
             </Link>
           </div>
         </div>
@@ -333,7 +333,7 @@ export function HowSection({ locale = "en" }: LocaleProps) {
       ];
 
   return (
-    <section className={`${styles.sec} ${styles.subtle}`}>
+    <section id="how-it-works" className={`${styles.sec} ${styles.subtle}`}>
       <div className="container">
         <div className={styles.centreHead}>
           <div className="eyebrow">{isRu ? "Простой процесс" : "Simple Process"}</div>

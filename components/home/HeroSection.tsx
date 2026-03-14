@@ -64,7 +64,7 @@ export default function HeroSection({ stats, heroLot, display = DEFAULT_DISPLAY 
             <Link href={withLocalePath("/auctions", locale)} className="btn btn-primary btn-lg">
               {isRu ? "Смотреть ближайшие аукционы" : "Browse Upcoming Auctions"}
             </Link>
-            <Link href="/how-it-works" className="btn btn-outline btn-lg">
+            <Link href={`${withLocalePath("/", locale)}#how-it-works`} className="btn btn-outline btn-lg">
               {isRu ? "Как это работает" : "How It Works"}
             </Link>
           </div>
@@ -73,10 +73,6 @@ export default function HeroSection({ stats, heroLot, display = DEFAULT_DISPLAY 
             <div className={styles.stat}>
               <div className={styles.statVal}>{formatInteger(stats.lotsSold, locale)}+</div>
               <div className={styles.statLbl}>{isRu ? "Продано лотов" : "Lots Sold"}</div>
-            </div>
-            <div className={styles.stat}>
-              <div className={styles.statVal}>{formatMoneyFromAed(stats.transactedAed, display)}</div>
-              <div className={styles.statLbl}>{isRu ? "Объём сделок" : "Transacted"}</div>
             </div>
             <div className={styles.stat}>
               <div className={styles.statVal}>{formatInteger(stats.verifiedBuyers, locale)}+</div>

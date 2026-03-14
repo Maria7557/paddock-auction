@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
+
 type CompanyProfile = {
   companyName: string;
   tradeLicenseNumber: string;
@@ -44,18 +46,15 @@ export default function SellerSettingsCompanyPage() {
       setError(null);
 
       try {
-        const response = await fetch("/api/seller/company", { cache: "no-store" });
-        const payload = (await response.json().catch(() => null)) as
-          | { profile?: CompanyProfile; error?: string }
-          | null;
+        const payload = await api.seller.company.get<{ profile?: CompanyProfile }>({ cache: "no-store" });
 
-        if (!response.ok || !payload?.profile) {
-          throw new Error(payload?.error ?? "Failed to load company profile");
+        if (!payload?.profile) {
+          throw new Error("Failed to load company profile");
         }
 
         setProfile(payload.profile);
       } catch (requestError) {
-        setError(requestError instanceof Error ? requestError.message : "Unexpected error");
+        setError(getApiErrorMessage(requestError, "Unexpected error"));
       } finally {
         setLoading(false);
       }
@@ -71,23 +70,11 @@ export default function SellerSettingsCompanyPage() {
     setNotice(null);
 
     try {
-      const response = await fetch("/api/seller/company", {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(profile),
-      });
-
-      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
-
-      if (!response.ok) {
-        throw new Error(payload?.message ?? payload?.error ?? "Failed to save company profile");
-      }
+      await api.seller.company.update(profile);
 
       setNotice("Company profile saved");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save");
+      setError(getApiErrorMessage(saveError, "Failed to save"));
     } finally {
       setSaving(false);
     }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { api } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -20,6 +21,13 @@ type EventLot = {
 type CandidateVehicle = {
   id: string;
   label: string;
+};
+
+type VehiclesResponse = {
+  vehicles?: {
+    id: string;
+    label: string;
+  }[];
 };
 
 type EventDetailClientProps = {
@@ -55,22 +63,68 @@ export function EventDetailClient({
   const router = useRouter();
 
   const [lotRows, setLotRows] = useState<EventLot[]>(lots);
+  const [candidateOptions, setCandidateOptions] = useState<CandidateVehicle[]>(candidates);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(candidates[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
 
   const canReorder = lotRows.length > 1;
+  const availableCandidates = useMemo(() => {
+    const lotVehicleIds = new Set(lotRows.map((lot) => lot.vehicleId));
+    return candidateOptions.filter((candidate) => !lotVehicleIds.has(candidate.id));
+  }, [candidateOptions, lotRows]);
 
-  async function callMutation(path: string, body: Record<string, unknown>): Promise<void> {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCandidates(): Promise<void> {
+      try {
+        const payload = await api.admin.vehicles.list<VehiclesResponse>({ status: "APPROVED", unassigned: true }, {
+          cache: "no-store",
+        });
+        const nextCandidates = (payload.vehicles ?? []).map((vehicle) => ({
+          id: vehicle.id,
+          label: vehicle.label,
+        }));
+
+        if (!cancelled) {
+          setCandidateOptions(nextCandidates);
+        }
+      } catch {
+        // Keep server-rendered options when fetch fails.
+      }
+    }
+
+    void loadCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (availableCandidates.some((candidate) => candidate.id === selectedVehicleId)) {
+      return;
+    }
+
+    const fallback = availableCandidates[0]?.id ?? "";
+    setSelectedVehicleId(fallback);
+  }, [availableCandidates, selectedVehicleId]);
+
+  async function callMutation(
+    action: "reorder" | "remove-vehicle" | "add-vehicle",
+    body: Record<string, unknown>,
+  ): Promise<void> {
     setBusy(true);
 
     try {
-      await fetch(path, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      if (action === "reorder") {
+        await api.admin.events.reorder(eventId, body);
+      } else if (action === "remove-vehicle") {
+        await api.admin.events.removeVehicle(eventId, body);
+      } else {
+        await api.admin.events.addVehicle(eventId, body);
+      }
+
       router.refresh();
     } finally {
       setBusy(false);
@@ -87,13 +141,13 @@ export function EventDetailClient({
     const reordered = reorderLots(lotRows, index, target);
     setLotRows(reordered);
 
-    await callMutation(`/api/admin/events/${eventId}/reorder`, {
+    await callMutation("reorder", {
       vehicleIds: reordered.map((lot) => lot.vehicleId),
     });
   }
 
   async function removeVehicle(vehicleId: string): Promise<void> {
-    await callMutation(`/api/admin/events/${eventId}/remove-vehicle`, {
+    await callMutation("remove-vehicle", {
       vehicleId,
     });
   }
@@ -103,7 +157,7 @@ export function EventDetailClient({
       return;
     }
 
-    await callMutation(`/api/admin/events/${eventId}/add-vehicle`, {
+    await callMutation("add-vehicle", {
       vehicleId: selectedVehicleId,
     });
   }
@@ -174,16 +228,18 @@ export function EventDetailClient({
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === 0}
                           onClick={() => void move(index, -1)}
+                          aria-label="Move lot up"
                         >
-                          Up
+                          ▲
                         </button>
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === lotRows.length - 1}
                           onClick={() => void move(index, 1)}
+                          aria-label="Move lot down"
                         >
-                          Down
+                          ▼
                         </button>
                       </div>
                     </div>
@@ -228,10 +284,10 @@ export function EventDetailClient({
           <select
             value={selectedVehicleId}
             onChange={(event) => setSelectedVehicleId(event.target.value)}
-            disabled={busy || candidates.length === 0}
+            disabled={busy || availableCandidates.length === 0}
           >
             <option value="">Select vehicle</option>
-            {candidates.map((candidate) => (
+            {availableCandidates.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.label}
               </option>
