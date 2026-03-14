@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
+
+type LoginResponse = {
+  token?: string;
+  role?: string;
+  error?: string;
+  status?: string;
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,23 +25,43 @@ export default function LoginPage() {
     setFeedback(null);
 
     try {
-      const { user } = await api.auth.login(email, password);
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      window.localStorage.setItem("fleetbid_role", user.role);
+      const payload = (await response.json().catch(() => null)) as LoginResponse | null;
 
-      if (user.role === "ADMIN") {
+      if (!response.ok) {
+        setFeedback(payload?.error ?? "Invalid credentials.");
+        return;
+      }
+
+      if (!payload?.token || !payload.role) {
+        setFeedback("Login response did not include required session fields.");
+        return;
+      }
+
+      window.localStorage.setItem("fleetbid_token", payload.token);
+      window.localStorage.setItem("fleetbid_role", payload.role);
+      document.cookie = `token=${payload.token}; Path=/; SameSite=Lax`;
+
+      if (payload.role === "ADMIN") {
         window.location.href = "/admin";
         return;
       }
 
-      if (user.role === "SELLER") {
+      if (payload.role === "SELLER") {
         window.location.href = "/seller/dashboard";
         return;
       }
 
       window.location.href = "/dashboard";
-    } catch (error) {
-      setFeedback(getApiErrorMessage(error, "Login failed due to network error."));
+    } catch {
+      setFeedback("Login failed due to network error.");
     } finally {
       setIsSubmitting(false);
     }

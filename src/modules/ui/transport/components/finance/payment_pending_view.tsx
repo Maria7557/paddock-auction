@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import {
   describeInvoiceDeadline,
   formatAed,
@@ -58,12 +57,29 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
     setFeedback((current) => ({ ...current, [invoiceId]: undefined }));
 
     try {
-      const payload = await api.payments.invoice.createIntent<{
-        replayed?: boolean;
-        stripe_payment_intent_id?: string;
-        message?: string;
-        error_code?: string;
-      }>(invoiceId, idempotencyKey);
+      const response = await fetch(`/api/payments/invoices/${invoiceId}/intent`, {
+        method: "POST",
+        headers: {
+          "idempotency-key": idempotencyKey,
+        },
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            replayed?: boolean;
+            stripe_payment_intent_id?: string;
+            message?: string;
+            error_code?: string;
+          }
+        | null;
+
+      if (!response.ok) {
+        setFeedback((current) => ({
+          ...current,
+          [invoiceId]: payload?.message ?? payload?.error_code ?? "Payment intent request rejected.",
+        }));
+        return;
+      }
 
       const statusLabel = payload?.replayed ? "Payment intent replayed." : "Payment intent created.";
       const intentLabel = payload?.stripe_payment_intent_id ? ` ${payload.stripe_payment_intent_id}` : "";
@@ -72,10 +88,10 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
         ...current,
         [invoiceId]: `${statusLabel}${intentLabel}`,
       }));
-    } catch (error) {
+    } catch {
       setFeedback((current) => ({
         ...current,
-        [invoiceId]: getApiErrorMessage(error, "Network issue. Retry safely with the same Idempotency-Key."),
+        [invoiceId]: "Network issue. Retry safely with the same Idempotency-Key.",
       }));
     } finally {
       setPending((current) => ({ ...current, [invoiceId]: false }));

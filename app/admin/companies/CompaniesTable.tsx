@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
-import { api } from "@/src/lib/api-client";
 
 import styles from "./page.module.css";
 
@@ -38,12 +37,9 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
     setBusyId(id);
 
     try {
-      if (action === "approve") {
-        await api.admin.companies.approve(id);
-      } else {
-        await api.admin.companies.reject(id);
-      }
-
+      await fetch(`/api/admin/companies/${id}/${action}`, {
+        method: "POST",
+      });
       router.refresh();
     } finally {
       setBusyId(null);

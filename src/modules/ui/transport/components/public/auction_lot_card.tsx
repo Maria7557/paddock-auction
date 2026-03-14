@@ -25,7 +25,6 @@ function estimateMarketPrice(currentBidAed: number): number {
 export function AuctionLotCard({ lot }: AuctionLotCardProps) {
   const heroImage = resolveLotImage(lot.images[0]);
   const marketPrice = lot.marketPriceAed ?? estimateMarketPrice(lot.currentBidAed);
-  const regionSpec = lot.specs.find((spec) => spec.label.toLowerCase() === "region")?.value;
 
   return (
     <LotCard
@@ -33,7 +32,6 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       title={lot.title}
       year={lot.year}
       mileage={lot.mileageKm}
-      regionSpec={regionSpec}
       imageUrl={heroImage}
       currentBid={lot.currentBidAed}
       status={lot.status}

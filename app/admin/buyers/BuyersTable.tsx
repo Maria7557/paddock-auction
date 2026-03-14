@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
-import { api } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -42,12 +41,9 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
     setBusyId(id);
 
     try {
-      if (action === "approve-deposit") {
-        await api.admin.buyers.approveDeposit(id);
-      } else {
-        await api.admin.buyers.rejectDeposit(id);
-      }
-
+      await fetch(`/api/admin/buyers/${id}/${action}`, {
+        method: "POST",
+      });
       router.refresh();
     } finally {
       setBusyId(null);
@@ -93,7 +89,7 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
                   <td>
                     {buyer.depositStatus === "NONE" ? <span className="pill">None</span> : null}
                     {buyer.depositStatus === "PENDING" ? (
-                      <span className="pill pill-sched">Pending</span>
+                      <span className={`pill ${styles.pendingPill}`}>Pending</span>
                     ) : null}
                     {buyer.depositStatus === "APPROVED" ? (
                       <span className="pill pill-green">Approved</span>

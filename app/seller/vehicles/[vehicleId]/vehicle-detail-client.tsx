@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { type SellerVehicleFormValues, VehicleForm } from "@/components/seller/VehicleForm";
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
 
 type VehicleDetailResponse = {
@@ -94,10 +93,16 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
     setError(null);
 
     try {
-      const payload = await api.seller.vehicles.get<VehicleDetailResponse>(vehicleId, { cache: "no-store" });
-      setData(payload);
+      const response = await fetch(`/api/seller/vehicles/${vehicleId}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as VehicleDetailResponse | { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load vehicle");
+      }
+
+      setData(payload as VehicleDetailResponse);
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
+      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
@@ -116,7 +121,12 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
   }, [data]);
 
   async function handleEditSubmit(values: SellerVehicleFormValues): Promise<void> {
-    await api.seller.vehicles.update(vehicleId, {
+    const response = await fetch(`/api/seller/vehicles/${vehicleId}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
         brand: values.brand,
         model: values.model,
         year: Number(values.year),
@@ -132,7 +142,14 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
         serviceHistory: values.serviceHistory,
         description: values.description,
         damageMap: values.damageMap,
+      }),
     });
+
+    const payload = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.message ?? payload?.error ?? "Failed to update vehicle");
+    }
 
     setEditing(false);
     await loadDetail();
@@ -152,11 +169,19 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
     setBusyDelete(true);
 
     try {
-      await api.seller.vehicles.remove(vehicleId);
+      const response = await fetch(`/api/seller/vehicles/${vehicleId}`, {
+        method: "DELETE",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? "Failed to delete draft");
+      }
 
       router.push("/seller/vehicles");
     } catch (deleteError) {
-      setError(getApiErrorMessage(deleteError, "Delete failed"));
+      setError(deleteError instanceof Error ? deleteError.message : "Delete failed");
     } finally {
       setBusyDelete(false);
     }

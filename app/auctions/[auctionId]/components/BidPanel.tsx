@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { toIntlLocale } from "@/src/i18n/routing";
-import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 import { formatCountdown, savingPct, pad } from "@/src/lib/utils";
 
@@ -34,9 +33,31 @@ function useCountdown(iso: string) {
   return cd;
 }
 
+function useToken() {
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    return localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
+  });
+
+  useEffect(() => {
+    const syncToken = () => {
+      const stored = localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
+      setToken(stored);
+    };
+
+    window.addEventListener("storage", syncToken);
+    return () => window.removeEventListener("storage", syncToken);
+  }, []);
+
+  return token;
+}
+
 export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const token = useToken();
 
   const isRu = display.locale === "ru";
 
@@ -56,9 +77,13 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
     const poll = setInterval(async () => {
       try {
-        const data = await api.auctions.live(lot.auctionId, {
-          cache: "no-store",
-        });
+        const response = await fetch(`/api/auctions/${lot.auctionId}/live`);
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { currentPrice?: number };
 
         if (typeof data.currentPrice === "number" && data.currentPrice !== livePrice) {
           setLivePrice(data.currentPrice);
@@ -75,37 +100,6 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [buyNowSuccess, setBuyNowSuccess] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadSession(): Promise<void> {
-      try {
-        await api.auth.me();
-
-        if (active) {
-          setIsAuthenticated(true);
-        }
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        if (error instanceof ApiError && error.statusCode === 401) {
-          setIsAuthenticated(false);
-          return;
-        }
-
-        setIsAuthenticated(true);
-      }
-    }
-
-    void loadSession();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     setBuyNowSuccess(false);
@@ -125,85 +119,117 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
   const placeBid = useCallback(
     async (amount: number) => {
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
       setBusy(true);
 
       try {
         const idempotencyKey = `bid-${lot.auctionId}-${amount}-${Date.now()}`;
-        await api.bids.place(lot.auctionId, amount, idempotencyKey);
-
-        showOutcome({
-          type: "success",
-          msg: isRu
-            ? `Ставка принята: ${formatMoneyFromAed(amount, display)}`
-            : `Bid placed: ${formatMoneyFromAed(amount, display)}`,
+        const response = await fetch("/api/bids", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: JSON.stringify({
+            auctionId: lot.auctionId,
+            amount,
+          }),
         });
-        setLivePrice(amount);
-      } catch (error) {
-        if (error instanceof ApiError && error.statusCode === 401) {
-          setIsAuthenticated(false);
-          router.push("/login");
+
+        const payload = (await response.json()) as { error?: string; message?: string };
+
+        if (response.ok) {
+          showOutcome({
+            type: "success",
+            msg: isRu
+              ? `Ставка принята: ${formatMoneyFromAed(amount, display)}`
+              : `Bid placed: ${formatMoneyFromAed(amount, display)}`,
+          });
+          setLivePrice(amount);
           return;
         }
 
         showOutcome({
           type: "error",
-          msg: getApiErrorMessage(
-            error,
-            isRu ? "Не удалось отправить ставку. Попробуйте снова." : "Bid failed. Please try again.",
-          ),
+          msg:
+            payload.message ??
+            payload.error ??
+            (isRu ? "Не удалось отправить ставку. Попробуйте снова." : "Bid failed. Please try again."),
         });
+      } catch {
+        showOutcome({ type: "error", msg: isRu ? "Ошибка сети. Проверьте соединение." : "Network error. Check connection." });
       } finally {
         setBusy(false);
       }
     },
-    [display, isRu, lot.auctionId, router],
+    [display, isRu, lot.auctionId, router, token],
   );
 
   const handleBuyNow = useCallback(async () => {
+    const authToken = token ?? localStorage.getItem("fleetbid_token") ?? sessionStorage.getItem("fleetbid_token");
+
+    if (!authToken) {
+      router.push("/login");
+      return;
+    }
+
     setBusy(true);
 
     try {
-      const payload = await api.auctions.buyNow<{ message?: string }>(lot.auctionId);
-
-      setBuyNowSuccess(true);
-      showOutcome({
-        type: "success",
-        msg: payload.message ?? (isRu ? "Покупка подтверждена" : "Purchase confirmed"),
+      const response = await fetch(`/api/auctions/${lot.auctionId}/buy-now`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       });
-    } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 401) {
-        setIsAuthenticated(false);
-        router.push("/login");
+
+      const payload = ((await response.json().catch(() => ({}))) as { message?: string }) ?? {};
+
+      if (response.ok) {
+        setBuyNowSuccess(true);
+        showOutcome({
+          type: "success",
+          msg: payload.message ?? (isRu ? "Покупка подтверждена" : "Purchase confirmed"),
+        });
         return;
       }
 
       showOutcome({
         type: "error",
-        msg: getApiErrorMessage(error, isRu ? "Buy Now не выполнен" : "Buy Now failed"),
+        msg: payload.message ?? (isRu ? "Buy Now не выполнен" : "Buy Now failed"),
       });
+    } catch {
+      showOutcome({ type: "error", msg: isRu ? "Ошибка сети. Проверьте соединение." : "Network error. Check connection." });
     } finally {
       setBusy(false);
     }
-  }, [isRu, lot.auctionId, router]);
+  }, [isRu, lot.auctionId, router, token]);
 
   const toggleWatchlist = useCallback(async () => {
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    const method = saved ? "DELETE" : "POST";
+
     try {
-      if (saved) {
-        await api.buyer.wishlist.remove(lot.auctionId);
-      } else {
-        await api.buyer.wishlist.add(lot.auctionId);
-      }
-
+      await fetch(`/api/buyer/wishlist/${lot.auctionId}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      });
       setSaved(!saved);
-    } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 401) {
-        setIsAuthenticated(false);
-        router.push("/login");
-      }
-
+    } catch {
       // Ignore watchlist errors in UI.
     }
-  }, [lot.auctionId, router, saved]);
+  }, [lot.auctionId, router, saved, token]);
 
   const nextBid = livePrice + lot.minStepAed;
   const saving = savingPct(lot.buyNowAed || lot.currentBidAed * 1.3, livePrice);
@@ -320,7 +346,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
         )}
       </div>
 
-      {isAuthenticated === false ? (
+      {!token ? (
         <>
           <div className={styles.authGate} role="alert">
             <div className={styles.authText}>

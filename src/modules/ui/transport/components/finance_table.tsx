@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiError, api, getApiErrorPayload } from "@/src/lib/api-client";
 import {
   type FinanceInvoiceReadModel,
   describeDeadlineWindow,
@@ -149,12 +148,29 @@ export function FinanceTable({ invoices }: FinanceTableProps) {
     setFeedbackByInvoice((previous) => ({ ...previous, [invoiceId]: undefined }));
 
     try {
-      const payload = await api.payments.invoice.createIntent<{
-        error_code?: string;
-        message?: string;
-        replayed?: boolean;
-        stripe_payment_intent_id?: string;
-      }>(invoiceId, key.trim());
+      const response = await fetch(`/api/payments/invoices/${invoiceId}/intent`, {
+        method: "POST",
+        headers: {
+          "idempotency-key": key.trim(),
+        },
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error_code?: string;
+            message?: string;
+            replayed?: boolean;
+            stripe_payment_intent_id?: string;
+          }
+        | null;
+
+      if (!response.ok) {
+        setFeedbackByInvoice((previous) => ({
+          ...previous,
+          [invoiceId]: normalizePaymentIntentError(payload?.error_code, response.status),
+        }));
+        return;
+      }
 
       const replayed = Boolean(payload?.replayed);
       const stripeIntentId =
@@ -171,16 +187,7 @@ export function FinanceTable({ invoices }: FinanceTableProps) {
           code: replayed ? "REPLAYED" : "CREATED",
         },
       }));
-    } catch (error) {
-      if (error instanceof ApiError) {
-        const payload = getApiErrorPayload<{ error_code?: string }>(error);
-        setFeedbackByInvoice((previous) => ({
-          ...previous,
-          [invoiceId]: normalizePaymentIntentError(payload?.error_code, error.statusCode),
-        }));
-        return;
-      }
-
+    } catch {
       setFeedbackByInvoice((previous) => ({
         ...previous,
         [invoiceId]: {

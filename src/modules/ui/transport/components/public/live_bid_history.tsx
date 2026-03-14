@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { api } from "@/src/lib/api-client";
 import {
   type AuctionBidHistoryEntry,
   formatAed,
@@ -47,9 +46,16 @@ export function LiveBidHistory({ auctionId, initialEntries }: LiveBidHistoryProp
 
     const pull = async () => {
       try {
-        const payload = await api.ui.auctions.bids(auctionId, undefined, {
+        const response = await fetch(`/api/ui/auctions/${auctionId}/bids`, {
+          method: "GET",
           cache: "no-store",
         });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { bids?: BidHistoryApiEntry[] };
 
         if (!active) {
           return;

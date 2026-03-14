@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api } from "@/src/lib/api-client";
 import styles from "./page.module.css";
 
 type EventState = "DRAFT" | "SCHEDULED" | "LIVE" | "ENDED";
@@ -29,7 +28,9 @@ export function EventsTable({ events }: EventsTableProps) {
     setBusyId(id);
 
     try {
-      await api.admin.events.remove(id);
+      await fetch(`/api/admin/events/${id}`, {
+        method: "DELETE",
+      });
       router.refresh();
     } finally {
       setBusyId(null);

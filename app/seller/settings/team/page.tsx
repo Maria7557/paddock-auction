@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { InviteModal } from "@/components/seller/InviteModal";
 import { TeamRoleRow } from "@/components/seller/TeamRoleRow";
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
 type TeamMember = {
   userId: string;
@@ -30,10 +29,16 @@ export default function SellerSettingsTeamPage() {
     setError(null);
 
     try {
-      const payload = await api.seller.team.list<TeamResponse>({ cache: "no-store" });
-      setMembers(payload.members ?? []);
+      const response = await fetch("/api/seller/team", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as TeamResponse | { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load team members");
+      }
+
+      setMembers((payload as TeamResponse)?.members ?? []);
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
+      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
@@ -47,7 +52,19 @@ export default function SellerSettingsTeamPage() {
     setError(null);
     setNotice(null);
 
-    await api.seller.team.invite(input);
+    const response = await fetch("/api/seller/team/invite", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.message ?? payload?.error ?? "Failed to invite member");
+    }
 
     setNotice("Invite saved");
     await loadMembers();
@@ -58,12 +75,24 @@ export default function SellerSettingsTeamPage() {
     setNotice(null);
 
     try {
-      await api.seller.team.updateRole(userId, { role });
+      const response = await fetch(`/api/seller/team/${userId}/role`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ role }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? "Failed to update role");
+      }
 
       setNotice("Role updated");
       await loadMembers();
     } catch (updateError) {
-      setError(getApiErrorMessage(updateError, "Failed to update role"));
+      setError(updateError instanceof Error ? updateError.message : "Failed to update role");
     }
   }
 
@@ -78,12 +107,20 @@ export default function SellerSettingsTeamPage() {
     setNotice(null);
 
     try {
-      await api.seller.team.remove(userId);
+      const response = await fetch(`/api/seller/team/${userId}`, {
+        method: "DELETE",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? "Failed to revoke access");
+      }
 
       setNotice("Access revoked");
       await loadMembers();
     } catch (revokeError) {
-      setError(getApiErrorMessage(revokeError, "Failed to revoke access"));
+      setError(revokeError instanceof Error ? revokeError.message : "Failed to revoke access");
     }
   }
 

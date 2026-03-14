@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AuctionRowCard } from "@/components/seller/AuctionRowCard";
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
 type AuctionsResponse = {
   total: number;
@@ -54,16 +53,18 @@ export default function SellerAuctionsPage() {
 
       params.set("sort", sort);
 
-      const payload = await api.seller.auctions.list<AuctionsResponse>(
-        params,
-        {
+      const response = await fetch(`/api/seller/auctions?${params.toString()}`, {
         cache: "no-store",
-        },
-      );
+      });
+      const payload = (await response.json().catch(() => null)) as AuctionsResponse | { error?: string } | null;
 
-      setData(payload ?? { total: 0, auctions: [] });
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load auctions");
+      }
+
+      setData((payload as AuctionsResponse) ?? { total: 0, auctions: [] });
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
+      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
@@ -78,11 +79,23 @@ export default function SellerAuctionsPage() {
     setError(null);
 
     try {
-      await api.seller.auctions.update(auctionId, { action });
+      const response = await fetch(`/api/seller/auctions/${auctionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? "Action failed");
+      }
 
       await loadAuctions();
     } catch (actionError) {
-      setError(getApiErrorMessage(actionError, "Action failed"));
+      setError(actionError instanceof Error ? actionError.message : "Action failed");
     } finally {
       setBusyActionId(null);
     }

@@ -2,8 +2,6 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
-
 type Preferences = {
   email: {
     auctionStarts: boolean;
@@ -59,11 +57,18 @@ export default function SellerSettingsNotificationsPage() {
       setError(null);
 
       try {
-        const payload = await api.seller.notifications.get<{ preferences?: Preferences }>({ cache: "no-store" });
+        const response = await fetch("/api/seller/notifications-preferences", { cache: "no-store" });
+        const payload = (await response.json().catch(() => null)) as
+          | { preferences?: Preferences; error?: string }
+          | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to load preferences");
+        }
 
         setPreferences(payload?.preferences ?? DEFAULT_PREFERENCES);
       } catch (requestError) {
-        setError(getApiErrorMessage(requestError, "Unexpected error"));
+        setError(requestError instanceof Error ? requestError.message : "Unexpected error");
       } finally {
         setLoading(false);
       }
@@ -89,11 +94,23 @@ export default function SellerSettingsNotificationsPage() {
     setNotice(null);
 
     try {
-      await api.seller.notifications.update(preferences);
+      const response = await fetch("/api/seller/notifications-preferences", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(preferences),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? "Failed to save preferences");
+      }
 
       setNotice("Notification preferences saved");
     } catch (saveError) {
-      setError(getApiErrorMessage(saveError, "Failed to save"));
+      setError(saveError instanceof Error ? saveError.message : "Failed to save");
     } finally {
       setSaving(false);
     }

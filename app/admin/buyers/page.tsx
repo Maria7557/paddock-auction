@@ -100,7 +100,7 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
     }
   }
 
-  return [...usersById.values()].map((user) => {
+  return [...usersById.values()].map((user: { id: string; email: string; role: string; status: string; kycVerified: boolean; walletBalance?: number | null; companyUsers?: Array<{ companyName?: string }> }) => {
     const amountAed = toNumber(user.walletBalance ?? null);
 
     return {

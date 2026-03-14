@@ -2,7 +2,6 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-import { ApiError, api, getApiErrorPayload } from "@/src/lib/api-client";
 import { formatAed } from "../../domain/mvp_read_model_stub";
 import {
   InlineFeedback,
@@ -178,20 +177,35 @@ export function BidTicket({ auctionId, minBidAed, minIncrementAed, depositRequir
     setFeedback(null);
 
     try {
-      const payload = await api.bids.place<{
-        bid?: {
-          sequenceNo?: number;
-        };
-      }>(auctionId, numericAmount, idempotencyKey.trim());
+      const response = await fetch("/api/bids", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey.trim(),
+        },
+        body: JSON.stringify({
+          auction_id: auctionId,
+          company_id: companyId.trim(),
+          user_id: userId.trim(),
+          amount: numericAmount,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as BidApiPayload | null;
+
+      if (!response.ok) {
+        setFeedback(normalizeBidFailure(response.status, payload));
+        return;
+      }
 
       setFeedback({
         tone: "success",
-        title: "Bid accepted",
+        title: response.status === 201 ? "Bid accepted" : "Bid replayed",
         detail:
-          typeof payload.bid?.sequenceNo === "number"
-            ? `Sequence #${payload.bid.sequenceNo} confirmed. Safe retries use the same key.`
+          typeof payload?.sequence_no === "number"
+            ? `Sequence #${payload.sequence_no} confirmed. Safe retries use the same key.`
             : "Command completed. Keep this key if response confirmation is needed.",
-        code: "HTTP_201",
+        code: `HTTP_${response.status}`,
       });
 
       const toast: ToastMessage = {
@@ -201,12 +215,7 @@ export function BidTicket({ auctionId, minBidAed, minIncrementAed, depositRequir
         detail: "Regenerate key only for a new bid payload.",
       };
       setToasts((current) => [toast, ...current].slice(0, 3));
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setFeedback(normalizeBidFailure(error.statusCode, getApiErrorPayload<BidApiPayload>(error)));
-        return;
-      }
-
+    } catch {
       setFeedback({
         tone: "error",
         title: "Network interruption",

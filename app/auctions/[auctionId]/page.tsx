@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { withLocalePath } from "@/src/i18n/routing";
-import { api } from "@/src/lib/api-client";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
@@ -116,9 +115,19 @@ const DEFAULT_HIGHLIGHTS = [
 
 async function getLot(auctionId: string): Promise<LotDetail | null> {
   try {
-    const data = await api.auctions.get<Record<string, unknown>>(auctionId, {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+    const response = await fetch(`${baseUrl}/api/auctions/${auctionId}`, {
       cache: "no-store",
     });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
     const vehicle = (data.vehicle ?? data) as Record<string, unknown>;
     const auction = data.auction ? (data.auction as Record<string, unknown>) : data;
 

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SellerTabs } from "@/components/seller/SellerTabs";
 import { VehicleListCard } from "@/components/seller/VehicleListCard";
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
 type SellerVehiclesResponse = {
   total: number;
@@ -61,16 +60,19 @@ export default function SellerVehiclesPage() {
 
       params.set("sort", sort);
 
-      const payload = await api.seller.vehicles.list<SellerVehiclesResponse>(
-        params,
-        {
+      const response = await fetch(`/api/seller/vehicles?${params.toString()}`, {
         cache: "no-store",
-        },
-      );
+      });
 
-      setData(payload ?? { total: 0, vehicles: [] });
+      const payload = (await response.json().catch(() => null)) as SellerVehiclesResponse | { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? "Failed to load vehicles");
+      }
+
+      setData((payload as SellerVehiclesResponse) ?? { total: 0, vehicles: [] });
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
+      setError(requestError instanceof Error ? requestError.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
