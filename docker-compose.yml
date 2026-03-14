@@ -41,11 +41,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    env_file:
-      - .env.docker
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:4000
     environment:
       NEXT_PUBLIC_API_URL: http://backend:4000
       NODE_ENV: production
+      HOSTNAME: 0.0.0.0
       PORT: "3000"
     depends_on:
       - backend
