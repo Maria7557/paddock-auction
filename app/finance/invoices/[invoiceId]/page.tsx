@@ -1,3 +1,4 @@
+import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -32,6 +33,7 @@ export default async function FinanceInvoiceDetailPage({ params }: InvoiceDetail
           <h1>{t.pages.invoiceDetailTitle}</h1>
           <p>{t.pages.invoiceDetailSubtitle}</p>
         </div>
+        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
         <Link href="/finance" className="button button-ghost">
           {t.pages.backToPaymentPending}
         </Link>

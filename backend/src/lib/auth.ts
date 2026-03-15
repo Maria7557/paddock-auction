@@ -1,6 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { JWTPayload } from "jose";
 
+import { prisma } from "../db";
+
 const { jwtVerify } = require("./jose-runtime.cjs") as {
   jwtVerify: (
     token: string,
@@ -14,6 +16,14 @@ export type AuthTokenPayload = JWTPayload & {
   role: string;
   companyId?: string;
   kycVerified?: boolean;
+};
+
+export type BuyerAccessContext = {
+  userId: string;
+  companyId: string;
+  userStatus: string;
+  companyStatus: string;
+  kycVerified: boolean;
 };
 
 declare module "fastify" {
@@ -151,4 +161,97 @@ export async function requireSellerAuth(
   if (request.auth?.role !== "SELLER" || !request.auth.companyId) {
     await sendUnauthorized(reply);
   }
+}
+
+export async function loadBuyerAccessContext(
+  request: FastifyRequest,
+): Promise<BuyerAccessContext | null> {
+  const userId = request.auth?.userId?.trim();
+  const companyId = request.auth?.companyId?.trim();
+
+  if (!userId || request.auth?.role !== "BUYER" || !companyId) {
+    return null;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      role: true,
+      status: true,
+      kycVerified: true,
+      companyUsers: {
+        where: {
+          companyId,
+        },
+        select: {
+          companyId: true,
+          company: {
+            select: {
+              status: true,
+            },
+          },
+        },
+        take: 1,
+      },
+    },
+  });
+
+  const membership = user?.companyUsers[0];
+  const companyStatus = membership?.company?.status?.trim();
+
+  if (!user || user.role !== "BUYER" || !membership?.companyId || !companyStatus) {
+    return null;
+  }
+
+  if (request.auth) {
+    request.auth.kycVerified = user.kycVerified;
+  }
+
+  return {
+    userId: user.id,
+    companyId: membership.companyId,
+    userStatus: user.status,
+    companyStatus,
+    kycVerified: user.kycVerified,
+  };
+}
+
+export async function requireActiveBuyerAccount(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<BuyerAccessContext | null> {
+  const context = await loadBuyerAccessContext(request);
+
+  if (!context) {
+    await sendUnauthorized(reply);
+    return null;
+  }
+
+  const userStatus = context.userStatus.toUpperCase();
+  const companyStatus = context.companyStatus.toUpperCase();
+  const isPending =
+    userStatus === "PENDING_APPROVAL" ||
+    companyStatus === "PENDING_APPROVAL" ||
+    companyStatus === "PENDING";
+
+  if (isPending) {
+    await reply.code(403).send({
+      error: "ACCOUNT_PENDING_APPROVAL",
+      message: "Account pending admin approval. Buying is disabled until activation.",
+    });
+    return null;
+  }
+
+  if (userStatus !== "ACTIVE" || companyStatus !== "ACTIVE") {
+    await reply.code(403).send({
+      error: "ACCOUNT_INACTIVE",
+      message: "Account is inactive. Buying is unavailable.",
+    });
+    return null;
+  }
+
+  return context;
 }

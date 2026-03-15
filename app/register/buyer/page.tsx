@@ -39,9 +39,14 @@ export default function BuyerRegisterPage() {
     setFeedback(null);
 
     try {
-      await api.auth.register({
+      const credentials = {
         email,
         password,
+      };
+
+      await api.auth.register({
+        email: credentials.email,
+        password: credentials.password,
         role: "BUYER",
         companyName,
         registrationNumber,
@@ -49,14 +54,12 @@ export default function BuyerRegisterPage() {
         emirate,
       });
 
-      setFeedback("Account created. Pending admin approval.");
-      setEmail("");
-      setCompanyName("");
-      setPassword("");
-      setConfirmPassword("");
-      setRegistrationNumber("");
-      setCountry("UAE");
-      setEmirate("");
+      const { user } = await api.auth.login(credentials.email, credentials.password);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("fleetbid_role", user.role);
+        window.location.href = "/dashboard";
+      }
     } catch (error) {
       const payload = getApiErrorPayload<{
         error?: string;
@@ -92,7 +95,7 @@ export default function BuyerRegisterPage() {
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
           <h1>Register as Buyer</h1>
-          <p>Create your account to start bidding after approval.</p>
+          <p>Create your buyer account. You will enter the workspace immediately, while deposits and purchases stay locked until admin approval.</p>
 
           <form className="auth-form" onSubmit={onSubmit}>
             <label>

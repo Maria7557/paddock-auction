@@ -27,6 +27,9 @@ const { mockTx, mockPrisma } = vi.hoisted(() => ({
     company: {
       findMany: vi.fn(),
     },
+    user: {
+      findUnique: vi.fn(),
+    },
     bidRequest: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -222,6 +225,20 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.user.findUnique.mockResolvedValue({
+    id: buyerId,
+    role: "BUYER",
+    status: "ACTIVE",
+    kycVerified: true,
+    companyUsers: [
+      {
+        companyId,
+        company: {
+          status: "ACTIVE",
+        },
+      },
+    ],
+  });
 });
 
 describe("POST /api/bids", () => {
@@ -251,6 +268,31 @@ describe("POST /api/bids", () => {
 
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("Unauthorized");
+  });
+
+  it("returns 403 when buyer account is pending approval", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerId,
+      role: "BUYER",
+      status: "PENDING_APPROVAL",
+      kycVerified: false,
+      companyUsers: [
+        {
+          companyId,
+          company: {
+            status: "PENDING_APPROVAL",
+          },
+        },
+      ],
+    });
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send(validBody);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("ACCOUNT_PENDING_APPROVAL");
   });
 
   it("returns 400 when auctionId is missing", async () => {

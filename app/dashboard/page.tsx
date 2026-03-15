@@ -1,3 +1,4 @@
+import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
 import { ProfileLogoutButton } from "@/components/shell/ProfileLogoutButton";
 import { readDashboard } from "@/src/modules/ui/domain/marketplace_read_model";
 import { getLocalePreference } from "@/src/lib/display_preferences";
@@ -40,6 +41,7 @@ export default async function DashboardPage() {
             <ProfileLogoutButton className="button button-ghost" />
           </div>
         </div>
+        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
       </section>
 
       <DashboardCards dashboard={dashboard} locale={locale} />

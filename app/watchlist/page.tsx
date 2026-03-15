@@ -1,3 +1,4 @@
+import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
 import { readWatchlist } from "@/src/modules/ui/domain/marketplace_read_model";
 import { getLocalePreference } from "@/src/lib/display_preferences";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
@@ -20,6 +21,7 @@ export default async function WatchlistPage() {
           <h1>{t.pages.watchlistTitle}</h1>
           <p>{t.pages.watchlistSubtitle}</p>
         </div>
+        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
       </section>
 
       <BidWatchCards items={items} mode="WATCHLIST" locale={locale} />

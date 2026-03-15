@@ -570,8 +570,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       const userId = randomUUID();
       const companyId = randomUUID();
       const companyUserId = randomUUID();
-      const userStatus = payload.role === "BUYER" ? "ACTIVE" : "PENDING_APPROVAL";
-      const companyStatus = payload.role === "BUYER" ? "ACTIVE" : "PENDING_APPROVAL";
+      const userStatus = "PENDING_APPROVAL";
+      const companyStatus = "PENDING_APPROVAL";
       const companyUserRole = payload.role === "SELLER" ? "SELLER_MANAGER" : "BUYER_BIDDER";
 
       try {

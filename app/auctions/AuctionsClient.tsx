@@ -14,7 +14,18 @@ import styles from "./AuctionsClient.module.css";
 
 interface Lot {
   id: string;
-  state: "LIVE" | "SCHEDULED" | "CLOSED";
+  state:
+    | "DRAFT"
+    | "SCHEDULED"
+    | "LIVE"
+    | "EXTENDED"
+    | "PAYMENT_PENDING"
+    | "ENDED"
+    | "DEFAULTED"
+    | "CLOSED"
+    | "PAID"
+    | "CANCELED"
+    | "RELISTED";
   title: string;
   year: number;
   mileageKm: number;
@@ -39,6 +50,31 @@ interface Lot {
     referenceCode: string;
   };
 }
+
+type ApiAuction = {
+  id?: string;
+  state?: string;
+  currentPrice?: number;
+  startingPrice?: number;
+  buyNowPrice?: number | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  sellerName?: string;
+  sellerRef?: string;
+  location?: string;
+  totalBids?: number;
+  vehicle?: {
+    brand?: string;
+    model?: string;
+    year?: number;
+    mileage?: number;
+    bodyType?: string;
+    fuelType?: string;
+    regionSpec?: string;
+    images?: string[];
+    marketPrice?: number | null;
+  };
+};
 
 type Filters = {
   brand: string;
@@ -128,6 +164,107 @@ function buildUrl(pathname: string, queryString: string): string {
   return `${pathname}?${queryString}`;
 }
 
+function mapApiAuctionToLot(auction: ApiAuction): Lot {
+  const vehicle = auction.vehicle ?? {};
+  const year = Number(vehicle.year ?? 0);
+  const brand = String(vehicle.brand ?? "").trim();
+  const model = String(vehicle.model ?? "").trim();
+
+  return {
+    id: String(auction.id ?? ""),
+    state: (auction.state as Lot["state"] | undefined) ?? "SCHEDULED",
+    title: `${brand} ${model} ${year || ""}`.trim() || `Lot ${String(auction.id ?? "").slice(0, 8).toUpperCase()}`,
+    year,
+    mileageKm: Number(vehicle.mileage ?? 0),
+    imageUrl:
+      Array.isArray(vehicle.images) && typeof vehicle.images[0] === "string" && vehicle.images[0].trim().length > 0
+        ? vehicle.images[0]
+        : "/vehicle-photo.svg",
+    currentBidAed: Number(auction.currentPrice ?? auction.startingPrice ?? 0),
+    marketPriceAed:
+      vehicle.marketPrice === null || vehicle.marketPrice === undefined ? null : Number(vehicle.marketPrice),
+    endsAt: auction.endsAt ?? null,
+    startsAt: auction.startsAt ?? null,
+    totalBids: Number(auction.totalBids ?? 0),
+    vehicle: {
+      brand,
+      model,
+      year,
+      mileage: Number(vehicle.mileage ?? 0),
+      bodyType: vehicle.bodyType,
+      fuelType: vehicle.fuelType,
+      regionSpec: vehicle.regionSpec,
+      images: vehicle.images,
+    },
+    seller: {
+      name: String(auction.sellerName ?? "").trim(),
+      referenceCode: String(auction.sellerRef ?? "").trim(),
+    },
+  };
+}
+
+function filterAndSortLots(source: Lot[], filters: Filters): Lot[] {
+  const filtered = source.filter((lot) => {
+    if (filters.brand && lot.vehicle.brand !== filters.brand) {
+      return false;
+    }
+
+    if (filters.model && lot.vehicle.model !== filters.model) {
+      return false;
+    }
+
+    if (filters.status && lot.state !== filters.status) {
+      return false;
+    }
+
+    if (filters.minPrice && lot.currentBidAed < Number(filters.minPrice)) {
+      return false;
+    }
+
+    if (filters.maxPrice && lot.currentBidAed > Number(filters.maxPrice)) {
+      return false;
+    }
+
+    if (filters.region && lot.vehicle.regionSpec !== filters.region) {
+      return false;
+    }
+
+    if (filters.bodyType && lot.vehicle.bodyType !== filters.bodyType) {
+      return false;
+    }
+
+    if (filters.fuelType && lot.vehicle.fuelType !== filters.fuelType) {
+      return false;
+    }
+
+    if (filters.maxMileage && lot.mileageKm > Number(filters.maxMileage)) {
+      return false;
+    }
+
+    if (filters.minYear && lot.year < Number(filters.minYear)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return filtered.sort((left, right) => {
+    if (filters.sort === "newest") {
+      return new Date(right.startsAt ?? 0).getTime() - new Date(left.startsAt ?? 0).getTime();
+    }
+
+    if (filters.sort === "price_asc") {
+      return left.currentBidAed - right.currentBidAed;
+    }
+
+    if (filters.sort === "price_desc") {
+      return right.currentBidAed - left.currentBidAed;
+    }
+
+    return new Date(left.endsAt ?? left.startsAt ?? 0).getTime() - new Date(right.endsAt ?? right.startsAt ?? 0).getTime();
+  });
+}
+
 export function AuctionsClient({
   initialParams,
   display,
@@ -189,14 +326,17 @@ export function AuctionsClient({
 
     try {
       const data = await api.auctions.list<{
-        lots?: Lot[];
+        auctions?: ApiAuction[];
+        lots?: ApiAuction[];
         total?: number;
-      }>(nextFilters, {
+      }>(undefined, {
         cache: "no-store",
       });
+      const mappedLots = (data.auctions ?? data.lots ?? []).map(mapApiAuctionToLot);
+      const filteredLots = filterAndSortLots(mappedLots, nextFilters);
 
-      setLots(data.lots ?? []);
-      setTotal(data.total ?? 0);
+      setLots(filteredLots);
+      setTotal(filteredLots.length);
     } catch {
       setLots([]);
       setTotal(0);
@@ -207,8 +347,10 @@ export function AuctionsClient({
 
   const fetchCatalogLots = useCallback(async () => {
     try {
-      const data = await api.auctions.list<{ lots?: Lot[] }>(undefined, { cache: "no-store" });
-      setCatalogLots(data.lots ?? []);
+      const data = await api.auctions.list<{ auctions?: ApiAuction[]; lots?: ApiAuction[] }>(undefined, {
+        cache: "no-store",
+      });
+      setCatalogLots((data.auctions ?? data.lots ?? []).map(mapApiAuctionToLot));
     } catch {
       setCatalogLots([]);
     }
@@ -340,6 +482,7 @@ export function AuctionsClient({
                 title={lot.title}
                 year={lot.year}
                 mileage={lot.mileageKm}
+                regionSpec={lot.vehicle.regionSpec}
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
                 marketPrice={lot.marketPriceAed ?? undefined}

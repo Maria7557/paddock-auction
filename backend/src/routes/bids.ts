@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireAuth } from "../lib/auth";
+import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -403,13 +403,13 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const userId = request.auth?.userId;
-      const companyId = request.auth?.companyId;
+      const buyerAccess = await requireActiveBuyerAccount(request, reply);
 
-      if (!userId || !companyId) {
-        await sendUnauthorized(reply);
+      if (!buyerAccess) {
         return;
       }
+
+      const { userId, companyId } = buyerAccess;
 
       const payload = parsedBody.data;
       const requestHash = await createBidRequestHash({

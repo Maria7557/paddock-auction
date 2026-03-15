@@ -59,9 +59,14 @@ export default function SellerRegisterPage() {
     setFeedback(null);
 
     try {
-      await api.auth.register({
+      const credentials = {
         email,
         password,
+      };
+
+      await api.auth.register({
+        email: credentials.email,
+        password: credentials.password,
         role: "SELLER",
         companyName,
         registrationNumber,
@@ -70,15 +75,12 @@ export default function SellerRegisterPage() {
         termsAccepted,
       });
 
-      setFeedback("Company registered. Pending admin approval.");
-      setCompanyName("");
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
-      setRegistrationNumber("");
-      setCountry("UAE");
-      setPhoneNumber("");
-      setTermsAccepted(false);
+      const { user } = await api.auth.login(credentials.email, credentials.password);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("fleetbid_role", user.role);
+        window.location.href = "/seller/dashboard";
+      }
     } catch (error) {
       const payload = getApiErrorPayload<{
         error?: string;
@@ -114,7 +116,7 @@ export default function SellerRegisterPage() {
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
           <h1>Register Your Company</h1>
-          <p>Create your seller account to manage fleet listings after approval.</p>
+          <p>Create your seller account. You will enter the workspace immediately, while publishing stays locked until admin approval.</p>
 
           <div className="auth-form">
             <label>

@@ -1185,9 +1185,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           },
           include: {
             users: {
-              where: {
-                role: "SELLER_MANAGER",
-              },
               select: {
                 userId: true,
               },
@@ -1208,13 +1205,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           },
         });
 
-        const sellerUserIds = company.users.map((link) => link.userId);
+        const approvedUserIds = company.users.map((link) => link.userId);
 
-        if (sellerUserIds.length > 0) {
+        if (approvedUserIds.length > 0) {
           await tx.user.updateMany({
             where: {
               id: {
-                in: sellerUserIds,
+                in: approvedUserIds,
               },
             },
             data: {
@@ -1231,7 +1228,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           payload: {
             companyId: id,
             status: "ACTIVE",
-            sellerUserIds,
+            approvedUserIds,
           },
         });
 

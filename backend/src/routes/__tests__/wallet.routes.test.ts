@@ -7,6 +7,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     idempotencyKey: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -121,6 +124,20 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.user.findUnique.mockResolvedValue({
+    id: buyerUserId,
+    role: "BUYER",
+    status: "ACTIVE",
+    kycVerified: true,
+    companyUsers: [
+      {
+        companyId: buyerCompanyId,
+        company: {
+          status: "ACTIVE",
+        },
+      },
+    ],
+  });
 });
 
 describe("GET /api/wallet", () => {
@@ -188,6 +205,21 @@ describe("POST /api/wallet/deposit", () => {
   });
 
   it("returns 403 when buyer KYC is pending", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerUserId,
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: false,
+      companyUsers: [
+        {
+          companyId: buyerCompanyId,
+          company: {
+            status: "ACTIVE",
+          },
+        },
+      ],
+    });
+
     const res = await request
       .post("/api/wallet/deposit")
       .set("Authorization", `Bearer ${buyerToken}`)
@@ -200,7 +232,50 @@ describe("POST /api/wallet/deposit", () => {
     expect(res.body.error).toBe("KYC_PENDING");
   });
 
+  it("returns 403 when buyer account is pending approval", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerUserId,
+      role: "BUYER",
+      status: "PENDING_APPROVAL",
+      kycVerified: false,
+      companyUsers: [
+        {
+          companyId: buyerCompanyId,
+          company: {
+            status: "PENDING_APPROVAL",
+          },
+        },
+      ],
+    });
+
+    const res = await request
+      .post("/api/wallet/deposit")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({
+        amount: 5000,
+        idempotencyKey: "dep-pending",
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("ACCOUNT_PENDING_APPROVAL");
+  });
+
   it("returns 200 when deposit is processed", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerUserId,
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: true,
+      companyUsers: [
+        {
+          companyId: buyerCompanyId,
+          company: {
+            status: "ACTIVE",
+          },
+        },
+      ],
+    });
+
     mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
     mockPrisma.idempotencyKey.create.mockResolvedValue({ id: "ik1" });
     mockPrisma.idempotencyKey.updateMany.mockResolvedValue({ count: 1 });
@@ -247,6 +322,21 @@ describe("POST /api/wallet/deposit", () => {
   });
 
   it("returns cached response for duplicate idempotency key", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerUserId,
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: true,
+      companyUsers: [
+        {
+          companyId: buyerCompanyId,
+          company: {
+            status: "ACTIVE",
+          },
+        },
+      ],
+    });
+
     const cachedBody = {
       result: "accepted",
       wallet: {

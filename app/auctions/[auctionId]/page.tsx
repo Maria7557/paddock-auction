@@ -102,8 +102,16 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
     const data = await api.auctions.get<Record<string, unknown>>(auctionId, {
       cache: "no-store",
     });
-    const vehicle = (data.vehicle ?? data) as Record<string, unknown>;
     const auction = data.auction ? (data.auction as Record<string, unknown>) : data;
+    const vehicle =
+      (auction.vehicle as Record<string, unknown> | undefined) ??
+      (data.vehicle as Record<string, unknown> | undefined) ??
+      data;
+    const bidsSource = Array.isArray(auction.bids)
+      ? (auction.bids as Array<Record<string, unknown>>)
+      : Array.isArray(data.bids)
+        ? (data.bids as Array<Record<string, unknown>>)
+        : [];
 
     return {
       id: String(auction.id ?? auctionId),
@@ -111,7 +119,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       auctionId: String(auction.id ?? auctionId),
       state: (auction.state as LotAuctionState | undefined) ?? "SCHEDULED",
       title:
-        `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim() ||
+        `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")} ${String(vehicle.year ?? "")}`.trim() ||
         String(auction.lotNumber ?? `Lot ${auctionId.slice(0, 8).toUpperCase()}`),
       make: String(vehicle.brand ?? vehicle.make ?? ""),
       model: String(vehicle.model ?? ""),
@@ -137,25 +145,23 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       sellerRef: String(auction.sellerRef ?? ""),
       location: String(auction.location ?? vehicle.location ?? NOT_SPECIFIED),
       auctionAt: String(auction.startsAt ?? auction.endsAt ?? new Date().toISOString()),
-      actualCashValue: Number(auction.actualCashValue ?? 0),
+      actualCashValue: Number(auction.actualCashValue ?? vehicle.marketPrice ?? 0),
       currentBidAed: Number(auction.currentPrice ?? auction.currentBidAed ?? 0),
       buyNowAed: Number(auction.buyNowPrice ?? auction.buyNowAed ?? 0),
       minStepAed: Number(auction.minIncrement ?? auction.minStepAed ?? 500),
-      totalBids: Number(auction.totalBids ?? (Array.isArray(data.bids) ? data.bids.length : 0)),
+      totalBids: Number(auction.totalBids ?? bidsSource.length),
       endsAt: String(auction.endsAt ?? new Date(Date.now() + 3600_000).toISOString()),
       startsAt: String(auction.startsAt ?? new Date().toISOString()),
       images:
         Array.isArray(vehicle.images) && vehicle.images.length > 0
           ? (vehicle.images as string[])
           : ["/vehicle-photo.svg"],
-      bids: Array.isArray(data.bids)
-        ? (data.bids as Array<Record<string, unknown>>).map((bid) => ({
-            id: String(bid.id ?? ""),
-            maskedBidder: `Bidder ${String(bid.userId ?? "").slice(-4).toUpperCase()}`,
-            amountAed: Number(bid.amount ?? 0),
-            placedAt: String(bid.createdAt ?? new Date().toISOString()),
-          }))
-        : [],
+      bids: bidsSource.map((bid) => ({
+        id: String(bid.id ?? ""),
+        maskedBidder: `Bidder ${String(bid.userId ?? "").slice(-4).toUpperCase()}`,
+        amountAed: Number(bid.amount ?? 0),
+        placedAt: String(bid.createdAt ?? new Date().toISOString()),
+      })),
       similar: Array.isArray(data.similar)
         ? (data.similar as Array<Record<string, unknown>>).map((item) => {
             const similarVehicle = (item.vehicle ?? {}) as Record<string, unknown>;

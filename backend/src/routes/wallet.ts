@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireAuth } from "../lib/auth";
+import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -529,19 +529,27 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       request: FastifyRequest<{ Body: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      const userId = await getAuthenticatedUserId(request, reply);
+      await requireAuth(request, reply);
 
-      if (!userId) {
+      if (reply.sent) {
         return;
       }
 
-      if (request.auth?.kycVerified !== true) {
+      const buyerAccess = await requireActiveBuyerAccount(request, reply);
+
+      if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
         await reply.code(403).send({
           error: "KYC_PENDING",
           message: "Your account is under review.",
         });
         return;
       }
+
+      const { userId } = buyerAccess;
 
       const parsedBody = depositSchema.safeParse(request.body);
 

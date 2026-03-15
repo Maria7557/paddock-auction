@@ -1,3 +1,4 @@
+import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
 import { readInvoices } from "@/src/modules/ui/domain/marketplace_read_model";
 import { getLocalePreference } from "@/src/lib/display_preferences";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
@@ -20,6 +21,7 @@ export default async function InvoicesPage() {
           <h1>{t.pages.invoicesTitle}</h1>
           <p>{t.pages.invoicesSubtitle}</p>
         </div>
+        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
       </section>
 
       <InvoiceCards invoices={invoices} locale={locale} />

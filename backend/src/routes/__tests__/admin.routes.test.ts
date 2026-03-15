@@ -291,7 +291,7 @@ describe("POST /api/admin/companies/:id/approve", () => {
     const tx = buildAdminTx();
     tx.company.findUnique.mockResolvedValue({
       id: "c1",
-      users: [{ userId: "u1" }],
+      users: [{ userId: "u1" }, { userId: "u2" }],
     });
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
@@ -301,6 +301,16 @@ describe("POST /api/admin/companies/:id/approve", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
+    expect(tx.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["u1", "u2"],
+        },
+      },
+      data: {
+        status: "ACTIVE",
+      },
+    });
   });
 
   it("returns 404 when company is not found", async () => {
