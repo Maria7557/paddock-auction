@@ -41,6 +41,11 @@ const sellerVehicleSchema = z.object({
   damage: z.string().trim().min(1).optional(),
   damageMap: z.record(z.string(), z.unknown()).nullable().optional(),
   images: z.array(z.string().trim().min(1)).default([]),
+  mulkiyaFrontUrl: z.string().trim().min(1).optional(),
+  mulkiyaBackUrl: z.string().trim().min(1).optional(),
+  startingPrice: z.coerce.number().nonnegative().optional(),
+  buyNowPrice: z.coerce.number().positive().optional(),
+  inspectionDropoffDate: z.string().datetime().optional(),
 });
 
 const sellerVehicleUpdateSchema = sellerVehicleSchema.partial();
@@ -145,8 +150,72 @@ async function toDateValue(value: string | undefined, fallback: Date): Promise<D
   return parsed;
 }
 
+async function addDays(value: Date, days: number): Promise<Date> {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
 async function normalizeVin(vin: string): Promise<string> {
   return vin.trim().toUpperCase();
+}
+
+async function toVehicleMediaCreateInput(input: {
+  images: string[];
+  mulkiyaFrontUrl?: string;
+  mulkiyaBackUrl?: string;
+}): Promise<Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }>> {
+  const items: Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }> = [];
+
+  for (const [index, url] of input.images.entries()) {
+    items.push({
+      url,
+      type: "PHOTO",
+      sortOrder: index,
+    });
+  }
+
+  if (input.mulkiyaFrontUrl) {
+    items.push({
+      url: input.mulkiyaFrontUrl,
+      type: "MULKIYA_FRONT",
+      sortOrder: 0,
+    });
+  }
+
+  if (input.mulkiyaBackUrl) {
+    items.push({
+      url: input.mulkiyaBackUrl,
+      type: "MULKIYA_BACK",
+      sortOrder: 0,
+    });
+  }
+
+  return items;
+}
+
+async function readVehicleMediaUrls(input: {
+  images: string[];
+  media: Array<{
+    url: string;
+    type: string;
+    sortOrder: number;
+  }>;
+}): Promise<{
+  photoUrls: string[];
+  mulkiyaFrontUrl: string | null;
+  mulkiyaBackUrl: string | null;
+}> {
+  const photoUrls = input.media
+    .filter((item) => item.type === "PHOTO")
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((item) => item.url);
+
+  return {
+    photoUrls: photoUrls.length > 0 ? photoUrls : input.images,
+    mulkiyaFrontUrl: input.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
+    mulkiyaBackUrl: input.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
+  };
 }
 
 async function createPayloadHash(payload: unknown): Promise<string> {
@@ -254,6 +323,11 @@ async function findSellerVehicle(
   damage: string | null;
   damageMap: unknown;
   images: string[];
+  media: Array<{
+    url: string;
+    type: string;
+    sortOrder: number;
+  }>;
   auctions: Array<{
     id: string;
     state: string;
@@ -281,6 +355,9 @@ async function findSellerVehicle(
       },
     },
     include: {
+      media: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
       auctions: {
         where: {
           sellerCompanyId: companyId,
@@ -440,12 +517,14 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           model: vehicle.model,
           year: vehicle.year,
           mileage: vehicle.mileage,
+          mileageKm: vehicle.mileage,
           vin: vehicle.vin,
           images: vehicle.images,
           latestAuction: {
             id: latestAuction.id,
             state: latestAuction.state,
             currentPrice: await toNumberValue(latestAuction.currentPrice),
+            currentBidAed: await toNumberValue(latestAuction.currentPrice),
             createdAt: latestAuction.createdAt.toISOString(),
             startsAt: latestAuction.startsAt.toISOString(),
             endsAt: latestAuction.endsAt.toISOString(),
@@ -483,8 +562,20 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
 
     try {
       const now = new Date();
-      const defaultEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const startingPrice = payload.marketPrice ?? 0;
+      const inspectionDropoffDate = payload.inspectionDropoffDate
+        ? new Date(payload.inspectionDropoffDate)
+        : null;
+      const derivedStartsAt = inspectionDropoffDate ? await addDays(inspectionDropoffDate, 2) : now;
+      const derivedEndsAt = inspectionDropoffDate
+        ? await addDays(inspectionDropoffDate, 3)
+        : new Date(derivedStartsAt.getTime() + 24 * 60 * 60 * 1000);
+      const viewingEndsAt = inspectionDropoffDate ? await addDays(inspectionDropoffDate, 2) : null;
+      const startingPrice = payload.startingPrice ?? payload.marketPrice ?? 0;
+      const mediaItems = await toVehicleMediaCreateInput({
+        images: payload.images,
+        mulkiyaFrontUrl: payload.mulkiyaFrontUrl,
+        mulkiyaBackUrl: payload.mulkiyaBackUrl,
+      });
       const createdVehicle = await prisma.$transaction(async (tx) => {
         const vehicle = await tx.vehicle.create({
           data: {
@@ -510,6 +601,12 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             damageMap:
               payload.damageMap === undefined ? undefined : await toStoredJson(payload.damageMap),
             images: payload.images,
+            media:
+              mediaItems.length > 0
+                ? {
+                    create: mediaItems,
+                  }
+                : undefined,
           },
         });
 
@@ -518,13 +615,16 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             vehicleId: vehicle.id,
             sellerCompanyId: companyId,
             state: "DRAFT",
-            startsAt: now,
-            endsAt: defaultEndsAt,
-            auctionStartsAt: now,
-            auctionEndsAt: defaultEndsAt,
+            startsAt: derivedStartsAt,
+            endsAt: derivedEndsAt,
+            inspectionDropoffDate,
+            viewingEndsAt,
+            auctionStartsAt: derivedStartsAt,
+            auctionEndsAt: derivedEndsAt,
             startingPrice,
             currentPrice: startingPrice,
-            minIncrement: 1,
+            buyNowPrice: payload.buyNowPrice,
+            minIncrement: 500,
           },
         });
 
@@ -576,6 +676,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               ? null
               : await toNumberValue(createdVehicle.vehicle.marketPrice),
         },
+        vehicleId: createdVehicle.vehicle.id,
         auctionId: createdVehicle.auction.id,
       });
     } catch (error) {
@@ -614,6 +715,10 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const latestAuction = vehicle.auctions[0] ?? null;
+    const mediaUrls = await readVehicleMediaUrls({
+      images: vehicle.images,
+      media: vehicle.media ?? [],
+    });
 
     await reply.code(200).send({
       vehicle: {
@@ -622,6 +727,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         model: vehicle.model,
         year: vehicle.year,
         mileage: vehicle.mileage,
+        mileageKm: vehicle.mileage,
         vin: vehicle.vin,
         marketPrice: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
         fuelType: vehicle.fuelType,
@@ -638,7 +744,10 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         airbags: vehicle.airbags,
         damage: vehicle.damage,
         damageMap: vehicle.damageMap,
-        images: vehicle.images,
+        images: mediaUrls.photoUrls,
+        photoUrls: mediaUrls.photoUrls,
+        mulkiyaFrontUrl: mediaUrls.mulkiyaFrontUrl,
+        mulkiyaBackUrl: mediaUrls.mulkiyaBackUrl,
       },
       latestAuction: latestAuction
         ? {
@@ -705,6 +814,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         const updatedVehicle = await prisma.$transaction(async (tx) => {
+          const mediaItems = await toVehicleMediaCreateInput({
+            images: payload.images ?? existingVehicle.images ?? [],
+            mulkiyaFrontUrl: payload.mulkiyaFrontUrl,
+            mulkiyaBackUrl: payload.mulkiyaBackUrl,
+          });
           const vehicle = await tx.vehicle.update({
             where: {
               id,
@@ -732,6 +846,15 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               damageMap:
                 payload.damageMap === undefined ? undefined : await toStoredJson(payload.damageMap),
               images: payload.images,
+              media:
+                payload.images !== undefined ||
+                payload.mulkiyaFrontUrl !== undefined ||
+                payload.mulkiyaBackUrl !== undefined
+                  ? {
+                      deleteMany: {},
+                      create: mediaItems,
+                    }
+                  : undefined,
             },
           });
 

@@ -16,13 +16,13 @@ type VehicleDetailResponse = {
     model: string;
     year: number;
     vin: string;
-    mileageKm: number;
+    mileage: number;
     regionSpec: string | null;
     bodyType: string | null;
     fuelType: string | null;
     transmission: string | null;
     airbags: string | null;
-    color: string | null;
+    exteriorColor: string | null;
     condition: string | null;
     serviceHistory: string | null;
     description: string | null;
@@ -32,20 +32,19 @@ type VehicleDetailResponse = {
     mulkiyaFrontUrl: string | null;
     mulkiyaBackUrl: string | null;
   };
-  auction: {
+  latestAuction: {
     id: string;
     state: string;
-    startingPriceAed: number;
-    buyNowPriceAed: number;
-    currentBidAed: number;
+    startingPrice: number;
+    buyNowPrice: number | null;
+    currentPrice: number;
     startsAt: string;
     endsAt: string;
     inspectionDropoffDate: string | null;
     viewingEndsAt: string | null;
     auctionStartsAt: string | null;
     auctionEndsAt: string | null;
-    bidsCount: number;
-  };
+  } | null;
 };
 
 type SellerVehicleDetailClientProps = {
@@ -63,8 +62,8 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     fuelType: data.vehicle.fuelType ?? "",
     transmission: data.vehicle.transmission ?? "",
     airbags: data.vehicle.airbags ?? "UNKNOWN",
-    color: data.vehicle.color ?? "",
-    mileageKm: String(data.vehicle.mileageKm),
+    color: data.vehicle.exteriorColor ?? "",
+    mileageKm: String(data.vehicle.mileage),
     condition: data.vehicle.condition ?? "",
     serviceHistory: data.vehicle.serviceHistory ?? "",
     description: data.vehicle.description ?? "",
@@ -72,9 +71,11 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     photoUrls: data.vehicle.photoUrls ?? data.vehicle.images ?? [],
     mulkiyaFrontUrl: data.vehicle.mulkiyaFrontUrl ?? "",
     mulkiyaBackUrl: data.vehicle.mulkiyaBackUrl ?? "",
-    startingPriceAed: String(data.auction.startingPriceAed),
-    buyNowPriceAed: data.auction.buyNowPriceAed ? String(data.auction.buyNowPriceAed) : "",
-    inspectionDropoffDate: data.auction.inspectionDropoffDate ? data.auction.inspectionDropoffDate.slice(0, 10) : "",
+    startingPriceAed: data.latestAuction ? String(data.latestAuction.startingPrice) : "",
+    buyNowPriceAed: data.latestAuction?.buyNowPrice ? String(data.latestAuction.buyNowPrice) : "",
+    inspectionDropoffDate: data.latestAuction?.inspectionDropoffDate
+      ? data.latestAuction.inspectionDropoffDate.slice(0, 10)
+      : "",
   };
 }
 
@@ -126,8 +127,8 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
         fuelType: values.fuelType,
         transmission: values.transmission,
         airbags: values.airbags,
-        color: values.color,
-        mileageKm: Number(values.mileageKm),
+        exteriorColor: values.color,
+        mileage: Number(values.mileageKm),
         condition: values.condition,
         serviceHistory: values.serviceHistory,
         description: values.description,
@@ -139,7 +140,7 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
   }
 
   async function handleDeleteDraft(): Promise<void> {
-    if (!data || data.auction.state !== "DRAFT") {
+    if (!data || data.latestAuction?.state !== "DRAFT") {
       return;
     }
 
@@ -174,6 +175,8 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
     return <p className="text-muted">Vehicle not found.</p>;
   }
 
+  const auction = data.latestAuction;
+
   return (
     <section className="seller-section-stack">
       {created ? <p className="inline-note tone-success">Vehicle added and auction draft created</p> : null}
@@ -186,7 +189,7 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
             </h2>
             <p className="text-muted">{data.vehicle.year}</p>
           </div>
-          <AuctionStatusBadge state={data.auction.state} />
+          {auction ? <AuctionStatusBadge state={auction.state} /> : null}
         </div>
 
         <p className="seller-detail-vin">VIN: {data.vehicle.vin}</p>
@@ -217,7 +220,7 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
           </article>
           <article>
             <p>Mileage</p>
-            <strong>{data.vehicle.mileageKm.toLocaleString("en-AE")} km</strong>
+            <strong>{data.vehicle.mileage.toLocaleString("en-AE")} km</strong>
           </article>
           <article>
             <p>Condition</p>
@@ -229,15 +232,16 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
           </article>
           <article>
             <p>Color</p>
-            <strong>{data.vehicle.color ?? "-"}</strong>
+            <strong>{data.vehicle.exteriorColor ?? "-"}</strong>
           </article>
         </div>
       </section>
 
+      {auction ? (
       <section className="surface-panel seller-section-block">
         <div className="seller-section-head">
           <h3>Linked Auction</h3>
-          <Link href={`/seller/auctions/${data.auction.id}`} className="seller-inline-link">
+          <Link href={`/seller/auctions/${auction.id}`} className="seller-inline-link">
             View Auction →
           </Link>
         </div>
@@ -245,41 +249,38 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
         <div className="seller-kpi-row">
           <article>
             <p>Starting Price</p>
-            <strong>{formatAed(data.auction.startingPriceAed)}</strong>
+            <strong>{formatAed(auction.startingPrice)}</strong>
           </article>
           <article>
             <p>Buy Now Price</p>
-            <strong>{data.auction.buyNowPriceAed ? formatAed(data.auction.buyNowPriceAed) : "-"}</strong>
+            <strong>{auction.buyNowPrice ? formatAed(auction.buyNowPrice) : "-"}</strong>
           </article>
           <article>
             <p>Current Bid</p>
-            <strong>{formatAed(data.auction.currentBidAed)}</strong>
+            <strong>{formatAed(auction.currentPrice)}</strong>
           </article>
           <article>
             <p>Inspection Drop-off</p>
-            <strong>{data.auction.inspectionDropoffDate ? formatSellerDateTime(data.auction.inspectionDropoffDate) : "-"}</strong>
+            <strong>{auction.inspectionDropoffDate ? formatSellerDateTime(auction.inspectionDropoffDate) : "-"}</strong>
           </article>
           <article>
             <p>Auction Starts</p>
-            <strong>{formatSellerDateTime(data.auction.startsAt)}</strong>
+            <strong>{formatSellerDateTime(auction.startsAt)}</strong>
           </article>
           <article>
             <p>Auction Ends</p>
-            <strong>{formatSellerDateTime(data.auction.endsAt)}</strong>
-          </article>
-          <article>
-            <p>Bid Count</p>
-            <strong>{data.auction.bidsCount}</strong>
+            <strong>{formatSellerDateTime(auction.endsAt)}</strong>
           </article>
         </div>
       </section>
+      ) : null}
 
       <section className="seller-inline-actions">
         <button type="button" className="button button-secondary" onClick={() => setEditing(true)}>
           Edit Vehicle
         </button>
 
-        {data.auction.state === "DRAFT" ? (
+        {auction?.state === "DRAFT" ? (
           <button
             type="button"
             className="button button-secondary seller-danger-outline"

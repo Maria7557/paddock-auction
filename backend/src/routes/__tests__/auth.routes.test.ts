@@ -113,6 +113,47 @@ describe("POST /api/auth/login", () => {
     expect(cookie).toContain("HttpOnly");
   });
 
+  it("does not mark cookie as Secure for localhost even in production mode", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    mockPrisma.user.findUnique.mockResolvedValue(makeUser());
+
+    const res = await request
+      .post("/api/auth/login")
+      .set("host", "localhost:4000")
+      .send({ email: "seller@example.com", password: "password123" });
+
+    process.env.NODE_ENV = previousNodeEnv;
+
+    const cookie = Array.isArray(res.headers["set-cookie"])
+      ? res.headers["set-cookie"][0]
+      : res.headers["set-cookie"];
+
+    expect(res.status).toBe(200);
+    expect(cookie).not.toContain("Secure");
+  });
+
+  it("does not mark cookie as Secure when proxied from localhost origin", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    mockPrisma.user.findUnique.mockResolvedValue(makeUser());
+
+    const res = await request
+      .post("/api/auth/login")
+      .set("host", "backend:4000")
+      .set("origin", "http://localhost:3000")
+      .send({ email: "seller@example.com", password: "password123" });
+
+    process.env.NODE_ENV = previousNodeEnv;
+
+    const cookie = Array.isArray(res.headers["set-cookie"])
+      ? res.headers["set-cookie"][0]
+      : res.headers["set-cookie"];
+
+    expect(res.status).toBe(200);
+    expect(cookie).not.toContain("Secure");
+  });
+
   it("returns 200 with role BUYER for buyer account", async () => {
     const user = makeUser({
       email: "buyer@example.com",

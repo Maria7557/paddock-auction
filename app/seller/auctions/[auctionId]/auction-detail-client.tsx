@@ -265,7 +265,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Starting Price (AED)
               <input
                 type="number"
-                min={1}
+                min={500}
+                step="500"
                 value={editForm.startingPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, startingPriceAed: event.target.value }))}
               />
@@ -275,7 +276,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Buy Now Price (AED)
               <input
                 type="number"
-                min={1}
+                min={500}
+                step="500"
                 value={editForm.buyNowPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, buyNowPriceAed: event.target.value }))}
               />

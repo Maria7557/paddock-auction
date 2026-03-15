@@ -865,7 +865,7 @@ export function VehicleForm({
             Starting Price AED
             <input
               type="number"
-              min={1}
+              min={500}
               step="500"
               value={values.startingPriceAed}
               onChange={(event) => updateField("startingPriceAed", event.target.value)}
@@ -880,7 +880,7 @@ export function VehicleForm({
             </p>
             <input
               type="number"
-              min={0}
+              min={500}
               step="500"
               value={values.buyNowPriceAed}
               onChange={(event) => updateField("buyNowPriceAed", event.target.value)}

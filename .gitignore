@@ -49,3 +49,4 @@ yarn-error.log*
 # generated
 /app/generated/prisma
 .vercel
+/public/uploads
