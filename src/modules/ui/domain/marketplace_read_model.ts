@@ -1,9 +1,17 @@
 // Temporary frontend read model for marketplace UX.
 // Replace with backend GET read endpoints when those contracts are available.
 
-import type { AuctionState, Auction as DbAuction, Company as DbCompany, Vehicle as DbVehicle } from "@prisma/client";
+import type {
+  AuctionState,
+  Auction as DbAuction,
+  Company as DbCompany,
+  InvoiceStatus as DbInvoiceStatus,
+  LedgerType,
+  Vehicle as DbVehicle,
+} from "@prisma/client";
 
 import prisma from "@/src/infrastructure/database/prisma";
+import type { SupportedLocale } from "@/src/i18n/routing";
 
 export type AuctionStatus =
   | "LIVE"
@@ -97,7 +105,7 @@ export type WalletReadModel = {
   transactions: WalletTransactionReadModel[];
 };
 
-export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED";
+export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED" | "CANCELED";
 
 export type InvoiceReadModel = {
   id: string;
@@ -140,6 +148,13 @@ export type DashboardReadModel = {
   }[];
 };
 
+export type BuyerReadQueryInput = {
+  userId: string;
+  companyId: string | null;
+};
+
+export type DashboardQueryInput = BuyerReadQueryInput;
+
 export type AuctionFilterState = {
   query: string;
   status: "ALL" | AuctionStatus;
@@ -152,324 +167,6 @@ export type AuctionFilterState = {
   endingSoonOnly: boolean;
   sortBy: "ENDING_SOON" | "LOWEST_PRICE" | "HIGHEST_BIDS" | "RECENTLY_ADDED";
 };
-
-const END_AT_BASE = Date.now() + 1000 * 60 * 60 * 7;
-const HOUR = 1000 * 60 * 60;
-
-function makeImageSet(seed: number): string[] {
-  const ids = [1011, 1071, 133, 1070, 146, 180, 201, 250, 287, 296, 357, 463];
-
-  return ids.slice(0, 10).map((id, index) => {
-    const width = 1600;
-    const height = 1000;
-    return `https://picsum.photos/id/${id + seed + index}/${width}/${height}`;
-  });
-}
-
-const AUCTIONS: AuctionLot[] = [
-  {
-    id: "lot-8d807f7f-f6f7-4b26-b332-7c7266cf57e0",
-    lotNumber: "DXB-1024",
-    title: "Toyota Land Cruiser GXR",
-    make: "Toyota",
-    model: "Land Cruiser GXR",
-    year: 2022,
-    mileageKm: 46210,
-    location: "Dubai Industrial City",
-    seller: "Al Noor Fleet Trading",
-    sellerVerifiedYears: 6,
-    sellerCompletionRate: 98,
-    vin: "JTMCB7AJ1N4102451",
-    status: "LIVE",
-    currentBidAed: 218000,
-    minimumStepAed: 1000,
-    endsAt: new Date(END_AT_BASE + HOUR * 3).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 6).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 72).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: true,
-    images: ["/card-lambo-sto.png", ...makeImageSet(0)],
-    specs: [
-      { label: "Fuel", value: "Petrol" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Color", value: "Pearl White" },
-      { label: "Service", value: "Dealer serviced" },
-      { label: "Owners", value: "1" },
-    ],
-    inspectionSummary: "No structural damage. Full GCC maintenance history attached.",
-    sellerNotes: "Fleet retirement unit with complete service records and one-key history.",
-    documents: [
-      { id: "doc-1", label: "Inspection report", fileType: "PDF" },
-      { id: "doc-2", label: "Service records", fileType: "ZIP" },
-      { id: "doc-3", label: "Ownership scan", fileType: "JPG" },
-    ],
-  },
-  {
-    id: "lot-64e95637-dce9-419a-a08b-2ecf20f8fd20",
-    lotNumber: "AUH-2088",
-    title: "BMW X5 M Sport",
-    make: "BMW",
-    model: "X5 M Sport",
-    year: 2021,
-    mileageKm: 58440,
-    location: "Abu Dhabi, Mussafah",
-    seller: "Gulf Executive Mobility",
-    sellerVerifiedYears: 4,
-    sellerCompletionRate: 96,
-    vin: "WBAJU6107M9C28490",
-    status: "LIVE",
-    currentBidAed: 171500,
-    minimumStepAed: 750,
-    endsAt: new Date(END_AT_BASE + HOUR * 6).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 5).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 48).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: false,
-    images: ["/card-gwagon.png", ...makeImageSet(11)],
-    specs: [
-      { label: "Fuel", value: "Hybrid" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Trim", value: "M Sport" },
-      { label: "Interior", value: "Black leather" },
-      { label: "Owners", value: "2" },
-    ],
-    inspectionSummary: "Minor exterior wear. Engine and transmission passed final check.",
-    sellerNotes: "Corporate lease return with full service chain and no insurance claim records.",
-    documents: [
-      { id: "doc-4", label: "Inspection report", fileType: "PDF" },
-      { id: "doc-5", label: "Tire report", fileType: "PDF" },
-      { id: "doc-6", label: "Registration copy", fileType: "JPG" },
-    ],
-  },
-  {
-    id: "lot-3125f011-3f34-4068-b0d7-b7000484baab",
-    lotNumber: "DXB-5112",
-    title: "Tesla Model Y Long Range",
-    make: "Tesla",
-    model: "Model Y Long Range",
-    year: 2023,
-    mileageKm: 22500,
-    location: "Dubai, Jebel Ali",
-    seller: "Atlas Fleet Hub",
-    sellerVerifiedYears: 7,
-    sellerCompletionRate: 99,
-    vin: "7SAYGDEE3PF451702",
-    status: "LIVE",
-    currentBidAed: 183000,
-    minimumStepAed: 500,
-    endsAt: new Date(END_AT_BASE + HOUR * 2).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 8).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 24).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: false,
-    watchlisted: true,
-    images: ["/card-bentley-white.png", ...makeImageSet(22)],
-    specs: [
-      { label: "Fuel", value: "Electric" },
-      { label: "Drive", value: "AWD" },
-      { label: "Battery", value: "Long Range" },
-      { label: "Autopilot", value: "Included" },
-      { label: "Color", value: "Midnight Silver" },
-      { label: "Owners", value: "1" },
-    ],
-    inspectionSummary: "Battery health report above benchmark. Paint depth consistent all around.",
-    sellerNotes: "Single-owner fleet asset with clean charging and maintenance history.",
-    documents: [
-      { id: "doc-7", label: "Battery report", fileType: "PDF" },
-      { id: "doc-8", label: "Inspection photos", fileType: "ZIP" },
-      { id: "doc-9", label: "Title scan", fileType: "JPG" },
-    ],
-  },
-  {
-    id: "lot-72bb6180-ed27-4f0d-84eb-e6e558f127ba",
-    lotNumber: "RAK-7601",
-    title: "Nissan Patrol LE Platinum",
-    make: "Nissan",
-    model: "Patrol LE Platinum",
-    year: 2022,
-    mileageKm: 38900,
-    location: "Ras Al Khaimah",
-    seller: "Desert Gate Auto",
-    sellerVerifiedYears: 3,
-    sellerCompletionRate: 95,
-    vin: "JN8AY2NC9N1238901",
-    status: "SCHEDULED",
-    currentBidAed: 0,
-    minimumStepAed: 1000,
-    endsAt: new Date(END_AT_BASE + HOUR * 28).toISOString(),
-    startsAt: new Date(Date.now() + HOUR * 12).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 12).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: false,
-    images: ["/card-mustang-red.png", ...makeImageSet(33)],
-    specs: [
-      { label: "Fuel", value: "Petrol" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Seats", value: "7" },
-      { label: "Color", value: "Black" },
-      { label: "Owners", value: "1" },
-    ],
-    inspectionSummary: "Final inspection approved. Ready for scheduled launch.",
-    sellerNotes: "Auction scheduled for tomorrow with reserve already verified.",
-    documents: [
-      { id: "doc-10", label: "Pre-sale check", fileType: "PDF" },
-      { id: "doc-11", label: "Ownership copy", fileType: "JPG" },
-    ],
-  },
-  {
-    id: "lot-d57c4a74-f36c-4cf2-a4f3-6d71055895a8",
-    lotNumber: "SHJ-3102",
-    title: "Mercedes-Benz E300",
-    make: "Mercedes-Benz",
-    model: "E300",
-    year: 2023,
-    mileageKm: 19750,
-    location: "Sharjah Auto Zone",
-    seller: "Mosaic Dealer Network",
-    sellerVerifiedYears: 5,
-    sellerCompletionRate: 97,
-    vin: "W1KZF8DB6PA120112",
-    status: "PAYMENT_PENDING",
-    currentBidAed: 198000,
-    minimumStepAed: 1000,
-    endsAt: new Date(Date.now() - HOUR * 56).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 108).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 144).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: false,
-    images: ["/card-lambo-orange.png", ...makeImageSet(44)],
-    specs: [
-      { label: "Fuel", value: "Petrol" },
-      { label: "Drive", value: "RWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Trim", value: "AMG package" },
-      { label: "Color", value: "Obsidian Black" },
-      { label: "Owners", value: "1" },
-    ],
-    inspectionSummary: "Auction closed. Winner invoice issued and payment window is active.",
-    sellerNotes: "Settlement pending winner payment within policy window.",
-    documents: [
-      { id: "doc-12", label: "Inspection report", fileType: "PDF" },
-      { id: "doc-13", label: "Service report", fileType: "PDF" },
-    ],
-  },
-  {
-    id: "lot-a2a8d6e6-fab9-486b-bfa3-bbf88ba44b2f",
-    lotNumber: "AUH-3180",
-    title: "Lexus LX600 Prestige",
-    make: "Lexus",
-    model: "LX600 Prestige",
-    year: 2024,
-    mileageKm: 12600,
-    location: "Abu Dhabi Industrial Area",
-    seller: "Pearl Motors Contracting",
-    sellerVerifiedYears: 9,
-    sellerCompletionRate: 99,
-    vin: "JTJHY7AX3R1233180",
-    status: "PAYMENT_PENDING",
-    currentBidAed: 355000,
-    minimumStepAed: 1500,
-    endsAt: new Date(Date.now() - HOUR * 22).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 70).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 120).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: true,
-    images: makeImageSet(55),
-    specs: [
-      { label: "Fuel", value: "Petrol" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Interior", value: "Tan leather" },
-      { label: "Color", value: "Platinum Pearl" },
-      { label: "Owners", value: "1" },
-    ],
-    inspectionSummary: "Final bidder confirmed. Awaiting settlement payment.",
-    sellerNotes: "Priority settlement lot with standard 48h payment deadline.",
-    documents: [
-      { id: "doc-14", label: "Inspection report", fileType: "PDF" },
-      { id: "doc-15", label: "VIN decode", fileType: "PDF" },
-      { id: "doc-16", label: "Ownership copy", fileType: "JPG" },
-    ],
-  },
-  {
-    id: "lot-80dce53d-e289-42dc-b966-28600ec89b06",
-    lotNumber: "DXB-4050",
-    title: "Audi Q7 S line",
-    make: "Audi",
-    model: "Q7 S line",
-    year: 2020,
-    mileageKm: 79500,
-    location: "Dubai Al Quoz",
-    seller: "Prime Mobility Holdings",
-    sellerVerifiedYears: 5,
-    sellerCompletionRate: 94,
-    vin: "WA1VAAF76LD015050",
-    status: "ENDED",
-    currentBidAed: 132000,
-    minimumStepAed: 750,
-    endsAt: new Date(Date.now() - HOUR * 124).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 170).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 210).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: false,
-    images: makeImageSet(66),
-    specs: [
-      { label: "Fuel", value: "Diesel" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Trim", value: "S line" },
-      { label: "Color", value: "Graphite" },
-      { label: "Owners", value: "2" },
-    ],
-    inspectionSummary: "Closed successfully. Settlement completed.",
-    sellerNotes: "Historical completed lot retained for market comps.",
-    documents: [{ id: "doc-17", label: "Final report", fileType: "PDF" }],
-  },
-  {
-    id: "lot-0c2979bc-401e-43b0-acf1-c214f8474e9b",
-    lotNumber: "FUJ-4222",
-    title: "Range Rover Sport HSE",
-    make: "Land Rover",
-    model: "Range Rover Sport HSE",
-    year: 2021,
-    mileageKm: 51240,
-    location: "Fujairah Logistics Zone",
-    seller: "Northern Premier Autos",
-    sellerVerifiedYears: 2,
-    sellerCompletionRate: 91,
-    vin: "SALWA2BE8MA142228",
-    status: "DEFAULTED",
-    currentBidAed: 161000,
-    minimumStepAed: 1000,
-    endsAt: new Date(Date.now() - HOUR * 72).toISOString(),
-    startsAt: new Date(Date.now() - HOUR * 130).toISOString(),
-    listedAt: new Date(Date.now() - HOUR * 180).toISOString(),
-    depositRequiredAed: 5000,
-    depositReady: true,
-    watchlisted: false,
-    images: makeImageSet(77),
-    specs: [
-      { label: "Fuel", value: "Hybrid" },
-      { label: "Drive", value: "AWD" },
-      { label: "Transmission", value: "Automatic" },
-      { label: "Color", value: "Santorini Black" },
-      { label: "Interior", value: "Ebony" },
-      { label: "Owners", value: "2" },
-    ],
-    inspectionSummary: "Winner defaulted under payment policy. Lot ready for relist workflow.",
-    sellerNotes: "Collateral burn policy already applied by backend.",
-    documents: [{ id: "doc-18", label: "Default memo", fileType: "PDF" }],
-  },
-];
 
 const BID_HISTORY_BY_AUCTION_ID: Record<string, AuctionBidHistoryEntry[]> = {
   "lot-8d807f7f-f6f7-4b26-b332-7c7266cf57e0": [
@@ -539,167 +236,6 @@ const BID_HISTORY_BY_AUCTION_ID: Record<string, AuctionBidHistoryEntry[]> = {
   ],
 };
 
-const WALLET: WalletReadModel = {
-  availableBalanceAed: 18500,
-  lockedBalanceAed: 10000,
-  pendingWithdrawalAed: 2500,
-  activeLocks: [
-    {
-      lockId: "lock-live-1024",
-      auctionId: "lot-8d807f7f-f6f7-4b26-b332-7c7266cf57e0",
-      lotNumber: "DXB-1024",
-      amountAed: 5000,
-      status: "ACTIVE",
-    },
-    {
-      lockId: "lock-live-5112",
-      auctionId: "lot-3125f011-3f34-4068-b0d7-b7000484baab",
-      lotNumber: "DXB-5112",
-      amountAed: 5000,
-      status: "ACTIVE",
-    },
-  ],
-  transactions: [
-    {
-      id: "txn-1",
-      type: "TOP_UP",
-      amountAed: 20000,
-      createdAt: new Date(Date.now() - HOUR * 120).toISOString(),
-      note: "Corporate wallet funding",
-    },
-    {
-      id: "txn-2",
-      type: "LOCK_ACQUIRE",
-      amountAed: -5000,
-      createdAt: new Date(Date.now() - HOUR * 8).toISOString(),
-      note: "Deposit lock for DXB-1024",
-    },
-    {
-      id: "txn-3",
-      type: "LOCK_ACQUIRE",
-      amountAed: -5000,
-      createdAt: new Date(Date.now() - HOUR * 5).toISOString(),
-      note: "Deposit lock for DXB-5112",
-    },
-    {
-      id: "txn-4",
-      type: "WITHDRAWAL",
-      amountAed: -2500,
-      createdAt: new Date(Date.now() - HOUR * 24).toISOString(),
-      note: "Pending withdrawal request",
-    },
-  ],
-};
-
-const INVOICES: InvoiceReadModel[] = [
-  {
-    id: "inv-d57c4a74-f36c",
-    auctionId: "lot-d57c4a74-f36c-4cf2-a4f3-6d71055895a8",
-    lotNumber: "SHJ-3102",
-    lotTitle: "Mercedes-Benz E300",
-    winnerCompany: "Al Noor Fleet Trading",
-    winningAmountAed: 198000,
-    commissionAed: 5940,
-    vatAed: 10197,
-    totalAed: 214137,
-    issuedAt: new Date(Date.now() - HOUR * 22).toISOString(),
-    dueAt: new Date(Date.now() + HOUR * 18).toISOString(),
-    status: "ISSUED",
-    stripePaymentIntentId: null,
-  },
-  {
-    id: "inv-a2a8d6e6-fab9",
-    auctionId: "lot-a2a8d6e6-fab9-486b-bfa3-bbf88ba44b2f",
-    lotNumber: "AUH-3180",
-    lotTitle: "Lexus LX600 Prestige",
-    winnerCompany: "Gulf Executive Mobility",
-    winningAmountAed: 355000,
-    commissionAed: 10650,
-    vatAed: 18282,
-    totalAed: 383932,
-    issuedAt: new Date(Date.now() - HOUR * 10).toISOString(),
-    dueAt: new Date(Date.now() + HOUR * 36).toISOString(),
-    status: "ISSUED",
-    stripePaymentIntentId: "pi_3R6DbfG3k89fdemo",
-  },
-  {
-    id: "inv-defaulted-4222",
-    auctionId: "lot-0c2979bc-401e-43b0-acf1-c214f8474e9b",
-    lotNumber: "FUJ-4222",
-    lotTitle: "Range Rover Sport HSE",
-    winnerCompany: "Atlas Fleet Hub",
-    winningAmountAed: 161000,
-    commissionAed: 4830,
-    vatAed: 8283,
-    totalAed: 174113,
-    issuedAt: new Date(Date.now() - HOUR * 72).toISOString(),
-    dueAt: new Date(Date.now() - HOUR * 20).toISOString(),
-    status: "DEFAULTED",
-    stripePaymentIntentId: "pi_defaulted_4222",
-  },
-];
-
-const MY_BIDS: MyBidReadModel[] = [
-  {
-    id: "mb-1",
-    auctionId: "lot-8d807f7f-f6f7-4b26-b332-7c7266cf57e0",
-    lotNumber: "DXB-1024",
-    lotTitle: "Toyota Land Cruiser GXR",
-    myBidAed: 218000,
-    highestBidAed: 218000,
-    endsAt: AUCTIONS[0].endsAt,
-    isWinning: true,
-    status: "LIVE",
-  },
-  {
-    id: "mb-2",
-    auctionId: "lot-64e95637-dce9-419a-a08b-2ecf20f8fd20",
-    lotNumber: "AUH-2088",
-    lotTitle: "BMW X5 M Sport",
-    myBidAed: 170750,
-    highestBidAed: 171500,
-    endsAt: AUCTIONS[1].endsAt,
-    isWinning: false,
-    status: "LIVE",
-  },
-  {
-    id: "mb-3",
-    auctionId: "lot-d57c4a74-f36c-4cf2-a4f3-6d71055895a8",
-    lotNumber: "SHJ-3102",
-    lotTitle: "Mercedes-Benz E300",
-    myBidAed: 198000,
-    highestBidAed: 198000,
-    endsAt: AUCTIONS[4].endsAt,
-    isWinning: true,
-    status: "PAYMENT_PENDING",
-  },
-];
-
-const WATCHLIST: MyBidReadModel[] = [
-  {
-    id: "wl-1",
-    auctionId: "lot-3125f011-3f34-4068-b0d7-b7000484baab",
-    lotNumber: "DXB-5112",
-    lotTitle: "Tesla Model Y Long Range",
-    myBidAed: 0,
-    highestBidAed: 183000,
-    endsAt: AUCTIONS[2].endsAt,
-    isWinning: false,
-    status: "LIVE",
-  },
-  {
-    id: "wl-2",
-    auctionId: "lot-72bb6180-ed27-4f0d-84eb-e6e558f127ba",
-    lotNumber: "RAK-7601",
-    lotTitle: "Nissan Patrol LE Platinum",
-    myBidAed: 0,
-    highestBidAed: 0,
-    endsAt: AUCTIONS[3].endsAt,
-    isWinning: false,
-    status: "SCHEDULED",
-  },
-];
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -746,6 +282,89 @@ function normalizeAuctionStatus(state: AuctionState): AuctionStatus {
 
 function deriveLotNumber(auctionId: string): string {
   return `LOT-${auctionId.slice(0, 8).toUpperCase()}`;
+}
+
+function buildLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  auctionId: string,
+): string {
+  const trimmedBrand = brand?.trim() ?? "";
+  const trimmedModel = model?.trim() ?? "";
+
+  if (trimmedBrand || trimmedModel) {
+    return `${trimmedBrand} ${trimmedModel}`.trim();
+  }
+
+  return deriveLotNumber(auctionId);
+}
+
+function normalizeInvoiceStatus(status: DbInvoiceStatus): InvoiceStatus {
+  if (status === "CANCELED") {
+    return "CANCELED";
+  }
+
+  return status;
+}
+
+function mapLedgerTypeToWalletType(type: LedgerType): WalletTransactionReadModel["type"] {
+  if (type === "DEPOSIT_LOCK") {
+    return "LOCK_ACQUIRE";
+  }
+
+  if (type === "DEPOSIT_RELEASE") {
+    return "LOCK_RELEASE";
+  }
+
+  if (type === "DEPOSIT_BURN") {
+    return "LOCK_BURN";
+  }
+
+  if (type === "WITHDRAWAL" || type === "WITHDRAWAL_REQUESTED" || type === "WITHDRAWAL_APPROVED") {
+    return "WITHDRAWAL";
+  }
+
+  return "TOP_UP";
+}
+
+function buildWalletTransactionNote(type: LedgerType, reference: string | null): string {
+  if (reference && reference.trim().length > 0) {
+    return reference;
+  }
+
+  if (type === "DEPOSIT_TOPUP") {
+    return "Wallet top-up";
+  }
+
+  if (type === "DEPOSIT_LOCK") {
+    return "Deposit lock acquired";
+  }
+
+  if (type === "DEPOSIT_RELEASE") {
+    return "Deposit lock released";
+  }
+
+  if (type === "DEPOSIT_BURN") {
+    return "Deposit lock burned";
+  }
+
+  if (type === "ADMIN_REFUND") {
+    return "Admin refund";
+  }
+
+  if (type === "PAYMENT_RECEIVED") {
+    return "Payment received";
+  }
+
+  if (type === "WITHDRAWAL_REQUESTED") {
+    return "Withdrawal requested";
+  }
+
+  if (type === "WITHDRAWAL_APPROVED") {
+    return "Withdrawal approved";
+  }
+
+  return "Withdrawal";
 }
 
 function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
@@ -975,70 +594,566 @@ export async function readBidHistory(auctionId: string): Promise<AuctionBidHisto
     .map((entry) => ({ ...entry }));
 }
 
-export async function readWallet(): Promise<WalletReadModel> {
-  await sleep(80);
+export async function readWallet(input: Pick<BuyerReadQueryInput, "userId">): Promise<WalletReadModel> {
+  await sleep(40);
+
+  const wallet = await prisma.wallet.findUnique({
+    where: {
+      userId: input.userId,
+    },
+    select: {
+      id: true,
+      balance: true,
+      lockedBalance: true,
+    },
+  });
+
+  if (!wallet) {
+    return {
+      availableBalanceAed: 0,
+      lockedBalanceAed: 0,
+      pendingWithdrawalAed: 0,
+      activeLocks: [],
+      transactions: [],
+    };
+  }
+
+  const [activeLocks, transactions] = await Promise.all([
+    prisma.depositLock.findMany({
+      where: {
+        walletId: wallet.id,
+        status: "ACTIVE",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 25,
+      select: {
+        id: true,
+        auctionId: true,
+        amount: true,
+        status: true,
+      },
+    }),
+    prisma.walletLedger.findMany({
+      where: {
+        walletId: wallet.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 30,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        createdAt: true,
+        reference: true,
+      },
+    }),
+  ]);
 
   return {
-    ...WALLET,
-    activeLocks: WALLET.activeLocks.map((lock) => ({ ...lock })),
-    transactions: WALLET.transactions.map((tx) => ({ ...tx })),
+    availableBalanceAed: Number(wallet.balance.toString()),
+    lockedBalanceAed: Number(wallet.lockedBalance.toString()),
+    pendingWithdrawalAed: 0,
+    activeLocks: activeLocks.map((lock) => ({
+      lockId: lock.id,
+      auctionId: lock.auctionId,
+      lotNumber: deriveLotNumber(lock.auctionId),
+      amountAed: Number(lock.amount.toString()),
+      status: lock.status,
+    })),
+    transactions: transactions.map((tx) => ({
+      id: tx.id,
+      type: mapLedgerTypeToWalletType(tx.type),
+      amountAed: Number(tx.amount.toString()),
+      createdAt: tx.createdAt.toISOString(),
+      note: buildWalletTransactionNote(tx.type, tx.reference),
+    })),
   };
 }
 
-export async function readInvoices(): Promise<InvoiceReadModel[]> {
-  await sleep(95);
+export async function readInvoices(input: Pick<BuyerReadQueryInput, "companyId">): Promise<InvoiceReadModel[]> {
+  await sleep(40);
 
-  return INVOICES.map((invoice) => ({ ...invoice }));
+  if (!input.companyId) {
+    return [];
+  }
+
+  const [invoices, buyerCompany] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        buyerCompanyId: input.companyId,
+      },
+      orderBy: [{ dueAt: "asc" }, { issuedAt: "desc" }],
+      select: {
+        id: true,
+        auctionId: true,
+        buyerCompanyId: true,
+        subtotal: true,
+        commission: true,
+        vat: true,
+        total: true,
+        status: true,
+        issuedAt: true,
+        dueAt: true,
+        auction: {
+          select: {
+            id: true,
+            vehicle: {
+              select: {
+                brand: true,
+                model: true,
+              },
+            },
+          },
+        },
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+          select: {
+            stripePaymentIntentId: true,
+          },
+        },
+      },
+    }),
+    prisma.company.findUnique({
+      where: {
+        id: input.companyId,
+      },
+      select: {
+        name: true,
+      },
+    }),
+  ]);
+
+  const winnerCompany = buyerCompany?.name ?? "Buyer company";
+
+  return invoices.map((invoice) => ({
+    id: invoice.id,
+    auctionId: invoice.auctionId,
+    lotNumber: deriveLotNumber(invoice.auctionId),
+    lotTitle: buildLotTitle(invoice.auction.vehicle?.brand, invoice.auction.vehicle?.model, invoice.auction.id),
+    winnerCompany,
+    winningAmountAed: Number(invoice.subtotal.toString()),
+    commissionAed: Number(invoice.commission.toString()),
+    vatAed: Number(invoice.vat.toString()),
+    totalAed: Number(invoice.total.toString()),
+    issuedAt: invoice.issuedAt.toISOString(),
+    dueAt: invoice.dueAt.toISOString(),
+    status: normalizeInvoiceStatus(invoice.status),
+    stripePaymentIntentId: invoice.payments[0]?.stripePaymentIntentId ?? null,
+  }));
 }
 
-export async function readInvoiceDetail(invoiceId: string): Promise<InvoiceReadModel | null> {
-  await sleep(70);
+export async function readInvoiceDetail(
+  invoiceId: string,
+  input: Pick<BuyerReadQueryInput, "companyId">,
+): Promise<InvoiceReadModel | null> {
+  await sleep(40);
 
-  const invoice = INVOICES.find((item) => item.id === invoiceId) ?? null;
+  if (!input.companyId) {
+    return null;
+  }
 
-  return invoice ? { ...invoice } : null;
-}
+  const [invoice, buyerCompany] = await Promise.all([
+    prisma.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        buyerCompanyId: input.companyId,
+      },
+      select: {
+        id: true,
+        auctionId: true,
+        buyerCompanyId: true,
+        subtotal: true,
+        commission: true,
+        vat: true,
+        total: true,
+        status: true,
+        issuedAt: true,
+        dueAt: true,
+        auction: {
+          select: {
+            id: true,
+            vehicle: {
+              select: {
+                brand: true,
+                model: true,
+              },
+            },
+          },
+        },
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+          select: {
+            stripePaymentIntentId: true,
+          },
+        },
+      },
+    }),
+    prisma.company.findUnique({
+      where: {
+        id: input.companyId,
+      },
+      select: {
+        name: true,
+      },
+    }),
+  ]);
 
-export async function readMyBids(): Promise<MyBidReadModel[]> {
-  await sleep(70);
-  return MY_BIDS.map((item) => ({ ...item }));
-}
+  if (!invoice) {
+    return null;
+  }
 
-export async function readWatchlist(): Promise<MyBidReadModel[]> {
-  await sleep(70);
-  return WATCHLIST.map((item) => ({ ...item }));
-}
-
-export async function readDashboard(): Promise<DashboardReadModel> {
-  await sleep(90);
-
-  const issuedInvoices = INVOICES.filter((invoice) => invoice.status === "ISSUED").length;
+  const winnerCompany = buyerCompany?.name ?? "Buyer company";
 
   return {
-    activeBids: MY_BIDS.filter((item) => item.status === "LIVE").length,
-    watching: WATCHLIST.length,
-    invoicesDue: issuedInvoices,
-    depositBalanceAed: WALLET.availableBalanceAed,
-    recentActivity: [
-      {
-        id: "act-1",
+    id: invoice.id,
+    auctionId: invoice.auctionId,
+    lotNumber: deriveLotNumber(invoice.auctionId),
+    lotTitle: buildLotTitle(invoice.auction.vehicle?.brand, invoice.auction.vehicle?.model, invoice.auction.id),
+    winnerCompany,
+    winningAmountAed: Number(invoice.subtotal.toString()),
+    commissionAed: Number(invoice.commission.toString()),
+    vatAed: Number(invoice.vat.toString()),
+    totalAed: Number(invoice.total.toString()),
+    issuedAt: invoice.issuedAt.toISOString(),
+    dueAt: invoice.dueAt.toISOString(),
+    status: normalizeInvoiceStatus(invoice.status),
+    stripePaymentIntentId: invoice.payments[0]?.stripePaymentIntentId ?? null,
+  };
+}
+
+export async function readMyBids(input: Pick<BuyerReadQueryInput, "userId">): Promise<MyBidReadModel[]> {
+  await sleep(40);
+
+  const bids = await prisma.bid.findMany({
+    where: {
+      userId: input.userId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 500,
+    select: {
+      id: true,
+      auctionId: true,
+      amount: true,
+      createdAt: true,
+      auction: {
+        select: {
+          id: true,
+          state: true,
+          endsAt: true,
+          currentPrice: true,
+          highestBidId: true,
+          vehicle: {
+            select: {
+              brand: true,
+              model: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const bidsByAuction = new Map<
+    string,
+    {
+      auctionId: string;
+      lotTitle: string;
+      endsAt: string;
+      highestBidAed: number;
+      myBidAed: number;
+      status: AuctionStatus;
+      latestBidAtMs: number;
+      highestBidId: string | null;
+      myBidIds: Set<string>;
+    }
+  >();
+
+  for (const bid of bids) {
+    const existing = bidsByAuction.get(bid.auctionId);
+    const bidAmountAed = Number(bid.amount.toString());
+    const highestBidAed = Number(bid.auction.currentPrice.toString());
+    const lotTitle = buildLotTitle(bid.auction.vehicle?.brand, bid.auction.vehicle?.model, bid.auction.id);
+
+    if (!existing) {
+      bidsByAuction.set(bid.auctionId, {
+        auctionId: bid.auctionId,
+        lotTitle,
+        endsAt: bid.auction.endsAt.toISOString(),
+        highestBidAed,
+        myBidAed: bidAmountAed,
+        status: normalizeAuctionStatus(bid.auction.state),
+        latestBidAtMs: bid.createdAt.getTime(),
+        highestBidId: bid.auction.highestBidId,
+        myBidIds: new Set([bid.id]),
+      });
+      continue;
+    }
+
+    existing.myBidAed = Math.max(existing.myBidAed, bidAmountAed);
+    existing.highestBidAed = highestBidAed;
+    existing.status = normalizeAuctionStatus(bid.auction.state);
+    existing.highestBidId = bid.auction.highestBidId;
+    existing.myBidIds.add(bid.id);
+    existing.latestBidAtMs = Math.max(existing.latestBidAtMs, bid.createdAt.getTime());
+  }
+
+  return [...bidsByAuction.values()]
+    .sort((left, right) => right.latestBidAtMs - left.latestBidAtMs)
+    .map((item) => ({
+      id: `mb-${item.auctionId}`,
+      auctionId: item.auctionId,
+      lotNumber: deriveLotNumber(item.auctionId),
+      lotTitle: item.lotTitle,
+      myBidAed: item.myBidAed,
+      highestBidAed: item.highestBidAed,
+      endsAt: item.endsAt,
+      isWinning: item.highestBidId ? item.myBidIds.has(item.highestBidId) : false,
+      status: item.status,
+    }));
+}
+
+export async function readWatchlist(input: Pick<BuyerReadQueryInput, "userId">): Promise<MyBidReadModel[]> {
+  await sleep(40);
+
+  const savedLots = await prisma.savedLot.findMany({
+    where: {
+      userId: input.userId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+      auctionId: true,
+      auction: {
+        select: {
+          id: true,
+          state: true,
+          endsAt: true,
+          currentPrice: true,
+          vehicle: {
+            select: {
+              brand: true,
+              model: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return savedLots.map((savedLot) => ({
+    id: savedLot.id,
+    auctionId: savedLot.auctionId,
+    lotNumber: deriveLotNumber(savedLot.auctionId),
+    lotTitle: buildLotTitle(
+      savedLot.auction.vehicle?.brand,
+      savedLot.auction.vehicle?.model,
+      savedLot.auction.id,
+    ),
+    myBidAed: 0,
+    highestBidAed: Number(savedLot.auction.currentPrice.toString()),
+    endsAt: savedLot.auction.endsAt.toISOString(),
+    isWinning: false,
+    status: normalizeAuctionStatus(savedLot.auction.state),
+  }));
+}
+
+function formatActivityAed(amountAed: number): string {
+  return `AED ${new Intl.NumberFormat("en-AE", { maximumFractionDigits: 0 }).format(amountAed)}`;
+}
+
+export async function readDashboard(input: DashboardQueryInput): Promise<DashboardReadModel> {
+  await sleep(40);
+
+  const issuedInvoiceWhere = input.companyId
+    ? {
+        buyerCompanyId: input.companyId,
+        status: "ISSUED" as const,
+      }
+    : null;
+
+  const [activeBidAuctions, bids, watching, wallet, invoicesDue, recentIssuedInvoices] = await Promise.all([
+    prisma.bid.findMany({
+      where: {
+        userId: input.userId,
+        auction: {
+          state: "LIVE",
+        },
+      },
+      distinct: ["auctionId"],
+      select: {
+        auctionId: true,
+      },
+    }),
+    prisma.bid.findMany({
+      where: {
+        userId: input.userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 200,
+      select: {
+        id: true,
+        auctionId: true,
+        amount: true,
+        createdAt: true,
+        auction: {
+          select: {
+            id: true,
+            state: true,
+            highestBidId: true,
+            currentPrice: true,
+            vehicle: {
+              select: {
+                brand: true,
+                model: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.savedLot.count({
+      where: {
+        userId: input.userId,
+      },
+    }),
+    prisma.wallet.findUnique({
+      where: {
+        userId: input.userId,
+      },
+      select: {
+        balance: true,
+      },
+    }),
+    issuedInvoiceWhere
+      ? prisma.invoice.count({
+          where: issuedInvoiceWhere,
+        })
+      : Promise.resolve(0),
+    issuedInvoiceWhere
+      ? prisma.invoice.findMany({
+          where: issuedInvoiceWhere,
+          orderBy: {
+            issuedAt: "desc",
+          },
+          take: 6,
+          select: {
+            id: true,
+            issuedAt: true,
+            auctionId: true,
+          },
+        })
+      : Promise.resolve([] as Array<{ id: string; issuedAt: Date; auctionId: string }>),
+  ]);
+
+  const bidsByAuction = new Map<
+    string,
+    {
+      auctionId: string;
+      lotTitle: string;
+      state: AuctionState;
+      highestBidId: string | null;
+      currentPriceAed: number;
+      latestBidAt: Date;
+      myHighestBidAed: number;
+      myBidIds: Set<string>;
+    }
+  >();
+
+  for (const bid of bids) {
+    const bidAmountAed = Number(bid.amount.toString());
+    const currentPriceAed = Number(bid.auction.currentPrice.toString());
+    const lotTitle = buildLotTitle(
+      bid.auction.vehicle?.brand,
+      bid.auction.vehicle?.model,
+      bid.auction.id,
+    );
+    const existing = bidsByAuction.get(bid.auctionId);
+
+    if (!existing) {
+      bidsByAuction.set(bid.auctionId, {
+        auctionId: bid.auctionId,
+        lotTitle,
+        state: bid.auction.state,
+        highestBidId: bid.auction.highestBidId,
+        currentPriceAed,
+        latestBidAt: bid.createdAt,
+        myHighestBidAed: bidAmountAed,
+        myBidIds: new Set([bid.id]),
+      });
+      continue;
+    }
+
+    existing.myHighestBidAed = Math.max(existing.myHighestBidAed, bidAmountAed);
+    existing.currentPriceAed = currentPriceAed;
+    existing.highestBidId = bid.auction.highestBidId;
+    existing.state = bid.auction.state;
+    existing.myBidIds.add(bid.id);
+
+    if (bid.createdAt > existing.latestBidAt) {
+      existing.latestBidAt = bid.createdAt;
+    }
+  }
+
+  const bidActivities: DashboardReadModel["recentActivity"] = [];
+
+  for (const auctionSummary of bidsByAuction.values()) {
+    const isWinning = auctionSummary.highestBidId
+      ? auctionSummary.myBidIds.has(auctionSummary.highestBidId)
+      : false;
+
+    if (auctionSummary.state === "LIVE" && !isWinning) {
+      bidActivities.push({
+        id: `activity-outbid-${auctionSummary.auctionId}`,
         title: "Outbid alert",
-        detail: "BMW X5 M Sport moved to AED 171,500",
-        createdAt: new Date(Date.now() - 1000 * 60 * 11).toISOString(),
-      },
-      {
-        id: "act-2",
+        detail: `${auctionSummary.lotTitle} moved to ${formatActivityAed(auctionSummary.currentPriceAed)}`,
+        createdAt: auctionSummary.latestBidAt.toISOString(),
+      });
+      continue;
+    }
+
+    if (isWinning) {
+      bidActivities.push({
+        id: `activity-winning-${auctionSummary.auctionId}`,
         title: "Bid accepted",
-        detail: "Toyota Land Cruiser GXR accepted at AED 218,000",
-        createdAt: new Date(Date.now() - 1000 * 60 * 38).toISOString(),
-      },
-      {
-        id: "act-3",
-        title: "Invoice issued",
-        detail: "Invoice SHJ-3102 now due within 48h window",
-        createdAt: new Date(Date.now() - HOUR * 5).toISOString(),
-      },
-    ],
+        detail: `${auctionSummary.lotTitle} accepted at ${formatActivityAed(auctionSummary.myHighestBidAed)}`,
+        createdAt: auctionSummary.latestBidAt.toISOString(),
+      });
+    }
+  }
+
+  const invoiceActivities: DashboardReadModel["recentActivity"] = recentIssuedInvoices.map((invoice) => ({
+    id: `activity-invoice-${invoice.id}`,
+    title: "Invoice issued",
+    detail: `Invoice ${deriveLotNumber(invoice.auctionId)} now due within 48h window`,
+    createdAt: invoice.issuedAt.toISOString(),
+  }));
+
+  const recentActivity = [...bidActivities, ...invoiceActivities]
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 3);
+
+  return {
+    activeBids: activeBidAuctions.length,
+    watching,
+    invoicesDue,
+    depositBalanceAed: wallet ? Number(wallet.balance.toString()) : 0,
+    recentActivity,
   };
 }
 
@@ -1121,16 +1236,16 @@ export function filterAndSortAuctions(auctions: AuctionLot[], filters: AuctionFi
   });
 }
 
-export function formatAed(amountAed: number): string {
-  return new Intl.NumberFormat("en-AE", {
+export function formatAed(amountAed: number, locale: SupportedLocale = "en"): string {
+  return new Intl.NumberFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     style: "currency",
     currency: "AED",
     maximumFractionDigits: 0,
   }).format(amountAed);
 }
 
-export function formatShortDateTime(isoDate: string): string {
-  return new Intl.DateTimeFormat("en-AE", {
+export function formatShortDateTime(isoDate: string, locale: SupportedLocale = "en"): string {
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -1139,8 +1254,8 @@ export function formatShortDateTime(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-export function formatLongDate(isoDate: string): string {
-  return new Intl.DateTimeFormat("en-AE", {
+export function formatLongDate(isoDate: string, locale: SupportedLocale = "en"): string {
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -1150,7 +1265,22 @@ export function formatLongDate(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-export function getStatusLabel(status: AuctionStatus): string {
+export function getStatusLabel(status: AuctionStatus, locale: SupportedLocale = "en"): string {
+  if (locale === "ru") {
+    switch (status) {
+      case "LIVE":
+        return "В ЭФИРЕ";
+      case "SCHEDULED":
+        return "ЗАПЛАНИРОВАНО";
+      case "PAYMENT_PENDING":
+        return "ОЖИДАЕТ ОПЛАТЫ";
+      case "DEFAULTED":
+        return "ДЕФОЛТ";
+      default:
+        return "ЗАВЕРШЕНО";
+    }
+  }
+
   switch (status) {
     case "LIVE":
       return "LIVE";
@@ -1183,21 +1313,30 @@ export function getInvoiceDeadlineTone(dueAt: string, status: InvoiceStatus, now
   return "normal";
 }
 
-export function describeInvoiceDeadline(dueAt: string, status: InvoiceStatus, now = new Date()): string {
+export function describeInvoiceDeadline(
+  dueAt: string,
+  status: InvoiceStatus,
+  now = new Date(),
+  locale: SupportedLocale = "en",
+): string {
   if (status === "PAID") {
-    return "Settled within the policy window";
+    return locale === "ru" ? "Оплачено в установленный срок" : "Settled within the policy window";
+  }
+
+  if (status === "CANCELED") {
+    return locale === "ru" ? "Отменено" : "Canceled";
   }
 
   if (status === "DEFAULTED") {
-    return "Defaulted under payment policy";
+    return locale === "ru" ? "Просрочено по платежной политике" : "Defaulted under payment policy";
   }
 
   const diffMs = new Date(dueAt).getTime() - now.getTime();
   const diffHours = Math.round(diffMs / (1000 * 60 * 60));
 
   if (diffHours <= 0) {
-    return "Deadline exceeded";
+    return locale === "ru" ? "Срок оплаты истек" : "Deadline exceeded";
   }
 
-  return `${diffHours}h remaining`;
+  return locale === "ru" ? `Осталось ${diffHours} ч` : `${diffHours}h remaining`;
 }
