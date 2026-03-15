@@ -277,6 +277,108 @@ async function resolveVehicleStatus(state: string | null): Promise<"PENDING" | "
   return "APPROVED";
 }
 
+function isSchemaDriftPrismaError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return code === "P2021" || code === "P2022";
+}
+
+type AdminVehicleListRow = {
+  id: string;
+  brand: string;
+  model: string;
+  year: number;
+  vin: string;
+  marketPrice: DecimalLike;
+  imageUrl: string | null;
+  latestAuctionId: string | null;
+  latestAuctionState: string | null;
+};
+
+async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
+  try {
+    const vehicles = await prisma.vehicle.findMany({
+      select: {
+        id: true,
+        brand: true,
+        model: true,
+        year: true,
+        vin: true,
+        marketPrice: true,
+        images: true,
+        media: {
+          orderBy: {
+            sortOrder: "asc",
+          },
+          take: 1,
+          select: {
+            url: true,
+          },
+        },
+        auctions: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            id: true,
+            state: true,
+          },
+        },
+      },
+      orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }],
+    });
+
+    return vehicles.map((vehicle) => ({
+      id: vehicle.id,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      vin: vehicle.vin,
+      marketPrice: vehicle.marketPrice,
+      imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
+      latestAuctionId: vehicle.auctions[0]?.id ?? null,
+      latestAuctionState: vehicle.auctions[0]?.state ?? null,
+    }));
+  } catch (error) {
+    if (!isSchemaDriftPrismaError(error)) {
+      throw error;
+    }
+
+    const vehicles = await prisma.vehicle.findMany({
+      select: {
+        id: true,
+        brand: true,
+        model: true,
+        year: true,
+        vin: true,
+        auctions: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            id: true,
+            state: true,
+          },
+        },
+      },
+      orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }],
+    });
+
+    return vehicles.map((vehicle) => ({
+      id: vehicle.id,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      vin: vehicle.vin,
+      marketPrice: null,
+      imageUrl: null,
+      latestAuctionId: vehicle.auctions[0]?.id ?? null,
+      latestAuctionState: vehicle.auctions[0]?.state ?? null,
+    }));
+  }
+}
+
 async function isAuctionState(value: string): Promise<boolean> {
   return auctionStates.includes(value as (typeof auctionStates)[number]);
 }
@@ -344,34 +446,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       const status = parsedQuery.data.status ?? "ALL";
       const onlyUnassigned = parsedQuery.data.unassigned === "true";
-      const vehicles = await prisma.vehicle.findMany({
-        include: {
-          media: {
-            orderBy: {
-              sortOrder: "asc",
-            },
-            take: 1,
-            select: {
-              url: true,
-            },
-          },
-          auctions: {
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-            take: 1,
-            select: {
-              id: true,
-              state: true,
-            },
-          },
-        },
-        orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }],
-      });
+      const vehicles = await loadAdminVehicleListRows();
 
       const filteredVehicles = [];
 
       for (const vehicle of vehicles) {
-        const latestAuction = vehicle.auctions[0] ?? null;
-        const latestState = latestAuction?.state ?? null;
+        const latestState = vehicle.latestAuctionState;
         const resolvedStatus = await resolveVehicleStatus(latestState);
 
         if (status !== "ALL" && resolvedStatus !== status) {
@@ -391,11 +471,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           model: vehicle.model,
           year: vehicle.year,
           vin: vehicle.vin,
-          marketPriceAed: await toNumberValue(vehicle.marketPrice),
+          marketPriceAed: await toNumberValue(vehicle.marketPrice ?? 0),
           status: resolvedStatus,
-          imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
+          imageUrl: vehicle.imageUrl,
           label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
-          latestAuctionId: latestAuction?.id ?? null,
+          latestAuctionId: vehicle.latestAuctionId,
         });
       }
 
@@ -902,23 +982,27 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       await reply.code(200).send({
         users: await Promise.all(
-          users.map(async (user) => ({
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            status: user.status,
-            kycVerified: user.kycVerified,
-            walletBalance: await toNumberValue(user.wallet?.balance),
-            hasDeposit: (await toNumberValue(user.wallet?.balance)) > 0,
-            createdAt: user.createdAt.toISOString(),
-            companyUsers: user.companyUsers.map((membership) => ({
-              id: membership.id,
-              role: membership.role,
-              companyId: membership.company.id,
-              companyName: membership.company.name,
-              companyStatus: membership.company.status,
-            })),
-          })),
+          users.map(async (user) => {
+            const walletBalance = await toNumberValue(user.wallet?.balance ?? 0);
+
+            return {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              status: user.status,
+              kycVerified: user.kycVerified,
+              walletBalance,
+              hasDeposit: walletBalance > 0,
+              createdAt: user.createdAt.toISOString(),
+              companyUsers: user.companyUsers.map((membership) => ({
+                id: membership.id,
+                role: membership.role,
+                companyId: membership.company.id,
+                companyName: membership.company.name,
+                companyStatus: membership.company.status,
+              })),
+            };
+          }),
         ),
       });
     },
@@ -1187,7 +1271,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       const auctions = await prisma.auction.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          state: true,
+          startsAt: true,
+          endsAt: true,
           transitions: {
             where: {
               trigger: "EVENT_META",
@@ -1196,6 +1284,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
               createdAt: "desc",
             },
             take: 1,
+            select: {
+              reason: true,
+            },
           },
         },
         orderBy: [{ startsAt: "asc" }, { id: "asc" }],
@@ -1387,7 +1478,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       where: {
         id,
       },
-      include: {
+      select: {
+        id: true,
+        state: true,
+        startsAt: true,
+        endsAt: true,
         transitions: {
           where: {
             trigger: {
@@ -1396,6 +1491,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           },
           orderBy: {
             createdAt: "desc",
+          },
+          select: {
+            trigger: true,
+            reason: true,
+            createdAt: true,
           },
         },
       },
@@ -1458,7 +1558,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: lot.vehicleId,
           title: `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`,
           vin: lot.vehicle.vin,
-          marketPriceAed: await toNumberValue(lot.vehicle.marketPrice),
+          marketPriceAed: await toNumberValue(lot.vehicle.marketPrice ?? 0),
           imageUrl: lot.vehicle.images[0] ?? null,
         })),
       ),
