@@ -6,6 +6,7 @@ import { z, type ZodError } from "zod";
 
 import { prisma } from "../db";
 import { requireAuth } from "../lib/auth";
+import { sendAdminRegistrationEmail, sendUserRegistrationEmail } from "../lib/email";
 
 const { loadJose } = require("../lib/jose-runtime.cjs") as {
   loadJose: () => Promise<typeof import("jose")>;
@@ -237,6 +238,30 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               role: companyUserRole,
             },
           }),
+        ]);
+
+        await Promise.all([
+          sendUserRegistrationEmail(
+            {
+              companyName: payload.companyName,
+              email: createdUser.email,
+              role: createdUser.role as "SELLER" | "BUYER",
+              status: userStatus,
+            },
+            fastify.log,
+          ),
+          sendAdminRegistrationEmail(
+            {
+              companyName: payload.companyName,
+              country: payload.country.trim(),
+              email: createdUser.email,
+              emirate: payload.emirate?.trim() || null,
+              registrationNumber: payload.registrationNumber.trim(),
+              role: createdUser.role as "SELLER" | "BUYER",
+              status: userStatus,
+            },
+            fastify.log,
+          ),
         ]);
 
         await reply.code(201).send({

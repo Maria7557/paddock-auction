@@ -5,6 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 const compareMock = vi.fn();
 const hashMock = vi.fn();
+const sendAdminRegistrationEmailMock = vi.fn();
+const sendUserRegistrationEmailMock = vi.fn();
 const mockPrisma = {
   user: {
     findUnique: vi.fn(),
@@ -28,6 +30,11 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("../../db", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("../../lib/email", () => ({
+  sendAdminRegistrationEmail: sendAdminRegistrationEmailMock,
+  sendUserRegistrationEmail: sendUserRegistrationEmailMock,
 }));
 
 async function signToken(payload: {
@@ -229,6 +236,26 @@ describe("authRoutes", () => {
     expect(mockPrisma.company.create).toHaveBeenCalledOnce();
     expect(mockPrisma.companyUser.create).toHaveBeenCalledOnce();
     expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+    expect(sendUserRegistrationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: "Buyer Co",
+        email: "buyer@example.com",
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
+    expect(sendAdminRegistrationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: "Buyer Co",
+        country: "AE",
+        email: "buyer@example.com",
+        registrationNumber: "BUY-123",
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({
       user: {

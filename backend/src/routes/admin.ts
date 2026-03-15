@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
+import { sendNewEventAnnouncementEmail } from "../lib/email";
 
 type DecimalLike =
   | number
@@ -1276,6 +1277,30 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       return auction;
     });
+
+    const activeUsers = await prisma.user.findMany({
+      where: {
+        role: {
+          in: ["BUYER", "SELLER"],
+        },
+        status: "ACTIVE",
+      },
+      select: {
+        email: true,
+      },
+    });
+
+    await sendNewEventAnnouncementEmail(
+      {
+        description: parsedBody.data.description ?? "",
+        endsAt,
+        eventId: createdAuction.id,
+        recipients: activeUsers.map((user) => user.email),
+        startsAt,
+        title: parsedBody.data.title,
+      },
+      fastify.log,
+    );
 
     await reply.code(201).send({
       id: createdAuction.id,

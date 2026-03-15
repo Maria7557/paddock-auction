@@ -35,7 +35,14 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
+const { mockEmail } = vi.hoisted(() => ({
+  mockEmail: {
+    sendNewEventAnnouncementEmail: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../lib/email", () => mockEmail);
 
 import { buildServer } from "../../server";
 
@@ -492,6 +499,10 @@ describe("POST /api/admin/events", () => {
       sellerCompanyId: "seller-company",
       minIncrement: 500,
     });
+    mockPrisma.user.findMany.mockResolvedValue([
+      { email: "buyer@example.com" },
+      { email: "seller@example.com" },
+    ]);
 
     const tx = buildAdminTx();
     tx.auction.create.mockResolvedValue({
@@ -514,6 +525,17 @@ describe("POST /api/admin/events", () => {
       id: "ev1",
       success: true,
     });
+    expect(mockEmail.sendNewEventAnnouncementEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Prime lots",
+        endsAt: expect.any(Date),
+        eventId: "ev1",
+        recipients: ["buyer@example.com", "seller@example.com"],
+        startsAt: expect.any(Date),
+        title: "Evening Event",
+      }),
+      expect.anything(),
+    );
   });
 });
 
