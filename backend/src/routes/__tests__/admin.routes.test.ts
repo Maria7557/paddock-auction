@@ -357,6 +357,33 @@ describe("GET /api/admin/vehicles", () => {
     expect(res.body.vehicles[0].status).toBe("APPROVED");
   });
 
+  it("falls back to base vehicle query when optional columns are missing", async () => {
+    mockPrisma.vehicle.findMany
+      .mockRejectedValueOnce({
+        code: "P2022",
+      })
+      .mockResolvedValueOnce([
+        {
+          id: "v1",
+          brand: "BMW",
+          model: "X5",
+          year: 2023,
+          vin: "VIN001",
+          auctions: [{ id: "a1", state: "SCHEDULED" }],
+        },
+      ]);
+
+    const res = await request
+      .get("/api/admin/vehicles")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vehicles).toHaveLength(1);
+    expect(res.body.vehicles[0].marketPriceAed).toBe(0);
+    expect(res.body.vehicles[0].imageUrl).toBeNull();
+    expect(mockPrisma.vehicle.findMany).toHaveBeenCalledTimes(2);
+  });
+
   it("filters by status=PENDING", async () => {
     mockPrisma.vehicle.findMany.mockResolvedValue([
       {
@@ -598,6 +625,47 @@ describe("POST /api/admin/events", () => {
         title: "Evening Event",
       }),
       expect.anything(),
+    );
+  });
+});
+
+describe("GET /api/admin/events", () => {
+  it("returns grouped events with lots count", async () => {
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "a1",
+        state: "SCHEDULED",
+        startsAt: new Date("2026-03-15T14:00:00.000Z"),
+        endsAt: new Date("2026-03-15T16:00:00.000Z"),
+        transitions: [
+          {
+            reason: JSON.stringify({
+              title: "Evening Event",
+            }),
+          },
+        ],
+      },
+      {
+        id: "a2",
+        state: "SCHEDULED",
+        startsAt: new Date("2026-03-15T14:00:00.000Z"),
+        endsAt: new Date("2026-03-15T16:00:00.000Z"),
+        transitions: [],
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/events?status=SCHEDULED")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.events).toHaveLength(1);
+    expect(res.body.events[0]).toEqual(
+      expect.objectContaining({
+        title: "Evening Event",
+        status: "SCHEDULED",
+        lotsCount: 2,
+      }),
     );
   });
 });
