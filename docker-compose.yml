@@ -43,6 +43,7 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: http://backend:4000
+        DATABASE_URL: postgresql://fleetbid:fleetbid@postgres:5432/fleetbid
     env_file:
       - .env.docker
     environment:
