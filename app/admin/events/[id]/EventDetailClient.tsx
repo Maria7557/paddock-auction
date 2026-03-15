@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/src/lib/api-client";
+import { getAdminCopy } from "@/app/admin/i18n";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -31,6 +33,7 @@ type VehiclesResponse = {
 };
 
 type EventDetailClientProps = {
+  locale: SupportedLocale;
   eventId: string;
   title: string;
   description: string;
@@ -52,6 +55,7 @@ function reorderLots(list: EventLot[], fromIndex: number, toIndex: number): Even
 }
 
 export function EventDetailClient({
+  locale,
   eventId,
   title,
   description,
@@ -61,6 +65,7 @@ export function EventDetailClient({
   candidates,
 }: EventDetailClientProps) {
   const router = useRouter();
+  const t = getAdminCopy(locale);
 
   const [lotRows, setLotRows] = useState<EventLot[]>(lots);
   const [candidateOptions, setCandidateOptions] = useState<CandidateVehicle[]>(candidates);
@@ -164,24 +169,24 @@ export function EventDetailClient({
 
   const statusPill = useMemo(() => {
     if (status === "SCHEDULED") {
-      return <span className="pill pill-sched">Scheduled</span>;
+      return <span className="pill pill-sched">{t.status.scheduled}</span>;
     }
 
     if (status === "LIVE" || status === "EXTENDED") {
       return (
         <span className="pill pill-live">
           <span className="live-dot" aria-hidden />
-          Live
+          {t.status.live}
         </span>
       );
     }
 
     if (status === "DRAFT") {
-      return <span className="pill">Draft</span>;
+      return <span className="pill">{t.status.draft}</span>;
     }
 
-    return <span className="pill">Ended</span>;
-  }, [status]);
+    return <span className="pill">{t.status.ended}</span>;
+  }, [status, t]);
 
   return (
     <section className={styles.page}>
@@ -189,7 +194,7 @@ export function EventDetailClient({
         <div>
           <h1 className={styles.heading}>{title}</h1>
           <p className={styles.metaLine}>
-            {new Date(startsAt).toLocaleString("en-GB", {
+            {new Date(startsAt).toLocaleString(toIntlLocale(locale), {
               day: "2-digit",
               month: "short",
               year: "numeric",
@@ -203,17 +208,17 @@ export function EventDetailClient({
       </header>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Lot List</div>
+        <div className={styles.sectionTitle}>{t.eventDetail.sectionTitleLots}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>#</th>
-                <th>Photo</th>
-                <th>Brand / Model / Year</th>
-                <th>VIN</th>
-                <th>Market Price</th>
-                <th>Actions</th>
+                <th>{t.eventDetail.table.index}</th>
+                <th>{t.eventDetail.table.photo}</th>
+                <th>{t.eventDetail.table.vehicle}</th>
+                <th>{t.eventDetail.table.vin}</th>
+                <th>{t.eventDetail.table.marketPrice}</th>
+                <th>{t.eventDetail.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -228,7 +233,7 @@ export function EventDetailClient({
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === 0}
                           onClick={() => void move(index, -1)}
-                          aria-label="Move lot up"
+                          aria-label={t.eventDetail.actions.moveLotUp}
                         >
                           ▲
                         </button>
@@ -237,7 +242,7 @@ export function EventDetailClient({
                           className="btn btn-outline btn-sm"
                           disabled={!canReorder || busy || index === lotRows.length - 1}
                           onClick={() => void move(index, 1)}
-                          aria-label="Move lot down"
+                          aria-label={t.eventDetail.actions.moveLotDown}
                         >
                           ▼
                         </button>
@@ -261,7 +266,7 @@ export function EventDetailClient({
                       disabled={busy}
                       onClick={() => void removeVehicle(lot.vehicleId)}
                     >
-                      Remove
+                      {t.eventDetail.actions.remove}
                     </button>
                   </td>
                 </tr>
@@ -269,7 +274,7 @@ export function EventDetailClient({
               {lotRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className={styles.emptyCell}>
-                    No lots in this event.
+                    {t.eventDetail.emptyLots}
                   </td>
                 </tr>
               ) : null}
@@ -279,14 +284,14 @@ export function EventDetailClient({
       </section>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Add Vehicle</div>
+        <div className={styles.sectionTitle}>{t.eventDetail.sectionTitleAddVehicle}</div>
         <div className={styles.addWrap}>
           <select
             value={selectedVehicleId}
             onChange={(event) => setSelectedVehicleId(event.target.value)}
             disabled={busy || availableCandidates.length === 0}
           >
-            <option value="">Select vehicle</option>
+            <option value="">{t.eventDetail.actions.selectVehicle}</option>
             {availableCandidates.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.label}
@@ -299,7 +304,7 @@ export function EventDetailClient({
             disabled={busy || !selectedVehicleId}
             onClick={() => void addVehicle()}
           >
-            Add to Event
+            {t.eventDetail.actions.addToEvent}
           </button>
         </div>
       </section>

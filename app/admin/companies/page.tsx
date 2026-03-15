@@ -1,5 +1,6 @@
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 
 import { CompaniesTable } from "./CompaniesTable";
 
@@ -66,6 +67,7 @@ async function getCompanyRows(): Promise<CompanyRow[]> {
 
 export default async function AdminCompaniesPage() {
   const companies = await getCompanyRows();
+  const locale = await getLocalePreference();
 
-  return <CompaniesTable companies={companies} />;
+  return <CompaniesTable companies={companies} locale={locale} />;
 }

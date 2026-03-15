@@ -2,6 +2,7 @@
 // Replace with backend GET read endpoints when those contracts are available.
 
 import { api } from "@/src/lib/api-client";
+import type { SupportedLocale } from "@/src/i18n/routing";
 
 type AuctionState = string;
 type DecimalValue =
@@ -148,7 +149,7 @@ export type WalletReadModel = {
   transactions: WalletTransactionReadModel[];
 };
 
-export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED";
+export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED" | "CANCELED";
 
 export type InvoiceReadModel = {
   id: string;
@@ -190,6 +191,13 @@ export type DashboardReadModel = {
     createdAt: string;
   }[];
 };
+
+export type BuyerReadQueryInput = {
+  userId: string;
+  companyId: string | null;
+};
+
+export type DashboardQueryInput = BuyerReadQueryInput;
 
 export type AuctionFilterState = {
   query: string;
@@ -1066,7 +1074,7 @@ export async function readBidHistory(auctionId: string): Promise<AuctionBidHisto
     .map((entry) => ({ ...entry }));
 }
 
-export async function readWallet(): Promise<WalletReadModel> {
+export async function readWallet(_input?: Pick<BuyerReadQueryInput, "userId">): Promise<WalletReadModel> {
   await sleep(80);
 
   return {
@@ -1076,13 +1084,16 @@ export async function readWallet(): Promise<WalletReadModel> {
   };
 }
 
-export async function readInvoices(): Promise<InvoiceReadModel[]> {
+export async function readInvoices(_input?: Pick<BuyerReadQueryInput, "companyId">): Promise<InvoiceReadModel[]> {
   await sleep(95);
 
   return INVOICES.map((invoice) => ({ ...invoice }));
 }
 
-export async function readInvoiceDetail(invoiceId: string): Promise<InvoiceReadModel | null> {
+export async function readInvoiceDetail(
+  invoiceId: string,
+  _input?: Pick<BuyerReadQueryInput, "companyId">,
+): Promise<InvoiceReadModel | null> {
   await sleep(70);
 
   const invoice = INVOICES.find((item) => item.id === invoiceId) ?? null;
@@ -1090,17 +1101,17 @@ export async function readInvoiceDetail(invoiceId: string): Promise<InvoiceReadM
   return invoice ? { ...invoice } : null;
 }
 
-export async function readMyBids(): Promise<MyBidReadModel[]> {
+export async function readMyBids(_input?: Pick<BuyerReadQueryInput, "userId">): Promise<MyBidReadModel[]> {
   await sleep(70);
   return MY_BIDS.map((item) => ({ ...item }));
 }
 
-export async function readWatchlist(): Promise<MyBidReadModel[]> {
+export async function readWatchlist(_input?: Pick<BuyerReadQueryInput, "userId">): Promise<MyBidReadModel[]> {
   await sleep(70);
   return WATCHLIST.map((item) => ({ ...item }));
 }
 
-export async function readDashboard(): Promise<DashboardReadModel> {
+export async function readDashboard(_input?: DashboardQueryInput): Promise<DashboardReadModel> {
   await sleep(90);
 
   const issuedInvoices = INVOICES.filter((invoice) => invoice.status === "ISSUED").length;
@@ -1212,16 +1223,16 @@ export function filterAndSortAuctions(auctions: AuctionLot[], filters: AuctionFi
   });
 }
 
-export function formatAed(amountAed: number): string {
-  return new Intl.NumberFormat("en-AE", {
+export function formatAed(amountAed: number, locale: SupportedLocale = "en"): string {
+  return new Intl.NumberFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     style: "currency",
     currency: "AED",
     maximumFractionDigits: 0,
   }).format(amountAed);
 }
 
-export function formatShortDateTime(isoDate: string): string {
-  return new Intl.DateTimeFormat("en-AE", {
+export function formatShortDateTime(isoDate: string, locale: SupportedLocale = "en"): string {
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -1230,8 +1241,8 @@ export function formatShortDateTime(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-export function formatLongDate(isoDate: string): string {
-  return new Intl.DateTimeFormat("en-AE", {
+export function formatLongDate(isoDate: string, locale: SupportedLocale = "en"): string {
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-AE", {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -1241,7 +1252,22 @@ export function formatLongDate(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-export function getStatusLabel(status: AuctionStatus): string {
+export function getStatusLabel(status: AuctionStatus, locale: SupportedLocale = "en"): string {
+  if (locale === "ru") {
+    switch (status) {
+      case "LIVE":
+        return "В ЭФИРЕ";
+      case "SCHEDULED":
+        return "ЗАПЛАНИРОВАНО";
+      case "PAYMENT_PENDING":
+        return "ОЖИДАЕТ ОПЛАТЫ";
+      case "DEFAULTED":
+        return "ДЕФОЛТ";
+      default:
+        return "ЗАВЕРШЕНО";
+    }
+  }
+
   switch (status) {
     case "LIVE":
       return "LIVE";
@@ -1274,21 +1300,30 @@ export function getInvoiceDeadlineTone(dueAt: string, status: InvoiceStatus, now
   return "normal";
 }
 
-export function describeInvoiceDeadline(dueAt: string, status: InvoiceStatus, now = new Date()): string {
+export function describeInvoiceDeadline(
+  dueAt: string,
+  status: InvoiceStatus,
+  now = new Date(),
+  locale: SupportedLocale = "en",
+): string {
   if (status === "PAID") {
-    return "Settled within the policy window";
+    return locale === "ru" ? "Оплачено в установленный срок" : "Settled within the policy window";
+  }
+
+  if (status === "CANCELED") {
+    return locale === "ru" ? "Отменено" : "Canceled";
   }
 
   if (status === "DEFAULTED") {
-    return "Defaulted under payment policy";
+    return locale === "ru" ? "Просрочено по платежной политике" : "Defaulted under payment policy";
   }
 
   const diffMs = new Date(dueAt).getTime() - now.getTime();
   const diffHours = Math.round(diffMs / (1000 * 60 * 60));
 
   if (diffHours <= 0) {
-    return "Deadline exceeded";
+    return locale === "ru" ? "Срок оплаты истек" : "Deadline exceeded";
   }
 
-  return `${diffHours}h remaining`;
+  return locale === "ru" ? `Осталось ${diffHours} ч` : `${diffHours}h remaining`;
 }

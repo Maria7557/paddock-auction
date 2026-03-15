@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
 import { api } from "@/src/lib/api-client";
+import { getAdminCopy } from "@/app/admin/i18n";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -40,10 +42,12 @@ type EventsResponse = {
 type VehiclesTableProps = {
   rows: VehicleRow[];
   events: EventOption[];
+  locale: SupportedLocale;
 };
 
-export function VehiclesTable({ rows, events }: VehiclesTableProps) {
+export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
   const router = useRouter();
+  const t = getAdminCopy(locale);
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
@@ -61,7 +65,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
         });
         const nextOptions = (payload.events ?? []).map((event) => ({
           id: event.id,
-          label: `${event.title} • ${new Date(event.startsAt).toLocaleString("en-GB", {
+          label: `${event.title} • ${new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
             day: "2-digit",
             month: "short",
             year: "numeric",
@@ -83,7 +87,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locale]);
 
   const filtered = useMemo(() => {
     if (tab === "all") {
@@ -151,31 +155,32 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
-        <h1 className={styles.heading}>Vehicles</h1>
+        <h1 className={styles.heading}>{t.vehicles.heading}</h1>
         <FilterTabs
           tabs={[
-            { id: "pending", label: "New (Pending)" },
-            { id: "all", label: "All" },
+            { id: "pending", label: t.vehicles.tabs.pending },
+            { id: "all", label: t.vehicles.tabs.all },
           ]}
           value={tab}
           onChange={(next) => setTab(next as "pending" | "all")}
+          ariaLabel={t.filtersAriaLabel}
         />
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Vehicle Approval & Assignment</div>
+        <div className={styles.sectionTitle}>{t.vehicles.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Photo</th>
-                <th>Brand / Model / Year</th>
-                <th>VIN</th>
-                <th>Status</th>
-                <th>Company</th>
-                <th>Market Price</th>
-                <th>Event</th>
-                <th>Actions</th>
+                <th>{t.vehicles.table.photo}</th>
+                <th>{t.vehicles.table.vehicle}</th>
+                <th>{t.vehicles.table.vin}</th>
+                <th>{t.vehicles.table.status}</th>
+                <th>{t.vehicles.table.company}</th>
+                <th>{t.vehicles.table.marketPrice}</th>
+                <th>{t.vehicles.table.event}</th>
+                <th>{t.vehicles.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -197,12 +202,12 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                   <td className={styles.mono}>{row.vin}</td>
                   <td>
                     {row.status === "PENDING" ? (
-                      <span className="pill pill-sched">Pending</span>
+                      <span className="pill pill-sched">{t.status.pending}</span>
                     ) : null}
                     {row.status === "APPROVED" ? (
-                      <span className="pill pill-green">Approved</span>
+                      <span className="pill pill-green">{t.status.approved}</span>
                     ) : null}
-                    {row.status === "REJECTED" ? <span className="pill">Rejected</span> : null}
+                    {row.status === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
                   </td>
                   <td>{row.companyName}</td>
                   <td>
@@ -225,11 +230,11 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           disabled={busyId === row.id}
                           onClick={() => void saveMarketPrice(row.id)}
                         >
-                          Save
+                          {t.vehicles.actions.save}
                         </button>
                       </div>
                     ) : (
-                      <div className={styles.inlineEdit}> 
+                      <div className={styles.inlineEdit}>
                         <span>{formatAed(row.marketPriceAed || 0)}</span>
                         <button
                           type="button"
@@ -242,7 +247,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                             }));
                           }}
                         >
-                          Edit
+                          {t.vehicles.actions.edit}
                         </button>
                       </div>
                     )}
@@ -257,7 +262,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           disabled={busyId === row.id}
                           onClick={() => void assignEvent(row.id, null)}
                         >
-                          Unassign
+                          {t.vehicles.actions.unassign}
                         </button>
                       </div>
                     ) : (
@@ -271,7 +276,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                             }))
                           }
                         >
-                          <option value="">Select event</option>
+                          <option value="">{t.vehicles.actions.selectEvent}</option>
                           {eventOptions.map((event) => (
                             <option key={event.id} value={event.id}>
                               {event.label}
@@ -284,7 +289,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           disabled={busyId === row.id || !(eventDraftById[row.id] ?? "")}
                           onClick={() => void assignEvent(row.id, eventDraftById[row.id] ?? null)}
                         >
-                          Assign
+                          {t.vehicles.actions.assign}
                         </button>
                       </div>
                     )}
@@ -298,7 +303,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           disabled={busyId === row.id}
                           onClick={() => void mutateVehicle(row.id, "approve")}
                         >
-                          Approve
+                          {t.vehicles.actions.approve}
                         </button>
                         <button
                           type="button"
@@ -306,11 +311,11 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
                           disabled={busyId === row.id}
                           onClick={() => void mutateVehicle(row.id, "reject")}
                         >
-                          Reject
+                          {t.vehicles.actions.reject}
                         </button>
                       </div>
                     ) : (
-                      <span className={styles.metaText}>No pending action</span>
+                      <span className={styles.metaText}>{t.vehicles.actions.noPendingAction}</span>
                     )}
                   </td>
                 </tr>
@@ -318,7 +323,7 @@ export function VehiclesTable({ rows, events }: VehiclesTableProps) {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className={styles.emptyCell}>
-                    No vehicles found for this filter.
+                    {t.vehicles.empty}
                   </td>
                 </tr>
               ) : null}

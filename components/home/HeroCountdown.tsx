@@ -7,15 +7,28 @@ import { formatCountdown, pad } from "@/src/lib/utils";
 
 import styles from "./HeroSection.module.css";
 
-export default function HeroCountdown({ targetAt, locale = "en" }: { targetAt: string; locale?: SupportedLocale }) {
-  const [cd, setCd] = useState(() => formatCountdown(new Date(targetAt).getTime() - Date.now()));
+interface HeroCountdownProps {
+  targetAt: string;
+  locale?: SupportedLocale;
+}
+
+export default function HeroCountdown({ targetAt, locale = "en" }: HeroCountdownProps) {
+  const targetMs = new Date(targetAt).getTime();
+  const [cd, setCd] = useState(() => formatCountdown(targetMs - Date.now()));
 
   useEffect(() => {
+    const updateCountdown = () => {
+      setCd(formatCountdown(targetMs - Date.now()));
+    };
+
+    updateCountdown();
+
     const timer = setInterval(() => {
-      setCd(formatCountdown(new Date(targetAt).getTime() - Date.now()));
+      updateCountdown();
     }, 1000);
+
     return () => clearInterval(timer);
-  }, [targetAt]);
+  }, [targetMs]);
 
   const labels =
     locale === "ru"

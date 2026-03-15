@@ -116,7 +116,7 @@ export default function HeroSection({ stats, heroLot, display = DEFAULT_DISPLAY 
                       <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
                     )}
                   </div>
-                  <div className={styles.bidFloat}>
+                <div className={styles.bidFloat}>
                     <div className={styles.bidLbl}>{isLiveHero ? (isRu ? "Текущая ставка" : "Current bid") : isRu ? "Старт от" : "Starting from"}</div>
                     <div className={styles.bidVal}>{formatMoneyFromAed(heroLot.currentBidAed, display)}</div>
                   </div>

@@ -1,5 +1,6 @@
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 
 import { BuyersTable } from "./BuyersTable";
 
@@ -117,6 +118,7 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
 
 export default async function AdminBuyersPage() {
   const buyers = await getBuyerRows();
+  const locale = await getLocalePreference();
 
-  return <BuyersTable buyers={buyers} />;
+  return <BuyersTable buyers={buyers} locale={locale} />;
 }

@@ -1,6 +1,9 @@
 import { api } from "@/src/lib/api-client";
+import { getLocalePreference } from "@/src/lib/display_preferences";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
+import { getAdminCopy } from "../i18n";
 import { VehiclesTable } from "./VehiclesTable";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +42,8 @@ function resolveVehicleStatus(state: string | null): VehicleStatus {
   return "APPROVED";
 }
 
-async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
+async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
+  const t = getAdminCopy(locale);
   const requestOptions = await withServerCookies({ cache: "no-store" });
   const [vehiclesPayload, scheduledEventsPayload] = await Promise.all([
     api.admin.vehicles.list<{
@@ -79,7 +83,7 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
   const eventByVehicleId = new Map<string, EventOption>();
   const events: EventOption[] = scheduledEvents.map((event) => ({
     id: event.id,
-    label: new Date(event.startsAt).toLocaleString("en-GB", {
+    label: new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -106,7 +110,7 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
       title,
       vin: vehicle.vin,
       status: resolveVehicleStatus(vehicle.status ?? null),
-      companyName: "Fleet Operator",
+      companyName: t.defaults.fleetOperator,
       marketPriceAed: Number(vehicle.marketPriceAed ?? 0),
       auctionId: vehicle.latestAuctionId ?? null,
       assignedEventId: matchingEvent?.id ?? null,
@@ -121,7 +125,8 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
 }
 
 export default async function AdminVehiclesPage() {
-  const { rows, events } = await getVehiclesData();
+  const locale = await getLocalePreference();
+  const { rows, events } = await getVehiclesData(locale);
 
-  return <VehiclesTable rows={rows} events={events} />;
+  return <VehiclesTable rows={rows} events={events} locale={locale} />;
 }

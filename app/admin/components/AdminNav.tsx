@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import type { SupportedLocale } from "@/src/i18n/routing";
+
+import { getAdminCopy } from "../i18n";
 import styles from "../layout.module.css";
 
 type NavItem = {
@@ -10,19 +13,23 @@ type NavItem = {
   label: string;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { href: "/admin/companies", label: "Companies" },
-  { href: "/admin/vehicles", label: "Vehicles" },
-  { href: "/admin/events", label: "Events" },
-  { href: "/admin/buyers", label: "Buyers" },
-];
+type AdminNavProps = {
+  locale: SupportedLocale;
+};
 
-export function AdminNav() {
+export function AdminNav({ locale }: AdminNavProps) {
   const pathname = usePathname();
+  const t = getAdminCopy(locale);
+  const navItems: NavItem[] = [
+    { href: "/admin/companies", label: t.nav.companies },
+    { href: "/admin/vehicles", label: t.nav.vehicles },
+    { href: "/admin/events", label: t.nav.events },
+    { href: "/admin/buyers", label: t.nav.buyers },
+  ];
 
   return (
-    <nav className={styles.nav}>
-      {NAV_ITEMS.map((item) => {
+    <nav className={styles.nav} aria-label={t.navAriaLabel}>
+      {navItems.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
         return (

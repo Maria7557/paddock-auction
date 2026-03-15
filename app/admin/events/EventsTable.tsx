@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/src/lib/api-client";
+import { getAdminCopy } from "@/app/admin/i18n";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 import styles from "./page.module.css";
 
 type EventState = "DRAFT" | "SCHEDULED" | "LIVE" | "ENDED";
@@ -19,10 +21,12 @@ type EventRow = {
 
 type EventsTableProps = {
   events: EventRow[];
+  locale: SupportedLocale;
 };
 
-export function EventsTable({ events }: EventsTableProps) {
+export function EventsTable({ events, locale }: EventsTableProps) {
   const router = useRouter();
+  const t = getAdminCopy(locale);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function deleteEvent(id: string): Promise<void> {
@@ -39,23 +43,23 @@ export function EventsTable({ events }: EventsTableProps) {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
-        <h1 className={styles.heading}>Events</h1>
+        <h1 className={styles.heading}>{t.events.heading}</h1>
         <Link href="/admin/events/new" className="btn btn-primary">
-          + Create Event
+          {t.events.createEvent}
         </Link>
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Auction Events</div>
+        <div className={styles.sectionTitle}>{t.events.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Title</th>
-                <th>Date & Time</th>
-                <th>Status</th>
-                <th>Lots</th>
-                <th>Actions</th>
+                <th>{t.events.table.title}</th>
+                <th>{t.events.table.dateTime}</th>
+                <th>{t.events.table.status}</th>
+                <th>{t.events.table.lots}</th>
+                <th>{t.events.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -63,7 +67,7 @@ export function EventsTable({ events }: EventsTableProps) {
                 <tr key={event.id}>
                   <td>{event.title}</td>
                   <td>
-                    {new Date(event.startsAt).toLocaleString("en-GB", {
+                    {new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
                       day: "2-digit",
                       month: "short",
                       year: "numeric",
@@ -72,21 +76,21 @@ export function EventsTable({ events }: EventsTableProps) {
                     })}
                   </td>
                   <td>
-                    {event.status === "DRAFT" ? <span className="pill">Draft</span> : null}
-                    {event.status === "SCHEDULED" ? <span className="pill pill-sched">Scheduled</span> : null}
+                    {event.status === "DRAFT" ? <span className="pill">{t.status.draft}</span> : null}
+                    {event.status === "SCHEDULED" ? <span className="pill pill-sched">{t.status.scheduled}</span> : null}
                     {event.status === "LIVE" ? (
                       <span className="pill pill-live">
                         <span className="live-dot" aria-hidden />
-                        Live
+                        {t.status.live}
                       </span>
                     ) : null}
-                    {event.status === "ENDED" ? <span className="pill">Ended</span> : null}
+                    {event.status === "ENDED" ? <span className="pill">{t.status.ended}</span> : null}
                   </td>
                   <td>{event.lotsCount}</td>
                   <td>
                     <div className={styles.actions}>
                       <Link href={`/admin/events/${event.id}`} className="btn btn-outline btn-sm">
-                        Edit
+                        {t.events.actions.edit}
                       </Link>
                       {event.status === "DRAFT" ? (
                         <button
@@ -95,7 +99,7 @@ export function EventsTable({ events }: EventsTableProps) {
                           disabled={busyId === event.id}
                           onClick={() => void deleteEvent(event.id)}
                         >
-                          Delete
+                          {t.events.actions.delete}
                         </button>
                       ) : null}
                     </div>
@@ -105,7 +109,7 @@ export function EventsTable({ events }: EventsTableProps) {
               {events.length === 0 ? (
                 <tr>
                   <td colSpan={5} className={styles.emptyCell}>
-                    No events found.
+                    {t.events.empty}
                   </td>
                 </tr>
               ) : null}

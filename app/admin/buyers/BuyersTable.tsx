@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
 import { api } from "@/src/lib/api-client";
+import { getAdminCopy } from "@/app/admin/i18n";
+import type { SupportedLocale } from "@/src/i18n/routing";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -23,10 +25,12 @@ type BuyerRow = {
 
 type BuyersTableProps = {
   buyers: BuyerRow[];
+  locale: SupportedLocale;
 };
 
-export function BuyersTable({ buyers }: BuyersTableProps) {
+export function BuyersTable({ buyers, locale }: BuyersTableProps) {
   const router = useRouter();
+  const t = getAdminCopy(locale);
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -57,30 +61,31 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
-        <h1 className={styles.heading}>Buyers</h1>
+        <h1 className={styles.heading}>{t.buyers.heading}</h1>
         <FilterTabs
           tabs={[
-            { id: "pending", label: "Pending Deposit Approval" },
-            { id: "all", label: "All" },
+            { id: "pending", label: t.buyers.tabs.pending },
+            { id: "all", label: t.buyers.tabs.all },
           ]}
           value={tab}
           onChange={(next) => setTab(next as "pending" | "all")}
+          ariaLabel={t.filtersAriaLabel}
         />
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Buyer Deposit Review</div>
+        <div className={styles.sectionTitle}>{t.buyers.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Company</th>
-                <th>Deposit Status</th>
-                <th>Amount</th>
-                <th>Actions</th>
+                <th>{t.buyers.table.name}</th>
+                <th>{t.buyers.table.phone}</th>
+                <th>{t.buyers.table.email}</th>
+                <th>{t.buyers.table.company}</th>
+                <th>{t.buyers.table.depositStatus}</th>
+                <th>{t.buyers.table.amount}</th>
+                <th>{t.buyers.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -91,14 +96,14 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
                   <td>{buyer.email}</td>
                   <td>{buyer.company}</td>
                   <td>
-                    {buyer.depositStatus === "NONE" ? <span className="pill">None</span> : null}
+                    {buyer.depositStatus === "NONE" ? <span className="pill">{t.status.none}</span> : null}
                     {buyer.depositStatus === "PENDING" ? (
-                      <span className="pill pill-sched">Pending</span>
+                      <span className="pill pill-sched">{t.status.pending}</span>
                     ) : null}
                     {buyer.depositStatus === "APPROVED" ? (
-                      <span className="pill pill-green">Approved</span>
+                      <span className="pill pill-green">{t.status.approved}</span>
                     ) : null}
-                    {buyer.depositStatus === "REJECTED" ? <span className="pill">Rejected</span> : null}
+                    {buyer.depositStatus === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
                   </td>
                   <td>{formatAed(buyer.amountAed || 0)}</td>
                   <td>
@@ -110,7 +115,7 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
                           disabled={busyId === buyer.id}
                           onClick={() => void mutateDeposit(buyer.id, "approve-deposit")}
                         >
-                          Approve Deposit
+                          {t.buyers.actions.approveDeposit}
                         </button>
                         <button
                           type="button"
@@ -118,11 +123,11 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
                           disabled={busyId === buyer.id}
                           onClick={() => void mutateDeposit(buyer.id, "reject-deposit")}
                         >
-                          Reject Deposit
+                          {t.buyers.actions.rejectDeposit}
                         </button>
                       </div>
                     ) : (
-                      <span className={styles.metaText}>No pending action</span>
+                      <span className={styles.metaText}>{t.buyers.actions.noPendingAction}</span>
                     )}
                   </td>
                 </tr>
@@ -130,7 +135,7 @@ export function BuyersTable({ buyers }: BuyersTableProps) {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className={styles.emptyCell}>
-                    No buyers found for this filter.
+                    {t.buyers.empty}
                   </td>
                 </tr>
               ) : null}

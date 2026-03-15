@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { api } from "@/src/lib/api-client";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
 import { EventDetailClient } from "./EventDetailClient";
@@ -13,6 +14,7 @@ export default async function EventDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const locale = await getLocalePreference();
   const requestOptions = await withServerCookies({ cache: "no-store" });
   const event = await api.admin.events.get<{
     id: string;
@@ -50,6 +52,7 @@ export default async function EventDetailPage({
 
   return (
     <EventDetailClient
+      locale={locale}
       eventId={event.id}
       title={event.title}
       description={event.description ?? ""}

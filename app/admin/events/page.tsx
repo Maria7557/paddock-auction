@@ -1,4 +1,5 @@
 import { api } from "@/src/lib/api-client";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
 import { EventsTable } from "./EventsTable";
@@ -52,7 +53,8 @@ async function getEvents(): Promise<EventRow[]> {
 }
 
 export default async function AdminEventsPage() {
+  const locale = await getLocalePreference();
   const events = await getEvents();
 
-  return <EventsTable events={events} />;
+  return <EventsTable events={events} locale={locale} />;
 }

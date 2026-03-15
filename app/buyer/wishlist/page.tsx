@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api } from "@/src/lib/api-client";
+import { getRole, getToken } from "@/src/lib/auth_client";
 
 type WishlistItem = {
   id: string;
@@ -23,6 +24,27 @@ export default function WishlistPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = getToken();
+    const role = getRole();
+
+    if (!token) {
+      window.location.href = "/login";
+      return;
+    }
+
+    if (role !== "BUYER") {
+      if (role === "ADMIN") {
+        window.location.href = "/admin";
+        return;
+      }
+      if (role === "SELLER") {
+        window.location.href = "/seller/dashboard";
+        return;
+      }
+      window.location.href = "/dashboard";
+      return;
+    }
+
     async function loadWishlist(): Promise<void> {
       try {
         const data = await api.buyer.wishlist.list<{ items?: WishlistItem[] }>();
