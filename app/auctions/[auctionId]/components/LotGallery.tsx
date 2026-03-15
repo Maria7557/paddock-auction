@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function LotGallery({ images, title }: Props) {
-  const imgs = images.length > 0 ? images : ['/images/car-elantra.jpg'];
+  const imgs = images.length > 0 ? images : ['/vehicle-photo.svg'];
   const [active, setActive] = useState(0);
 
   const prev = useCallback(() => setActive((i) => Math.max(0, i - 1)), []);

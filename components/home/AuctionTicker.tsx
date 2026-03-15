@@ -19,6 +19,7 @@ export default function AuctionTicker({ event, display = DEFAULT_DISPLAY }: Prop
   const isRu = display.locale === "ru";
   const intlLocale = toIntlLocale(display.locale);
   const date = new Date(event.date);
+  const isLive = event.status === "LIVE";
 
   const dateStr = date.toLocaleDateString(intlLocale, {
     timeZone: "Asia/Dubai",
@@ -32,20 +33,37 @@ export default function AuctionTicker({ event, display = DEFAULT_DISPLAY }: Prop
     minute: "2-digit",
   });
 
+  const segments = [
+    isLive
+      ? isRu
+        ? `Живой аукцион до: ${dateStr} — ${timeStr} GST`
+        : `Live Auction Ends: ${dateStr} — ${timeStr} GST`
+      : isRu
+        ? `Следующий аукцион: ${dateStr} — ${timeStr} GST`
+        : `Next Auction: ${dateStr} — ${timeStr} GST`,
+    isRu ? `${formatInteger(event.lotCount, display.locale)} лотов подтверждено` : `${formatInteger(event.lotCount, display.locale)} lots confirmed`,
+    event.location,
+    `${isRu ? "Старт от " : "Starting from "}${formatMoneyFromAed(event.startingFromAed, display)}`,
+  ].filter((segment): segment is string => Boolean(segment));
+
   const item = (
     <div className={styles.item}>
       <span className={styles.livePill}>
-        <span className="live-dot" />
-        LIVE
+        {isLive ? (
+          <>
+            <span className="live-dot" />
+            LIVE
+          </>
+        ) : (
+          isRu ? "Скоро" : "Scheduled"
+        )}
       </span>
-      <strong>{isRu ? `Следующий аукцион: ${dateStr} — ${timeStr} GST` : `Next Auction: ${dateStr} — ${timeStr} GST`}</strong>
-      <span className={styles.sep}>·</span>
-      {isRu ? `${formatInteger(event.lotCount, display.locale)} лотов подтверждено` : `${formatInteger(event.lotCount, display.locale)} lots confirmed`}
-      <span className={styles.sep}>·</span>
-      {event.location}
-      <span className={styles.sep}>·</span>
-      {isRu ? "Старт от " : "Starting from "}
-      {formatMoneyFromAed(event.startingFromAed, display)}
+      {segments.map((segment, index) => (
+        <span key={`${segment}-${index}`}>
+          {index === 0 ? <strong>{segment}</strong> : segment}
+          {index < segments.length - 1 ? <span className={styles.sep}>·</span> : null}
+        </span>
+      ))}
     </div>
   );
 

@@ -22,6 +22,7 @@ const DEFAULT_DISPLAY: DisplaySettings = {
 
 export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLAY }: Props) {
   const isRu = display.locale === "ru";
+  const hasLots = lots.length > 0;
 
   return (
     <section className={styles.section}>
@@ -42,35 +43,52 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
               )}
             </p>
           </div>
-          <Link href={withLocalePath("/auctions", display.locale)} className="btn btn-outline btn-sm">
-            {isRu ? `Все лоты (${totalCount})` : `View All ${totalCount} Lots`}
-          </Link>
+          {hasLots ? (
+            <Link href={withLocalePath("/auctions", display.locale)} className="btn btn-outline btn-sm">
+              {isRu ? `Все лоты (${totalCount})` : `View All ${totalCount} Lots`}
+            </Link>
+          ) : null}
         </div>
 
-        <div className={styles.grid}>
-          {lots.map((lot) => (
-            <LotCard
-              key={lot.id}
-              lotId={lot.id}
-              title={lot.title}
-              year={lot.year}
-              mileage={lot.mileageKm}
-              regionSpec={lot.regionSpec}
-              imageUrl={lot.imageUrl}
-              currentBid={lot.currentBidAed}
-              marketPrice={lot.marketPriceAed}
-              status={lot.status}
-              endTime={lot.endsAt}
-              display={display}
-            />
-          ))}
-        </div>
+        {hasLots ? (
+          <div className={styles.grid}>
+            {lots.map((lot) => (
+              <LotCard
+                key={lot.id}
+                lotId={lot.id}
+                title={lot.title}
+                year={lot.year}
+                mileage={lot.mileageKm}
+                regionSpec={lot.regionSpec || undefined}
+                imageUrl={lot.imageUrl}
+                currentBid={lot.currentBidAed}
+                marketPrice={lot.marketPriceAed ?? undefined}
+                status={lot.status}
+                endTime={lot.status === "LIVE" ? lot.endsAt : lot.startsAt}
+                display={display}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.empty}>
+            <div className={styles.emptyTitle}>
+              {isRu ? "Пока нет активных лотов для главной страницы" : "There are no active homepage lots yet"}
+            </div>
+            <p className={styles.emptyText}>
+              {isRu
+                ? "Когда в базе появятся LIVE или SCHEDULED аукционы, карточки автоматически подтянутся сюда без ручных подстановок и фиктивных цен."
+                : "As soon as LIVE or SCHEDULED auctions exist in the database, they will appear here automatically without manual placeholders or synthetic pricing."}
+            </p>
+          </div>
+        )}
 
-        <div className={styles.more}>
-          <Link href={withLocalePath("/auctions", display.locale)} className="btn btn-outline">
-            {isRu ? `Смотреть все ${totalCount} лотов` : `See All ${totalCount} Lots This Week`}
-          </Link>
-        </div>
+        {hasLots ? (
+          <div className={styles.more}>
+            <Link href={withLocalePath("/auctions", display.locale)} className="btn btn-outline">
+              {isRu ? `Смотреть все ${totalCount} лотов` : `See All ${totalCount} Lots This Week`}
+            </Link>
+          </div>
+        ) : null}
       </div>
     </section>
   );

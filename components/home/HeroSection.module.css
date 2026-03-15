@@ -165,6 +165,32 @@
   margin-top: 3px;
 }
 
+.emptyState {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 48px 32px;
+  text-align: center;
+  background:
+    radial-gradient(circle at top, rgba(17, 106, 67, 0.1), transparent 55%),
+    var(--bg-subtle);
+}
+
+.emptyTitle {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink-primary);
+  letter-spacing: -0.02em;
+}
+
+.emptyText {
+  max-width: 420px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .right { display: none; }

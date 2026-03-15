@@ -822,12 +822,10 @@ function toAuctionLot({
   auction,
   vehicle,
   company,
-  index,
 }: {
   auction: DbAuction;
   vehicle: DbVehicle | null;
   company: DbCompany | null;
-  index: number;
 }): AuctionLot {
   const title = `${vehicle?.brand ?? "Vehicle"} ${vehicle?.model ?? auction.id.slice(0, 6)}`.trim();
   const status = normalizeAuctionStatus(auction.state);
@@ -882,12 +880,11 @@ function toAuctionLot({
 }
 
 async function hydrateAuctionLots(auctions: DbAuction[]): Promise<AuctionLot[]> {
-  return auctions.map((auction, index) =>
+  return auctions.map((auction) =>
     toAuctionLot({
       auction,
       vehicle: null,
       company: null,
-      index,
     }),
   );
 }

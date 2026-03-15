@@ -13,10 +13,9 @@ import {
 } from "@/components/home/HomeSections";
 import LotsSection from "@/components/home/LotsSection";
 import GlobalFooter from "@/components/shell/GlobalFooter";
-import { FEATURED_LOTS, NEXT_AUCTION, PLATFORM_STATS, CATEGORIES } from "@/src/lib/data";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
-import type { Lot, LotStatus } from "@/src/types/auction";
+import type { AuctionWeekEvent, Lot, LotStatus } from "@/src/types/auction";
 
 export const metadata: Metadata = {
   title: "FleetBid — Dubai Rent A Car Liquidation Auctions",
@@ -24,7 +23,26 @@ export const metadata: Metadata = {
     "Buy UAE fleet vehicles at up to 50% below market price. Structured weekly auctions of fully-serviced rental cars.",
 };
 
-function getSpec(lot: AuctionLot, label: string, fallback: string): string {
+export const dynamic = "force-dynamic";
+
+type HomeCategory = {
+  slug: string;
+  label: string;
+  sub: string;
+  image: string;
+  href?: string;
+};
+
+const CATEGORY_ORDER = ["luxury", "suv", "sedan", "sports"] as const;
+
+const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
+  luxury: "Luxury Fleet",
+  suv: "SUV Inventory",
+  sedan: "Fleet Sedans",
+  sports: "Sports & Coupes",
+};
+
+function getSpec(lot: AuctionLot, label: string, fallback = ""): string {
   const value = lot.specs.find((spec) => spec.label.toLowerCase() === label.toLowerCase())?.value;
   return value ?? fallback;
 }
@@ -61,13 +79,11 @@ function inferCategory(make: string, bodyType: string): string {
 }
 
 function mapToHomeLot(lot: AuctionLot): Lot {
-  const fuelType = getSpec(lot, "Fuel", "Petrol");
-  const bodyType = getSpec(lot, "Body Type", "Sedan");
-  const regionSpec = getSpec(lot, "Region", "GCC");
-  const color = getSpec(lot, "Color", "Unknown");
-  const condition = getSpec(lot, "Condition", "Good");
-  const startingBidAed = Math.max(lot.currentBidAed - lot.minimumStepAed * 5, 0);
-  const marketPriceAed = lot.marketPriceAed ?? Math.round(lot.currentBidAed * 1.25);
+  const fuelType = getSpec(lot, "Fuel");
+  const bodyType = getSpec(lot, "Body Type");
+  const regionSpec = getSpec(lot, "Region");
+  const color = getSpec(lot, "Color");
+  const condition = getSpec(lot, "Condition");
 
   return {
     id: lot.id,
@@ -86,8 +102,8 @@ function mapToHomeLot(lot: AuctionLot): Lot {
     category: inferCategory(lot.make, bodyType),
     status: mapStatus(lot.status),
     currentBidAed: lot.currentBidAed,
-    startingBidAed,
-    marketPriceAed,
+    startingBidAed: lot.currentBidAed,
+    marketPriceAed: lot.marketPriceAed ?? null,
     minStepAed: lot.minimumStepAed,
     startsAt: lot.startsAt,
     endsAt: lot.endsAt,
@@ -96,42 +112,90 @@ function mapToHomeLot(lot: AuctionLot): Lot {
   };
 }
 
+function sortHomeLots(lots: Lot[]): Lot[] {
+  return [...lots].sort((left, right) => {
+    if (left.status !== right.status) {
+      return left.status === "LIVE" ? -1 : 1;
+    }
+
+    const leftDate = new Date(left.status === "LIVE" ? left.endsAt : left.startsAt).getTime();
+    const rightDate = new Date(right.status === "LIVE" ? right.endsAt : right.startsAt).getTime();
+
+    return leftDate - rightDate;
+  });
+}
+
+function buildTickerEvent(lots: Lot[]): AuctionWeekEvent | null {
+  if (lots.length === 0) {
+    return null;
+  }
+
+  const liveLot = lots.find((lot) => lot.status === "LIVE");
+  const referenceLot = liveLot ?? lots.find((lot) => lot.status === "SCHEDULED") ?? lots[0];
+  const positivePrices = lots.map((lot) => lot.currentBidAed).filter((price) => price > 0);
+
+  return {
+    date: referenceLot.status === "LIVE" ? referenceLot.endsAt : referenceLot.startsAt,
+    lotCount: lots.length,
+    startingFromAed: positivePrices.length > 0 ? Math.min(...positivePrices) : 0,
+    location: referenceLot.emirate,
+    viewingStart: null,
+    viewingEnd: null,
+    status: referenceLot.status === "LIVE" ? "LIVE" : "SCHEDULED",
+  };
+}
+
+function buildHomepageCategories(lots: Lot[]): HomeCategory[] {
+  const groups = new Map<string, Lot[]>();
+
+  for (const lot of lots) {
+    const existing = groups.get(lot.category) ?? [];
+    existing.push(lot);
+    groups.set(lot.category, existing);
+  }
+
+  return CATEGORY_ORDER.flatMap((slug) => {
+    const group = groups.get(slug);
+
+    if (!group || group.length === 0) {
+      return [];
+    }
+
+    const makes = Array.from(new Set(group.map((lot) => lot.make).filter(Boolean))).slice(0, 3);
+    const image =
+      group.find((lot) => lot.imageUrl && lot.imageUrl !== "/vehicle-photo.svg")?.imageUrl ??
+      group[0]?.imageUrl ??
+      "/vehicle-photo.svg";
+
+    return [
+      {
+        slug,
+        label: CATEGORY_LABELS[slug],
+        sub: makes.join(", ") || `${group.length} lots`,
+        image,
+        href: "/auctions",
+      },
+    ];
+  });
+}
+
 export default async function HomePage() {
   const display = await getPublicDisplaySettings();
-  const dbLots = await readHomepageLots();
-  const activeLots = dbLots.filter((lot) => lot.status === "LIVE" || lot.status === "SCHEDULED");
-  const nextAuction = [...activeLots].sort(
-    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
-  )[0];
-  const scheduledLots = activeLots.filter((lot) => lot.status === "SCHEDULED");
-  const pricePool = scheduledLots.length > 0 ? scheduledLots : activeLots;
-  const startingFromAed =
-    pricePool.length > 0
-      ? Math.min(...pricePool.map((lot) => lot.currentBidAed))
-      : NEXT_AUCTION.startingFromAed;
-
-  const tickerEvent = {
-    date: nextAuction?.startsAt ?? NEXT_AUCTION.date,
-    lotCount: activeLots.length || NEXT_AUCTION.lotCount,
-    startingFromAed,
-    location: "Dubai Warehouse · Al Quoz Industrial Area",
-    viewingStart: NEXT_AUCTION.viewingStart,
-    viewingEnd: NEXT_AUCTION.viewingEnd,
-  };
-
-  const lots = dbLots.length > 0 ? dbLots.map(mapToHomeLot) : FEATURED_LOTS;
-  const heroLot = lots.find((lot) => lot.status === "LIVE") ?? lots[0];
+  const lots = sortHomeLots((await readHomepageLots()).map(mapToHomeLot));
+  const tickerEvent = buildTickerEvent(lots);
+  const heroLot = lots.find((lot) => lot.status === "LIVE") ?? lots.find((lot) => lot.status === "SCHEDULED") ?? null;
+  const categories = buildHomepageCategories(lots);
 
   return (
     <>
-      <AuctionTicker event={tickerEvent} display={display} />
-      <HeroSection stats={PLATFORM_STATS} heroLot={heroLot} display={display} />
-      <LotsSection lots={lots} totalCount={Math.max(tickerEvent.lotCount, lots.length)} display={display} />
+      {tickerEvent ? <AuctionTicker event={tickerEvent} display={display} /> : null}
+      <HeroSection stats={null} heroLot={heroLot} display={display} />
+      <LotsSection lots={lots} totalCount={lots.length} display={display} />
       <WhatSection locale={display.locale} />
       <WhySection locale={display.locale} />
       <HowSection locale={display.locale} />
-      <WeekSection event={tickerEvent} display={display} />
-      <CatsSection categories={CATEGORIES} locale={display.locale} />
+      {tickerEvent ? <WeekSection event={tickerEvent} display={display} /> : null}
+      {categories.length > 0 ? <CatsSection categories={categories} locale={display.locale} /> : null}
       <SellSection locale={display.locale} />
       <TrustSection locale={display.locale} />
       <GlobalFooter locale={display.locale} />
