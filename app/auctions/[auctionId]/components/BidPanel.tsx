@@ -186,6 +186,20 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     }
   }, [isRu, lot.auctionId, router]);
 
+  const handlePreBid = useCallback(() => {
+    if (isAuthenticated === false) {
+      router.push("/login");
+      return;
+    }
+
+    showOutcome({
+      type: "info",
+      msg: isRu
+        ? "Пред-ставка будет зарегистрирована при старте аукциона."
+        : "Pre-bid will be registered when the auction starts.",
+    });
+  }, [isAuthenticated, isRu, router]);
+
   const toggleWatchlist = useCallback(async () => {
     try {
       if (saved) {
@@ -281,10 +295,8 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           <div className={styles.bidMeta}>
             {totalBids > 0 ? (
               <span>{isRu ? `${formatInteger(totalBids, display.locale)} ставок` : `${formatInteger(totalBids, display.locale)} bid${totalBids !== 1 ? "s" : ""}`}</span>
-            ) : (
-              <span />
-            )}
-            <span>
+            ) : null}
+            <span className={styles.scheduleMeta}>
               {isLive ? (isRu ? "Конец" : "Ends") : isRu ? "Старт" : "Starts"} {countdownDateLabel}, {countdownTimeLabel} GST
             </span>
           </div>
@@ -311,7 +323,8 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
               <div className={styles.buyNowPrice}>{formatMoneyFromAed(lot.buyNowAed, display)}</div>
               {marketReference > 0 ? (
                 <div className={styles.marketReference}>
-                  {isRu ? "Рыночная цена" : "Market price"} {formatMoneyFromAed(marketReference, display)}
+                  <span>{isRu ? "Рыночная цена" : "Market price"}</span>
+                  <strong>{formatMoneyFromAed(marketReference, display)}</strong>
                 </div>
               ) : null}
               {buyNowSaving > 0 ? (
@@ -330,6 +343,46 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           </div>
         )}
       </div>
+
+      {!isClosed ? (
+        <div className={styles.actions}>
+          {isLive ? (
+            <button className={`btn btn-primary ${styles.bidBtn}`} onClick={() => placeBid(nextBid)} disabled={busy} aria-busy={busy}>
+              {busy ? (isRu ? "Отправка ставки…" : "Placing bid…") : isRu ? `Сделать ставку · ${formatMoneyFromAed(nextBid, display)}` : `Place Bid · ${formatMoneyFromAed(nextBid, display)}`}
+            </button>
+          ) : null}
+
+          {isScheduled ? (
+            <button
+              className={`btn btn-primary ${styles.bidBtn}`}
+              onClick={handlePreBid}
+              disabled={busy}
+            >
+              {isRu ? "Сделать пред-ставку" : "Pre-Bid Now"}
+            </button>
+          ) : null}
+
+          {lot.buyNowAed > 0 ? (
+            <button className={styles.buyNowBtn} onClick={handleBuyNow} disabled={busy || buyNowSuccess}>
+              {buyNowSuccess
+                ? isRu
+                  ? "Покупка подтверждена"
+                  : "Purchase Confirmed"
+                : `Buy Now — ${formatMoneyFromAed(lot.buyNowAed, display)}`}
+            </button>
+          ) : null}
+
+          <button className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ""}`} onClick={toggleWatchlist} aria-pressed={saved}>
+            {saved ? (isRu ? "Сохранено в избранное" : "Saved to Watchlist") : isRu ? "Добавить в избранное" : "Add to Watchlist"}
+          </button>
+        </div>
+      ) : null}
+
+      {outcome && (
+        <div className={`${styles.feedback} ${styles[`fb_${outcome.type}`]}`} role="status" aria-live="polite">
+          {outcome.msg}
+        </div>
+      )}
 
       {isAuthenticated === false ? (
         <>
@@ -376,56 +429,10 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             </Link>
           </div>
         </>
-      ) : (
-        <>
-          <div className={styles.actions}>
-            {isLive && (
-              <button className={`btn btn-primary ${styles.bidBtn}`} onClick={() => placeBid(nextBid)} disabled={busy} aria-busy={busy}>
-                {busy ? (isRu ? "Отправка ставки…" : "Placing bid…") : isRu ? `Сделать ставку · ${formatMoneyFromAed(nextBid, display)}` : `Place Bid · ${formatMoneyFromAed(nextBid, display)}`}
-              </button>
-            )}
-
-            {isScheduled && (
-              <button
-                className={`btn btn-primary ${styles.bidBtn}`}
-                onClick={() =>
-                  showOutcome({
-                    type: "info",
-                    msg: isRu
-                      ? "Пред-ставка будет зарегистрирована при старте аукциона."
-                      : "Pre-bid will be registered when the auction starts.",
-                  })
-                }
-              >
-                {isRu ? "Сделать пред-ставку" : "Pre-Bid Now"}
-              </button>
-            )}
-
-            {lot.buyNowAed > 0 && !isClosed && (
-              <button className={styles.buyNowBtn} onClick={handleBuyNow} disabled={busy || buyNowSuccess}>
-                {buyNowSuccess
-                  ? isRu
-                    ? "Покупка подтверждена"
-                    : "Purchase Confirmed"
-                  : `Buy Now — ${formatMoneyFromAed(lot.buyNowAed, display)}`}
-              </button>
-            )}
-          </div>
-
-          {outcome && (
-            <div className={`${styles.feedback} ${styles[`fb_${outcome.type}`]}`} role="status" aria-live="polite">
-              {outcome.msg}
-            </div>
-          )}
-
-          <button className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ""}`} onClick={toggleWatchlist} aria-pressed={saved}>
-            {saved ? (isRu ? "Сохранено в избранное" : "Saved to Watchlist") : isRu ? "Добавить в избранное" : "Add to Watchlist"}
-          </button>
-        </>
-      )}
+      ) : null}
 
       <div className={styles.depositInfo}>
-        <span>
+        <span className={styles.depositInfoText}>
           {isRu
             ? "Возвратный депозит 5 000 AED обязателен · возврат в течение 24 часов, если вы не выиграли"
             : "5,000 AED refundable deposit required · Released within 24h if you don't win"}

@@ -12,6 +12,7 @@ import {
   WhySection,
 } from "@/components/home/HomeSections";
 import LotsSection from "@/components/home/LotsSection";
+import { PLATFORM_STATS } from "@/src/lib/data";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
 import type { AuctionWeekEvent, Lot, LotStatus } from "@/src/types/auction";
@@ -187,7 +188,7 @@ export default async function HomePage() {
   return (
     <>
       {tickerEvent ? <AuctionTicker event={tickerEvent} display={display} /> : null}
-      <HeroSection stats={null} heroLot={heroLot} display={display} />
+      <HeroSection stats={PLATFORM_STATS} heroLot={heroLot} display={display} />
       <LotsSection lots={lots} totalCount={lots.length} display={display} />
       <WhatSection locale={display.locale} />
       <WhySection locale={display.locale} />
