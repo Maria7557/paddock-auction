@@ -31,8 +31,9 @@ export interface AuctionWeekEvent {
   lotCount: number;
   startingFromAed: number;
   location: string;
-  viewingStart: string;
-  viewingEnd: string;
+  viewingStart?: string | null;
+  viewingEnd?: string | null;
+  status?: 'LIVE' | 'SCHEDULED';
 }
 
 export interface PlatformStats {
