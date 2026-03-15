@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import type { SupportedLocale } from "@/src/i18n/routing";
 
 export type DamageLevel = "NONE" | "MINOR" | "MAJOR";
 export type DamageMapValue = Record<string, Exclude<DamageLevel, "NONE">>;
 
 type DamageDiagramProps = {
   value: DamageMapValue;
-  onChange: (next: DamageMapValue) => void;
+  onChange?: (next: DamageMapValue) => void;
+  readOnly?: boolean;
+  locale?: SupportedLocale;
 };
 
 type DiagramView = "top" | "front" | "rear";
@@ -100,18 +103,36 @@ export function getDamageMapWithoutZone(value: DamageMapValue, zoneId: string): 
   return updated;
 }
 
-export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
+export function DamageDiagram({
+  value,
+  onChange,
+  readOnly = false,
+  locale = "en",
+}: DamageDiagramProps) {
   const [view, setView] = useState<DiagramView>("top");
+  const isRu = locale === "ru";
 
   function toggleZone(zoneId: string): void {
+    if (readOnly || !onChange) {
+      return;
+    }
+
     onChange(getNextDiagramDamageMap(value, zoneId));
   }
 
   function toggleMarkedZone(zoneId: string): void {
+    if (readOnly || !onChange) {
+      return;
+    }
+
     onChange(getNextMarkedDamageMap(value, zoneId));
   }
 
   function removeZone(zoneId: string): void {
+    if (readOnly || !onChange || !value[zoneId]) {
+      return;
+    }
+
     onChange(getDamageMapWithoutZone(value, zoneId));
   }
 
@@ -125,7 +146,13 @@ export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
 
   return (
     <div className="damage-diagram-root">
-      <p className="field-hint">Click any panel to mark damage. Click again to change severity. Third click removes.</p>
+      <p className="field-hint">
+        {readOnly
+          ? isRu
+            ? "Просмотрите отмеченные зоны повреждений на схеме автомобиля."
+            : "Review the marked damage zones on the vehicle diagram."
+          : "Click any panel to mark damage. Click again to change severity. Third click removes."}
+      </p>
 
       <div className="damage-view-toggle" role="tablist" aria-label="Damage diagram view">
         <button
@@ -133,27 +160,32 @@ export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
           className={`damage-view-btn ${view === "top" ? "active" : ""}`}
           onClick={() => setView("top")}
         >
-          Top View
+          {isRu ? "Вид сверху" : "Top View"}
         </button>
         <button
           type="button"
           className={`damage-view-btn ${view === "front" ? "active" : ""}`}
           onClick={() => setView("front")}
         >
-          Front
+          {isRu ? "Перед" : "Front"}
         </button>
         <button
           type="button"
           className={`damage-view-btn ${view === "rear" ? "active" : ""}`}
           onClick={() => setView("rear")}
         >
-          Rear
+          {isRu ? "Зад" : "Rear"}
         </button>
       </div>
 
-      <div className="damage-diagram-wrapper">
+      <div className={`damage-diagram-wrapper ${readOnly ? "readonly" : ""}`}>
         <div className="damage-car-diagram">
-          <svg className="damage-svg-detailed" viewBox="0 0 200 460" role="img" aria-label="Interactive vehicle damage map">
+          <svg
+            className={`damage-svg-detailed ${readOnly ? "readonly" : ""}`}
+            viewBox="0 0 200 460"
+            role="img"
+            aria-label={readOnly ? "Vehicle damage map" : "Interactive vehicle damage map"}
+          >
             <path
               d="M 52,68 Q 52,42 100,32 Q 148,42 148,68 L 158,220 Q 162,280 158,340 Q 148,400 100,412 Q 52,400 42,340 Q 38,280 42,220 Z"
               fill="#e8f0ea"
@@ -365,40 +397,78 @@ export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
           <div className="damage-legend">
             <div className="damage-legend-item">
               <span className="damage-legend-swatch minor" />
-              <span>Minor damage</span>
+              <span>{isRu ? "Незначительное повреждение" : "Minor damage"}</span>
             </div>
             <div className="damage-legend-item">
               <span className="damage-legend-swatch major" />
-              <span>Major damage</span>
+              <span>{isRu ? "Серьезное повреждение" : "Major damage"}</span>
             </div>
             <div className="damage-legend-item">
               <span className="damage-legend-swatch none" />
-              <span>No damage</span>
+              <span>{isRu ? "Без повреждений" : "No damage"}</span>
             </div>
           </div>
 
-          <div className="damage-list-title">Marked Damage</div>
+          <div className="damage-list-title">{isRu ? "Отмеченные повреждения" : "Marked Damage"}</div>
 
           <div className="damage-list">
             {markedZones.length === 0 ? (
-              <div className="no-damage-msg">No damage marked - tap panels on the diagram</div>
+              <div className="no-damage-msg">
+                {readOnly
+                  ? isRu
+                    ? "Для этого автомобиля повреждения не отмечены."
+                    : "No damage was marked for this vehicle."
+                  : "No damage marked - tap panels on the diagram"}
+              </div>
             ) : (
               markedZones.map((zone) => (
                 <div key={zone.id} className={`damage-item ${zone.level.toLowerCase()}`}>
-                  <button
-                    type="button"
-                    className="damage-item-toggle"
-                    onClick={() => toggleMarkedZone(zone.id)}
-                    title={`Toggle ${zone.label} damage severity`}
-                  >
-                    <span className="damage-item-label">{zone.label}</span>
-                    <span className="damage-item-right">
-                      <span className="damage-item-badge">{zone.level.toLowerCase()}</span>
-                    </span>
-                  </button>
-                  <button type="button" className="damage-item-remove" onClick={() => removeZone(zone.id)} title="Remove">
-                    x
-                  </button>
+                  {readOnly ? (
+                    <>
+                      <span className="damage-item-label">{zone.label}</span>
+                      <span className="damage-item-right">
+                        <span className="damage-item-badge">
+                          {zone.level === "MINOR"
+                            ? isRu
+                              ? "незначительное"
+                              : "minor"
+                            : isRu
+                              ? "серьезное"
+                              : "major"}
+                        </span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="damage-item-toggle"
+                        onClick={() => toggleMarkedZone(zone.id)}
+                        title={`Toggle ${zone.label} damage severity`}
+                      >
+                        <span className="damage-item-label">{zone.label}</span>
+                        <span className="damage-item-right">
+                          <span className="damage-item-badge">
+                            {zone.level === "MINOR"
+                              ? isRu
+                                ? "незначительное"
+                                : "minor"
+                              : isRu
+                                ? "серьезное"
+                                : "major"}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="damage-item-remove"
+                        onClick={() => removeZone(zone.id)}
+                        title="Remove"
+                      >
+                        x
+                      </button>
+                    </>
+                  )}
                 </div>
               ))
             )}
@@ -406,7 +476,7 @@ export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
         </div>
       </div>
 
-      {view !== "top" ? <p className="damage-view-note">Front and rear views can be configured next.</p> : null}
+      {!readOnly && view !== "top" ? <p className="damage-view-note">Front and rear views can be configured next.</p> : null}
     </div>
   );
 }

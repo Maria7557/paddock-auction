@@ -58,6 +58,12 @@
   align-items: flex-end;
   gap: 6px;
 }
+.damageSummary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
 .rowValueListItem {
   display: flex;
   flex-direction: column;
@@ -68,6 +74,83 @@
   font-size: 12px;
   font-weight: 700;
   color: var(--amber-600);
+}
+.detailTrigger {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--green-600);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.detailTrigger:hover {
+  text-decoration: underline;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.modalCard {
+  width: min(980px, 100%);
+  max-height: min(90vh, 900px);
+  overflow: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lift);
+}
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.modalTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink-primary);
+}
+.modalSubtitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+.modalClose {
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+.modalBody {
+  padding: 24px;
+}
+.modalList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+.modalListItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
 }
 
 /* ── Sale info grid ── */
@@ -236,8 +319,21 @@
   .rowItem { border-right: none !important; padding-left: 0 !important; padding-right: 0 !important; }
   .rowItem:last-child { border-bottom: none; }
   .rowValueList,
-  .rowValueListItem { align-items: flex-start; }
+  .rowValueListItem,
+  .damageSummary { align-items: flex-start; }
   .rowValue { text-align: left; }
+  .modalBackdrop {
+    padding: 16px;
+  }
+  .modalHeader,
+  .modalBody {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+  .modalListItem {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
   .infoGrid { grid-template-columns: 1fr; }
 

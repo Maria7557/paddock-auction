@@ -4132,6 +4132,9 @@ select:focus-visible {
   cursor: pointer;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.07));
 }
+.damage-svg-detailed.readonly {
+  cursor: default;
+}
 
 .zone {
   transition: fill 0.18s, stroke 0.18s, filter 0.18s;
@@ -4141,6 +4144,12 @@ select:focus-visible {
 
 .zone:hover {
   filter: brightness(0.92);
+}
+.damage-diagram-wrapper.readonly .zone {
+  cursor: default;
+}
+.damage-diagram-wrapper.readonly .zone:hover {
+  filter: none;
 }
 
 .zone.none {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { DamageMapValue } from "@/components/seller/DamageDiagram";
 
 import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
@@ -52,6 +53,7 @@ export type LotDetail = {
   regionSpec: string;
   airbags: string;
   damage: string;
+  damageMap: DamageMapValue;
   damageItems: Array<{
     label: string;
     level: "MINOR" | "MAJOR";
@@ -163,6 +165,14 @@ function getDamageItems(value: unknown): LotDetail["damageItems"] {
 
 function isMeaningfulValue(value: string): boolean {
   return !["", "—", NOT_SPECIFIED].includes(value.trim());
+}
+
+function formatSpecPill(regionSpec: string, locale: DisplaySettings["locale"]): string {
+  if (!isMeaningfulValue(regionSpec)) {
+    return regionSpec;
+  }
+
+  return locale === "ru" ? `${regionSpec} spec` : `${regionSpec} spec`;
 }
 
 function buildSimilarTitle(vehicle: Record<string, unknown>): string {
@@ -285,6 +295,10 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       regionSpec: String(vehicle.regionSpec ?? NOT_SPECIFIED),
       airbags: String(vehicle.airbags ?? NOT_SPECIFIED),
       damage: String(vehicle.damage ?? NOT_SPECIFIED),
+      damageMap:
+        vehicle.damageMap && typeof vehicle.damageMap === "object" && !Array.isArray(vehicle.damageMap)
+          ? (vehicle.damageMap as DamageMapValue)
+          : {},
       damageItems,
       bodyStyle: String(vehicle.bodyType ?? vehicle.bodyStyle ?? NOT_SPECIFIED),
       engine: String(vehicle.engine ?? "—"),
@@ -381,7 +395,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
     lot.year > 0 ? String(lot.year) : null,
     lot.mileageKm > 0 ? `${formatInteger(lot.mileageKm, display.locale)} ${isRu ? "км" : "km"}` : null,
   ].filter((fact): fact is string => fact !== null);
-  const specPills = [lot.fuelType].filter(isMeaningfulValue);
+  const specPills = [formatSpecPill(lot.regionSpec, display.locale), lot.fuelType].filter(isMeaningfulValue);
   const hasDamage = lot.damageItems.length > 0 || (isMeaningfulValue(lot.damage) && lot.damage !== "None");
   const damageSummary = lot.damageItems.length > 0 ? (isRu ? "Повреждения отмечены" : "Damage reported") : lot.damage;
   const similarLots = lot.similar.length > 0 ? lot.similar : await getFallbackSimilarLots(lot);
