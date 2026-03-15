@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import type { SupportedLocale } from "@/src/i18n/routing";
+import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
 import {
   describeInvoiceDeadline,
   formatAed,
@@ -13,6 +15,7 @@ import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live
 
 type InvoiceDetailViewProps = {
   invoice: InvoiceReadModel;
+  locale: SupportedLocale;
 };
 
 function createIdempotencyKey(): string {
@@ -23,7 +26,8 @@ function createIdempotencyKey(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 }
 
-export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
+export function InvoiceDetailView({ invoice, locale }: InvoiceDetailViewProps) {
+  const t = getBuyerPortalCopy(locale);
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -33,7 +37,7 @@ export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
 
   async function payNow() {
     if (!idempotencyKey.trim()) {
-      setFeedback("Idempotency-Key is required.");
+      setFeedback(t.invoiceDetail.idempotencyRequired);
       return;
     }
 
@@ -53,17 +57,17 @@ export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
         | null;
 
       if (!response.ok) {
-        setFeedback(payload?.message ?? payload?.error_code ?? "Payment intent creation failed.");
+        setFeedback(payload?.message ?? payload?.error_code ?? t.invoiceDetail.intentCreationFailed);
         return;
       }
 
       if (payload?.replayed) {
-        setFeedback(`Payment intent replayed: ${payload?.stripe_payment_intent_id ?? "existing intent"}.`);
+        setFeedback(`${t.invoiceDetail.intentReplayed}: ${payload?.stripe_payment_intent_id ?? t.invoiceDetail.existingIntentFallback}.`);
       } else {
-        setFeedback(`Payment intent created: ${payload?.stripe_payment_intent_id ?? "ready"}.`);
+        setFeedback(`${t.invoiceDetail.intentCreated}: ${payload?.stripe_payment_intent_id ?? t.invoiceDetail.readyFallback}.`);
       }
     } catch {
-      setFeedback("Network error. Retry safely with the same key.");
+      setFeedback(t.invoiceDetail.networkRetry);
     } finally {
       setIsSubmitting(false);
     }
@@ -73,46 +77,46 @@ export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
     <section className="surface-panel invoice-detail-layout">
       {isOverdue ? (
         <div className="danger-banner">
-          Payment deadline exceeded. Deposit may be burned.
+          {t.invoiceDetail.overdueBanner}
         </div>
       ) : null}
 
       <header className="section-heading">
         <h1>{invoice.lotTitle}</h1>
-        <p>Invoice {invoice.id}</p>
+        <p>{t.invoiceDetail.invoiceLabel} {invoice.id}</p>
       </header>
 
       <dl className="invoice-breakdown">
         <div>
-          <dt>Winning amount</dt>
-          <dd>{formatAed(invoice.winningAmountAed)}</dd>
+          <dt>{t.invoiceDetail.winningAmount}</dt>
+          <dd>{formatAed(invoice.winningAmountAed, locale)}</dd>
         </div>
         <div>
-          <dt>Commission</dt>
-          <dd>{formatAed(invoice.commissionAed)}</dd>
+          <dt>{t.invoiceDetail.commission}</dt>
+          <dd>{formatAed(invoice.commissionAed, locale)}</dd>
         </div>
         <div>
-          <dt>VAT</dt>
-          <dd>{formatAed(invoice.vatAed)}</dd>
+          <dt>{t.invoiceDetail.vat}</dt>
+          <dd>{formatAed(invoice.vatAed, locale)}</dd>
         </div>
         <div>
-          <dt>Total</dt>
-          <dd>{formatAed(invoice.totalAed)}</dd>
+          <dt>{t.invoiceDetail.total}</dt>
+          <dd>{formatAed(invoice.totalAed, locale)}</dd>
         </div>
       </dl>
 
       <div className="invoice-deadline-box">
-        <p>Due date: {formatLongDate(invoice.dueAt)}</p>
+        <p>{t.invoiceDetail.dueDate}: {formatLongDate(invoice.dueAt, locale)}</p>
         {invoice.status === "ISSUED" ? (
-          <LiveCountdown targetIso={invoice.dueAt} className="invoice-countdown" prefix="Time left" />
+          <LiveCountdown targetIso={invoice.dueAt} className="invoice-countdown" prefix={t.invoiceDetail.timeLeft} />
         ) : null}
-        <p className={`deadline-pill tone-${tone}`}>{describeInvoiceDeadline(invoice.dueAt, invoice.status)}</p>
+        <p className={`deadline-pill tone-${tone}`}>{describeInvoiceDeadline(invoice.dueAt, invoice.status, undefined, locale)}</p>
       </div>
 
       {invoice.status === "ISSUED" ? (
         <div className="invoice-pay-actions">
           <label>
-            Idempotency-Key
+            {t.invoiceDetail.idempotencyKey}
             <input
               value={idempotencyKey}
               onChange={(event) => setIdempotencyKey(event.target.value)}
@@ -122,10 +126,10 @@ export function InvoiceDetailView({ invoice }: InvoiceDetailViewProps) {
 
           <div className="inline-actions">
             <button type="button" className="button button-primary" onClick={() => void payNow()} disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Pay Now"}
+              {isSubmitting ? t.invoiceDetail.submitting : t.invoiceDetail.payNow}
             </button>
             <button type="button" className="button button-ghost" onClick={() => setIdempotencyKey(createIdempotencyKey())}>
-              Regenerate key
+              {t.invoiceDetail.regenerateKey}
             </button>
           </div>
         </div>

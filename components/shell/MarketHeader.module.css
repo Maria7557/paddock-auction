@@ -113,12 +113,23 @@
   text-decoration: none;
 }
 
+.loginBtnButton {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
 .loginBtn:hover {
   color: var(--ink-primary);
   background: var(--bg-subtle);
 }
 
 .regBtn {
+  font-size: 14px !important;
+  padding: 9px 18px !important;
+}
+
+.accountBtn {
   font-size: 14px !important;
   padding: 9px 18px !important;
 }

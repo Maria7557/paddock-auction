@@ -1,5 +1,8 @@
 import prisma from "@/src/lib/prisma";
+import { getLocalePreference } from "@/src/lib/display_preferences";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 
+import { getAdminCopy } from "../i18n";
 import { EventsTable } from "./EventsTable";
 
 type EventState = "DRAFT" | "SCHEDULED" | "LIVE" | "ENDED";
@@ -46,7 +49,8 @@ function normalizeState(state: string): EventState {
   return "ENDED";
 }
 
-async function getEvents(): Promise<EventRow[]> {
+async function getEvents(locale: SupportedLocale): Promise<EventRow[]> {
+  const t = getAdminCopy(locale);
   const auctions = await prisma.auction.findMany({
     include: {
       transitions: {
@@ -75,7 +79,9 @@ async function getEvents(): Promise<EventRow[]> {
 
     return {
       id: auction.id,
-      title: meta.title?.trim() || `Auction Event ${new Date(auction.startsAt).toLocaleDateString("en-GB")}`,
+      title:
+        meta.title?.trim() ||
+        `${t.defaults.auctionEventTitlePrefix} ${new Date(auction.startsAt).toLocaleDateString(toIntlLocale(locale))}`,
       startsAt: auction.startsAt.toISOString(),
       status: normalizeState(auction.state),
       lotsCount: groupCounts.get(key) ?? 1,
@@ -84,7 +90,8 @@ async function getEvents(): Promise<EventRow[]> {
 }
 
 export default async function AdminEventsPage() {
-  const events = await getEvents();
+  const locale = await getLocalePreference();
+  const events = await getEvents(locale);
 
-  return <EventsTable events={events} />;
+  return <EventsTable events={events} locale={locale} />;
 }

@@ -1,5 +1,8 @@
 import prisma from "@/src/lib/prisma";
+import { getLocalePreference } from "@/src/lib/display_preferences";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 
+import { getAdminCopy } from "../i18n";
 import { VehiclesTable } from "./VehiclesTable";
 
 type VehicleStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -44,7 +47,8 @@ function resolveVehicleStatus(state: string | null): VehicleStatus {
   return "APPROVED";
 }
 
-async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
+async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
+  const t = getAdminCopy(locale);
   const [vehicles, scheduledEvents] = await Promise.all([
     prisma.vehicle.findMany({
       include: {
@@ -95,7 +99,7 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
 
   const events: EventOption[] = scheduledEvents.map((event) => ({
     id: event.id,
-    label: new Date(event.startsAt).toLocaleString("en-GB", {
+    label: new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -124,8 +128,8 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
       vin: vehicle.vin,
       status: resolveVehicleStatus(latestAuction?.state ?? null),
       companyName: latestAuction?.sellerCompanyId
-        ? companyById.get(latestAuction.sellerCompanyId) ?? "Fleet Operator"
-        : "Fleet Operator",
+        ? companyById.get(latestAuction.sellerCompanyId) ?? t.defaults.fleetOperator
+        : t.defaults.fleetOperator,
       marketPriceAed: toNumber(vehicle.marketPrice),
       auctionId: latestAuction?.id ?? null,
       assignedEventId: matchingEvent?.id ?? null,
@@ -140,7 +144,8 @@ async function getVehiclesData(): Promise<{ rows: VehicleRow[]; events: EventOpt
 }
 
 export default async function AdminVehiclesPage() {
-  const { rows, events } = await getVehiclesData();
+  const locale = await getLocalePreference();
+  const { rows, events } = await getVehiclesData(locale);
 
-  return <VehiclesTable rows={rows} events={events} />;
+  return <VehiclesTable rows={rows} events={events} locale={locale} />;
 }

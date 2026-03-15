@@ -51,7 +51,7 @@ export function LocaleCurrencyControls({ locale, currency, labels }: Props) {
 
     const targetPath = isPublicLocalizedPath(pathnameWithoutLocale)
       ? withLocalePath(pathnameWithoutLocale, nextLocale)
-      : `/${nextLocale}`;
+      : pathnameWithoutLocale;
 
     const targetUrl = `${targetPath}${currentQuery ? `?${currentQuery}` : ""}${hash}`;
     if (typeof window !== "undefined") {

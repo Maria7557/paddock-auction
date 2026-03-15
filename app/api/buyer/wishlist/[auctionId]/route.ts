@@ -13,7 +13,9 @@ type RouteContext = { params: Promise<{ auctionId: string }> };
 
 // POST — save lot
 export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
+  const userRole = req.headers.get("x-user-role")?.trim();
   const userId = req.headers.get("x-user-id")?.trim();
+  if (userRole !== "BUYER") return json(403, { error: "BUYERS_ONLY" });
   if (!userId) return json(401, { error: "UNAUTHORIZED" });
 
   const { auctionId } = await ctx.params;
@@ -32,7 +34,9 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
 
 // DELETE — unsave lot
 export async function DELETE(req: Request, ctx: RouteContext): Promise<Response> {
+  const userRole = req.headers.get("x-user-role")?.trim();
   const userId = req.headers.get("x-user-id")?.trim();
+  if (userRole !== "BUYER") return json(403, { error: "BUYERS_ONLY" });
   if (!userId) return json(401, { error: "UNAUTHORIZED" });
 
   const { auctionId } = await ctx.params;

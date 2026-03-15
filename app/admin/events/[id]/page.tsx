@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 
 import prisma from "@/src/lib/prisma";
+import { getLocalePreference } from "@/src/lib/display_preferences";
+import { toIntlLocale } from "@/src/i18n/routing";
 
+import { getAdminCopy } from "../../i18n";
 import { EventDetailClient } from "./EventDetailClient";
 
 type EventMeta = {
@@ -53,6 +56,8 @@ export default async function EventDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const locale = await getLocalePreference();
+  const t = getAdminCopy(locale);
 
   const event = await prisma.auction.findUnique({
     where: {
@@ -148,10 +153,11 @@ export default async function EventDetailPage({
 
   const title =
     meta.title?.trim() ||
-    `Auction Event ${new Date(event.startsAt).toLocaleDateString("en-GB")}`;
+    `${t.defaults.auctionEventTitlePrefix} ${new Date(event.startsAt).toLocaleDateString(toIntlLocale(locale))}`;
 
   return (
     <EventDetailClient
+      locale={locale}
       eventId={event.id}
       title={title}
       description={meta.description?.trim() ?? ""}

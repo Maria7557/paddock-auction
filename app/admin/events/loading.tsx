@@ -1,6 +1,12 @@
+import { getLocalePreference } from "@/src/lib/display_preferences";
+
+import { getAdminCopy } from "../i18n";
 import styles from "./page.module.css";
 
-export default function LoadingEventsPage() {
+export default async function LoadingEventsPage() {
+  const locale = await getLocalePreference();
+  const t = getAdminCopy(locale);
+
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
@@ -8,16 +14,16 @@ export default function LoadingEventsPage() {
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Loading events...</div>
+        <div className={styles.sectionTitle}>{t.events.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Title</th>
-                <th>Date & Time</th>
-                <th>Status</th>
-                <th>Lots</th>
-                <th>Actions</th>
+                <th>{t.events.table.title}</th>
+                <th>{t.events.table.dateTime}</th>
+                <th>{t.events.table.status}</th>
+                <th>{t.events.table.lots}</th>
+                <th>{t.events.table.actions}</th>
               </tr>
             </thead>
             <tbody>

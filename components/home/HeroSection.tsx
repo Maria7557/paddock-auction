@@ -24,6 +24,7 @@ const DEFAULT_DISPLAY: DisplaySettings = {
 export default function HeroSection({ stats, heroLot, display = DEFAULT_DISPLAY }: Props) {
   const locale: SupportedLocale = display.locale;
   const isRu = locale === "ru";
+  const nowMs = Date.now();
 
   return (
     <section className={styles.hero}>
@@ -108,7 +109,7 @@ export default function HeroSection({ stats, heroLot, display = DEFAULT_DISPLAY 
               </div>
             </div>
 
-            <HeroCountdown endsAt={heroLot.endsAt} locale={locale} />
+            <HeroCountdown endsAt={heroLot.endsAt} locale={locale} initialNowMs={nowMs} />
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import prisma from "@/src/lib/prisma";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 
 import { BuyersTable } from "./BuyersTable";
 
@@ -96,6 +97,7 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
 
 export default async function AdminBuyersPage() {
   const buyers = await getBuyerRows();
+  const locale = await getLocalePreference();
 
-  return <BuyersTable buyers={buyers} />;
+  return <BuyersTable buyers={buyers} locale={locale} />;
 }

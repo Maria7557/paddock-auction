@@ -1,6 +1,12 @@
+import { getLocalePreference } from "@/src/lib/display_preferences";
+
+import { getAdminCopy } from "../i18n";
 import styles from "./page.module.css";
 
-export default function LoadingCompaniesPage() {
+export default async function LoadingCompaniesPage() {
+  const locale = await getLocalePreference();
+  const t = getAdminCopy(locale);
+
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
@@ -8,17 +14,17 @@ export default function LoadingCompaniesPage() {
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Loading companies...</div>
+        <div className={styles.sectionTitle}>{t.companies.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Status</th>
-                <th>Registration Date</th>
-                <th>Actions</th>
+                <th>{t.companies.table.company}</th>
+                <th>{t.companies.table.email}</th>
+                <th>{t.companies.table.phone}</th>
+                <th>{t.companies.table.status}</th>
+                <th>{t.companies.table.registrationDate}</th>
+                <th>{t.companies.table.actions}</th>
               </tr>
             </thead>
             <tbody>

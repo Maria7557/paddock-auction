@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import type { SupportedLocale } from "@/src/i18n/routing";
+import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
 import {
   describeInvoiceDeadline,
   formatAed,
@@ -13,6 +15,7 @@ import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live
 
 type PaymentPendingViewProps = {
   invoices: InvoiceReadModel[];
+  locale: SupportedLocale;
 };
 
 type PendingMap = Record<string, boolean>;
@@ -27,7 +30,8 @@ function createIdempotencyKey(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 }
 
-export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
+export function PaymentPendingView({ invoices, locale }: PaymentPendingViewProps) {
+  const t = getBuyerPortalCopy(locale);
   const issued = invoices.filter((invoice) => invoice.status === "ISSUED");
   const [pending, setPending] = useState<PendingMap>({});
   const [keys, setKeys] = useState<KeyMap>({});
@@ -49,7 +53,7 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
     const idempotencyKey = keys[invoiceId]?.trim();
 
     if (!idempotencyKey) {
-      setFeedback((current) => ({ ...current, [invoiceId]: "Idempotency-Key is required." }));
+      setFeedback((current) => ({ ...current, [invoiceId]: t.paymentPending.idempotencyRequired }));
       return;
     }
 
@@ -76,12 +80,12 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
       if (!response.ok) {
         setFeedback((current) => ({
           ...current,
-          [invoiceId]: payload?.message ?? payload?.error_code ?? "Payment intent request rejected.",
+          [invoiceId]: payload?.message ?? payload?.error_code ?? t.paymentPending.requestRejected,
         }));
         return;
       }
 
-      const statusLabel = payload?.replayed ? "Payment intent replayed." : "Payment intent created.";
+      const statusLabel = payload?.replayed ? t.paymentPending.intentReplayed : t.paymentPending.intentCreated;
       const intentLabel = payload?.stripe_payment_intent_id ? ` ${payload.stripe_payment_intent_id}` : "";
 
       setFeedback((current) => ({
@@ -91,7 +95,7 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
     } catch {
       setFeedback((current) => ({
         ...current,
-        [invoiceId]: "Network issue. Retry safely with the same Idempotency-Key.",
+        [invoiceId]: t.paymentPending.networkRetry,
       }));
     } finally {
       setPending((current) => ({ ...current, [invoiceId]: false }));
@@ -101,11 +105,11 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
   return (
     <section className="surface-panel">
       <div className="section-heading">
-        <h2>Payment pending</h2>
-        <p>Pay within 48h to avoid default and deposit burn policy.</p>
+        <h2>{t.paymentPending.title}</h2>
+        <p>{t.paymentPending.subtitle}</p>
       </div>
 
-      <div className="cards-stack" aria-label="Pending invoices">
+      <div className="cards-stack" aria-label={t.paymentPending.aria}>
         {issued.map((invoice) => {
           const tone = getInvoiceDeadlineTone(invoice.dueAt, invoice.status);
           const invoiceFeedback = feedback[invoice.id];
@@ -115,20 +119,20 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
               <div>
                 <p className="card-eyebrow">{invoice.lotNumber}</p>
                 <h3>{invoice.lotTitle}</h3>
-                <p className="text-muted">Winner: {invoice.winnerCompany}</p>
+                <p className="text-muted">{t.paymentPending.winner}: {invoice.winnerCompany}</p>
               </div>
 
               <div className="finance-card-values">
                 <p>
-                  Total: <strong>{formatAed(invoice.totalAed)}</strong>
+                  {t.paymentPending.total}: <strong>{formatAed(invoice.totalAed, locale)}</strong>
                 </p>
-                <p>Due: {formatShortDateTime(invoice.dueAt)}</p>
-                <p className={`deadline-pill tone-${tone}`}>{describeInvoiceDeadline(invoice.dueAt, invoice.status)}</p>
-                <LiveCountdown targetIso={invoice.dueAt} prefix="Countdown" className="small-countdown" />
+                <p>{t.paymentPending.due}: {formatShortDateTime(invoice.dueAt, locale)}</p>
+                <p className={`deadline-pill tone-${tone}`}>{describeInvoiceDeadline(invoice.dueAt, invoice.status, undefined, locale)}</p>
+                <LiveCountdown targetIso={invoice.dueAt} prefix={t.paymentPending.countdown} className="small-countdown" />
               </div>
 
               <label>
-                Idempotency-Key
+                {t.paymentPending.idempotencyKey}
                 <input
                   value={keys[invoice.id] ?? ""}
                   onChange={(event) =>
@@ -149,7 +153,7 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
                     void createIntent(invoice.id);
                   }}
                 >
-                  {pending[invoice.id] ? "Submitting..." : "Pay Now"}
+                  {pending[invoice.id] ? t.paymentPending.submitting : t.paymentPending.payNow}
                 </button>
                 <button
                   type="button"
@@ -161,7 +165,7 @@ export function PaymentPendingView({ invoices }: PaymentPendingViewProps) {
                     }))
                   }
                 >
-                  Regenerate key
+                  {t.paymentPending.regenerateKey}
                 </button>
               </div>
 

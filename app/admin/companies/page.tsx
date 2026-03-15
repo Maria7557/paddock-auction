@@ -1,4 +1,5 @@
 import prisma from "@/src/lib/prisma";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 
 import { CompaniesTable } from "./CompaniesTable";
 
@@ -54,6 +55,7 @@ async function getCompanyRows(): Promise<CompanyRow[]> {
 
 export default async function AdminCompaniesPage() {
   const companies = await getCompanyRows();
+  const locale = await getLocalePreference();
 
-  return <CompaniesTable companies={companies} />;
+  return <CompaniesTable companies={companies} locale={locale} />;
 }

@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
+import { getAdminCopy } from "@/app/admin/i18n";
+import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 
 import styles from "./page.module.css";
 
@@ -18,10 +20,12 @@ type CompanyRow = {
 
 type CompaniesTableProps = {
   companies: CompanyRow[];
+  locale: SupportedLocale;
 };
 
-export function CompaniesTable({ companies }: CompaniesTableProps) {
+export function CompaniesTable({ companies, locale }: CompaniesTableProps) {
   const router = useRouter();
+  const t = getAdminCopy(locale);
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -49,29 +53,30 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
-        <h1 className={styles.heading}>Companies</h1>
+        <h1 className={styles.heading}>{t.companies.heading}</h1>
         <FilterTabs
           tabs={[
-            { id: "pending", label: "New (Pending)" },
-            { id: "all", label: "All" },
+            { id: "pending", label: t.companies.tabs.pending },
+            { id: "all", label: t.companies.tabs.all },
           ]}
           value={tab}
           onChange={(next) => setTab(next as "pending" | "all")}
+          ariaLabel={t.filtersAriaLabel}
         />
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Company Review Queue</div>
+        <div className={styles.sectionTitle}>{t.companies.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Status</th>
-                <th>Registration Date</th>
-                <th>Actions</th>
+                <th>{t.companies.table.company}</th>
+                <th>{t.companies.table.email}</th>
+                <th>{t.companies.table.phone}</th>
+                <th>{t.companies.table.status}</th>
+                <th>{t.companies.table.registrationDate}</th>
+                <th>{t.companies.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -82,15 +87,15 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
                   <td>{company.phone}</td>
                   <td>
                     {company.status === "PENDING" ? (
-                      <span className="pill pill-sched">Pending</span>
+                      <span className="pill pill-sched">{t.status.pending}</span>
                     ) : null}
                     {company.status === "APPROVED" ? (
-                      <span className="pill pill-green">Approved</span>
+                      <span className="pill pill-green">{t.status.approved}</span>
                     ) : null}
-                    {company.status === "REJECTED" ? <span className="pill">Rejected</span> : null}
+                    {company.status === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
                   </td>
                   <td>
-                    {new Date(company.createdAt).toLocaleDateString("en-GB", {
+                    {new Date(company.createdAt).toLocaleDateString(toIntlLocale(locale), {
                       day: "2-digit",
                       month: "short",
                       year: "numeric",
@@ -105,7 +110,7 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
                           disabled={busyId === company.id}
                           onClick={() => void mutateCompany(company.id, "approve")}
                         >
-                          Approve
+                          {t.companies.actions.approve}
                         </button>
                         <button
                           type="button"
@@ -113,11 +118,11 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
                           disabled={busyId === company.id}
                           onClick={() => void mutateCompany(company.id, "reject")}
                         >
-                          Reject
+                          {t.companies.actions.reject}
                         </button>
                       </div>
                     ) : (
-                      <span className={styles.metaText}>No pending action</span>
+                      <span className={styles.metaText}>{t.companies.actions.noPendingAction}</span>
                     )}
                   </td>
                 </tr>
@@ -125,7 +130,7 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className={styles.emptyCell}>
-                    No companies found for this filter.
+                    {t.companies.empty}
                   </td>
                 </tr>
               ) : null}

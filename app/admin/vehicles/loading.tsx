@@ -1,6 +1,12 @@
+import { getLocalePreference } from "@/src/lib/display_preferences";
+
+import { getAdminCopy } from "../i18n";
 import styles from "./page.module.css";
 
-export default function LoadingVehiclesPage() {
+export default async function LoadingVehiclesPage() {
+  const locale = await getLocalePreference();
+  const t = getAdminCopy(locale);
+
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
@@ -8,19 +14,19 @@ export default function LoadingVehiclesPage() {
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Loading vehicles...</div>
+        <div className={styles.sectionTitle}>{t.vehicles.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Photo</th>
-                <th>Brand / Model / Year</th>
-                <th>VIN</th>
-                <th>Status</th>
-                <th>Company</th>
-                <th>Market Price</th>
-                <th>Event</th>
-                <th>Actions</th>
+                <th>{t.vehicles.table.photo}</th>
+                <th>{t.vehicles.table.vehicle}</th>
+                <th>{t.vehicles.table.vin}</th>
+                <th>{t.vehicles.table.status}</th>
+                <th>{t.vehicles.table.company}</th>
+                <th>{t.vehicles.table.marketPrice}</th>
+                <th>{t.vehicles.table.event}</th>
+                <th>{t.vehicles.table.actions}</th>
               </tr>
             </thead>
             <tbody>

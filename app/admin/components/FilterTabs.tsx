@@ -9,11 +9,12 @@ type FilterTabsProps = {
   tabs: TabOption[];
   value: string;
   onChange: (next: string) => void;
+  ariaLabel?: string;
 };
 
-export function FilterTabs({ tabs, value, onChange }: FilterTabsProps) {
+export function FilterTabs({ tabs, value, onChange, ariaLabel = "Filters" }: FilterTabsProps) {
   return (
-    <div className="inline-actions" role="tablist" aria-label="Filters">
+    <div className="inline-actions" role="tablist" aria-label={ariaLabel}>
       {tabs.map((tab) => (
         <button
           key={tab.id}

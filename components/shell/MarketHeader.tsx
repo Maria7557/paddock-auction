@@ -2,7 +2,9 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 
 import { LocaleCurrencyControls } from "@/components/shell/LocaleCurrencyControls";
+import { ProfileLogoutButton } from "@/components/shell/ProfileLogoutButton";
 import { DEFAULT_LOCALE, isSupportedLocale, withLocalePath } from "@/src/i18n/routing";
+import { verifyJwt } from "@/src/lib/auth";
 import { resolveDisplayCurrency } from "@/src/lib/money";
 
 import styles from "./MarketHeader.module.css";
@@ -10,10 +12,17 @@ import styles from "./MarketHeader.module.css";
 const COPY = {
   en: {
     auctions: "Auctions",
+    myBids: "My bids",
+    watchlist: "Watchlist",
+    wallet: "Wallet",
+    invoices: "Invoices",
     how: "How It Works",
     sell: "Sell with Us",
     signIn: "Sign In",
+    logout: "Logout",
+    loggingOut: "Logging out...",
     register: "Register Company",
+    account: "Account",
     language: "Select language",
     currency: "Select currency",
     english: "EN",
@@ -21,10 +30,17 @@ const COPY = {
   },
   ru: {
     auctions: "Аукционы",
+    myBids: "Мои ставки",
+    watchlist: "Избранное",
+    wallet: "Кошелек",
+    invoices: "Счета",
     how: "Как это работает",
     sell: "Продать с нами",
     signIn: "Войти",
+    logout: "Выйти",
+    loggingOut: "Выход...",
     register: "Регистрация компании",
+    account: "Аккаунт",
     language: "Выбор языка",
     currency: "Выбор валюты",
     english: "EN",
@@ -37,8 +53,13 @@ export default async function MarketHeader() {
   const localeCookie = cookieStore.get("fb_locale")?.value;
   const locale = isSupportedLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE;
   const currency = resolveDisplayCurrency(cookieStore.get("fb_currency")?.value);
+  const token = cookieStore.get("token")?.value?.trim();
+  const auth = token ? await verifyJwt(token) : null;
 
   const t = COPY[locale];
+  const isBuyer = auth?.role === "BUYER";
+  const accountHref =
+    auth?.role === "ADMIN" ? "/admin" : auth?.role === "SELLER" ? "/seller/dashboard" : "/dashboard";
 
   return (
     <header className={styles.header}>
@@ -52,6 +73,22 @@ export default async function MarketHeader() {
           <Link href={withLocalePath("/auctions", locale)} className={styles.navLink}>
             {t.auctions}
           </Link>
+          {isBuyer ? (
+            <>
+              <Link href="/my-bids" className={styles.navLink}>
+                {t.myBids}
+              </Link>
+              <Link href="/watchlist" className={styles.navLink}>
+                {t.watchlist}
+              </Link>
+              <Link href="/wallet" className={styles.navLink}>
+                {t.wallet}
+              </Link>
+              <Link href="/invoices" className={styles.navLink}>
+                {t.invoices}
+              </Link>
+            </>
+          ) : null}
           <Link href={`${withLocalePath("/", locale)}#how-it-works`} className={styles.navLink}>
             {t.how}
           </Link>
@@ -72,12 +109,25 @@ export default async function MarketHeader() {
             }}
           />
 
-          <Link href="/login" className={styles.loginBtn}>
-            {t.signIn}
-          </Link>
+          {auth ? (
+            <ProfileLogoutButton
+              className={`${styles.loginBtn} ${styles.loginBtnButton}`}
+              label={t.logout}
+              loadingLabel={t.loggingOut}
+            />
+          ) : (
+            <Link href="/login" className={styles.loginBtn}>
+              {t.signIn}
+            </Link>
+          )}
           <Link href="/register" className={`btn btn-primary btn-sm ${styles.regBtn}`}>
             {t.register}
           </Link>
+          {auth ? (
+            <Link href={accountHref} className={`btn btn-outline btn-sm ${styles.accountBtn}`}>
+              {t.account}
+            </Link>
+          ) : null}
         </div>
       </div>
     </header>

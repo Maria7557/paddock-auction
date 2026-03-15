@@ -1,6 +1,12 @@
+import { getLocalePreference } from "@/src/lib/display_preferences";
+
+import { getAdminCopy } from "../i18n";
 import styles from "./page.module.css";
 
-export default function LoadingBuyersPage() {
+export default async function LoadingBuyersPage() {
+  const locale = await getLocalePreference();
+  const t = getAdminCopy(locale);
+
   return (
     <section className={styles.page}>
       <div className={styles.headerRow}>
@@ -8,18 +14,18 @@ export default function LoadingBuyersPage() {
       </div>
 
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>Loading buyers...</div>
+        <div className={styles.sectionTitle}>{t.buyers.sectionTitle}</div>
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Company</th>
-                <th>Deposit Status</th>
-                <th>Amount</th>
-                <th>Actions</th>
+                <th>{t.buyers.table.name}</th>
+                <th>{t.buyers.table.phone}</th>
+                <th>{t.buyers.table.email}</th>
+                <th>{t.buyers.table.company}</th>
+                <th>{t.buyers.table.depositStatus}</th>
+                <th>{t.buyers.table.amount}</th>
+                <th>{t.buyers.table.actions}</th>
               </tr>
             </thead>
             <tbody>

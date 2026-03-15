@@ -11,7 +11,9 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 // GET /api/buyer/wishlist — list saved lots for current user
 export async function GET(request: Request): Promise<Response> {
+  const userRole = request.headers.get("x-user-role")?.trim();
   const userId = request.headers.get("x-user-id")?.trim();
+  if (userRole !== "BUYER") return json(403, { error: "BUYERS_ONLY" });
   if (!userId) return json(401, { error: "UNAUTHORIZED" });
 
   const saved = await prisma.savedLot.findMany({

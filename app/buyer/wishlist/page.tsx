@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { getToken } from "@/src/lib/auth_client";
+import { getRole, getToken } from "@/src/lib/auth_client";
 
 type WishlistItem = {
   id: string;
@@ -24,8 +24,21 @@ export default function WishlistPage() {
 
   useEffect(() => {
     const token = getToken();
+    const role = getRole();
     if (!token) {
       window.location.href = "/login";
+      return;
+    }
+    if (role !== "BUYER") {
+      if (role === "ADMIN") {
+        window.location.href = "/admin";
+        return;
+      }
+      if (role === "SELLER") {
+        window.location.href = "/seller/dashboard";
+        return;
+      }
+      window.location.href = "/dashboard";
       return;
     }
 
