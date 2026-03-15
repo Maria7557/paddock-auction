@@ -43,6 +43,8 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: http://backend:4000
+    env_file:
+      - .env.docker
     environment:
       NEXT_PUBLIC_API_URL: http://backend:4000
       NODE_ENV: production
