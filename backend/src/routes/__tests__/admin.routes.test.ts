@@ -18,6 +18,7 @@ const { mockPrisma } = vi.hoisted(() => ({
     },
     company: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
     },
     user: {
       findMany: vi.fn(),
@@ -80,8 +81,10 @@ function buildAdminTx(overrides: Record<string, unknown> = {}) {
     company: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     user: {
+      findUnique: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
@@ -211,6 +214,38 @@ describe("GET /api/admin/companies/pending", () => {
     expect(res.body.companies[0].phone).toBe("+971501112233");
   });
 
+  it("excludes buyer-only pending companies from the seller companies queue", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: "buyer-company",
+        name: "Pending Buyer Co",
+        phone: "+971500001111",
+        status: "PENDING_APPROVAL",
+        createdAt: new Date("2026-03-16T08:00:00.000Z"),
+        users: [
+          {
+            id: "cu-buyer",
+            role: "BUYER_BIDDER",
+            user: {
+              id: "u-buyer",
+              email: "buyer@example.com",
+              status: "PENDING_APPROVAL",
+            },
+          },
+        ],
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/companies/pending")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      companies: [],
+    });
+  });
+
   it("returns empty array when no pending companies", async () => {
     mockPrisma.company.findMany.mockResolvedValue([]);
 
@@ -282,6 +317,71 @@ describe("GET /api/admin/companies", () => {
       id: "c1",
       name: "Pending Fleet",
       status: "PENDING_APPROVAL",
+    });
+  });
+});
+
+describe("GET /api/admin/companies/:id", () => {
+  it("returns full company detail for seller companies", async () => {
+    mockPrisma.company.findUnique.mockResolvedValue({
+      id: "c1",
+      name: "Fleet Corp",
+      country: "United Arab Emirates",
+      phone: "+971501112233",
+      registrationNumber: "SELL-1001",
+      status: "PENDING_APPROVAL",
+      createdAt: new Date("2026-03-16T08:00:00.000Z"),
+      users: [
+        {
+          id: "cu1",
+          role: "SELLER_MANAGER",
+          user: {
+            id: "u1",
+            email: "seller@example.com",
+            role: "SELLER",
+            status: "PENDING_APPROVAL",
+            kycVerified: false,
+            emirate: "Dubai",
+            createdAt: new Date("2026-03-16T08:00:00.000Z"),
+          },
+        },
+      ],
+    });
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "a1",
+        state: "DRAFT",
+        startsAt: new Date("2026-03-20T12:00:00.000Z"),
+        endsAt: new Date("2026-03-21T12:00:00.000Z"),
+        startingPrice: { toNumber: () => 250000 },
+        buyNowPrice: { toNumber: () => 290000 },
+        vehicle: {
+          id: "v1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+        },
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/companies/c1")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.company).toMatchObject({
+      id: "c1",
+      name: "Fleet Corp",
+      country: "United Arab Emirates",
+      registrationNumber: "SELL-1001",
+    });
+    expect(res.body.company.members).toHaveLength(1);
+    expect(res.body.company.recentVehicles[0]).toMatchObject({
+      vehicleId: "v1",
+      label: "BMW M4 2024",
+      status: "PENDING",
+      startingPriceAed: 250000,
+      buyNowPriceAed: 290000,
     });
   });
 });
@@ -436,6 +536,105 @@ describe("GET /api/admin/vehicles", () => {
   });
 });
 
+describe("GET /api/admin/vehicles/:id", () => {
+  it("returns detailed vehicle data with assignment info", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      brand: "BMW",
+      model: "M4",
+      year: 2024,
+      mileage: 46000,
+      vin: "VIN001",
+      marketPrice: { toNumber: () => 420000 },
+      fuelType: "Petrol",
+      transmission: "Automatic",
+      bodyType: "Convertible",
+      regionSpec: "USA",
+      condition: "Good",
+      serviceHistory: "Agency",
+      description: "Clean car",
+      engine: "3.0L",
+      driveType: "RWD",
+      exteriorColor: "Blue",
+      interiorColor: "Red",
+      airbags: "8",
+      damage: "Reported",
+      damageMap: { door_fr: "MINOR" },
+      images: [],
+      media: [
+        {
+          url: "https://example.com/car.jpg",
+          type: "PHOTO",
+          sortOrder: 0,
+        },
+      ],
+      auctions: [
+        {
+          id: "a1",
+          state: "SCHEDULED",
+          sellerCompanyId: "c1",
+          startsAt: new Date("2026-03-20T12:00:00.000Z"),
+          endsAt: new Date("2026-03-21T12:00:00.000Z"),
+          inspectionDropoffDate: new Date("2026-03-18T12:00:00.000Z"),
+          viewingEndsAt: new Date("2026-03-19T12:00:00.000Z"),
+          auctionStartsAt: new Date("2026-03-20T12:00:00.000Z"),
+          auctionEndsAt: new Date("2026-03-21T12:00:00.000Z"),
+          currentPrice: { toNumber: () => 250000 },
+          startingPrice: { toNumber: () => 250000 },
+          buyNowPrice: { toNumber: () => 290000 },
+          minIncrement: { toNumber: () => 500 },
+          transitions: [
+            {
+              trigger: "EVENT_ASSIGNED",
+              reason: JSON.stringify({
+                eventId: "event-1",
+              }),
+            },
+          ],
+        },
+      ],
+    });
+    mockPrisma.company.findUnique.mockResolvedValue({
+      id: "c1",
+      name: "Fleet Corp",
+      status: "ACTIVE",
+    });
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      id: "event-1",
+      startsAt: new Date("2026-03-20T12:00:00.000Z"),
+      state: "SCHEDULED",
+      transitions: [
+        {
+          reason: JSON.stringify({
+            title: "March Event",
+          }),
+        },
+      ],
+    });
+
+    const res = await request
+      .get("/api/admin/vehicles/v1")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vehicle).toMatchObject({
+      id: "v1",
+      label: "BMW M4 2024",
+      marketPriceAed: 420000,
+      status: "APPROVED",
+      photoUrls: ["https://example.com/car.jpg"],
+    });
+    expect(res.body.vehicle.company).toMatchObject({
+      id: "c1",
+      name: "Fleet Corp",
+    });
+    expect(res.body.vehicle.assignedEvent).toMatchObject({
+      id: "event-1",
+      title: "March Event",
+    });
+  });
+});
+
 describe("POST /api/admin/vehicles/:id/approve", () => {
   it("returns 200 when vehicle is approved", async () => {
     mockPrisma.vehicle.findUnique.mockResolvedValue({
@@ -564,6 +763,7 @@ describe("GET /api/admin/users/pending", () => {
             company: {
               id: "c1",
               name: "Buyer Co",
+              phone: "+971501234567",
               status: "ACTIVE",
             },
           },
@@ -578,6 +778,137 @@ describe("GET /api/admin/users/pending", () => {
     expect(res.status).toBe(200);
     expect(res.body.users).toHaveLength(1);
     expect(res.body.users[0].email).toBe("buyer@example.com");
+    expect(res.body.users[0].companyUsers[0].companyPhone).toBe("+971501234567");
+  });
+});
+
+describe("GET /api/admin/users/:id", () => {
+  it("returns detailed buyer data with linked company and wallet", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: "u-buyer",
+      email: "buyer@example.com",
+      role: "BUYER",
+      status: "PENDING_APPROVAL",
+      kycVerified: false,
+      emirate: "Dubai",
+      createdAt: new Date("2026-03-16T08:00:00.000Z"),
+      wallet: {
+        balance: { toNumber: () => 5000 },
+      },
+      companyUsers: [
+        {
+          id: "cu-buyer",
+          role: "BUYER_BIDDER",
+          company: {
+            id: "buyer-company",
+            name: "Pending Buyer Co",
+            country: "United Arab Emirates",
+            phone: "+971501234567",
+            registrationNumber: "BUY-1001",
+            status: "PENDING_APPROVAL",
+            createdAt: new Date("2026-03-16T08:00:00.000Z"),
+          },
+        },
+      ],
+    });
+
+    const res = await request
+      .get("/api/admin/users/u-buyer")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({
+      id: "u-buyer",
+      email: "buyer@example.com",
+      walletBalanceAed: 5000,
+      depositStatus: "PENDING",
+    });
+    expect(res.body.user.linkedCompanies[0]).toMatchObject({
+      id: "buyer-company",
+      name: "Pending Buyer Co",
+      phone: "+971501234567",
+    });
+  });
+});
+
+describe("POST /api/admin/users/:id/approve", () => {
+  it("returns 200 when buyer is approved and linked buyer companies are activated", async () => {
+    const tx = buildAdminTx();
+    tx.user.findUnique.mockResolvedValue({
+      id: "u1",
+      role: "BUYER",
+      status: "PENDING_APPROVAL",
+      companyUsers: [{ companyId: "c1" }],
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/users/u1/approve")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      userId: "u1",
+      status: "ACTIVE",
+    });
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: {
+        id: "u1",
+      },
+      data: {
+        status: "ACTIVE",
+      },
+    });
+    expect(tx.company.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["c1"],
+        },
+      },
+      data: {
+        status: "ACTIVE",
+      },
+    });
+  });
+});
+
+describe("POST /api/admin/users/:id/reject", () => {
+  it("returns 200 when buyer is rejected and linked buyer companies are rejected", async () => {
+    const tx = buildAdminTx();
+    tx.user.findUnique.mockResolvedValue({
+      id: "u1",
+      role: "BUYER",
+      companyUsers: [{ companyId: "c1" }],
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/users/u1/reject")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      userId: "u1",
+      status: "REJECTED",
+    });
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: {
+        id: "u1",
+      },
+      data: {
+        status: "REJECTED",
+      },
+    });
+    expect(tx.company.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["c1"],
+        },
+      },
+      data: {
+        status: "REJECTED",
+      },
+    });
   });
 });
 

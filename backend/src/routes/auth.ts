@@ -26,16 +26,25 @@ const registerSchema = z.object({
   password: z.string().min(8),
   role: z.enum(["SELLER", "BUYER"]),
   companyName: z.string().trim().min(1),
-  registrationNumber: z.string().trim().min(1),
+  registrationNumber: z.string().trim().optional(),
   country: z.string().trim().min(1),
   phoneNumber: z.string().trim().optional(),
+  city: z.string().trim().min(1).optional(),
   emirate: z.string().trim().min(1).optional(),
 }).superRefine((value, ctx) => {
-  if (value.role === "SELLER" && !value.phoneNumber) {
+  if (!value.phoneNumber) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["phoneNumber"],
       message: "Phone number is required.",
+    });
+  }
+
+  if (value.role === "BUYER" && !(value.city?.trim() || value.emirate?.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["city"],
+      message: "City is required.",
     });
   }
 });
@@ -330,6 +339,16 @@ async function sendAuthSuccess(
   });
 }
 
+async function buildRegistrationNumber(payload: RegisterBody, companyId: string): Promise<string> {
+  const provided = payload.registrationNumber?.trim();
+
+  if (provided) {
+    return provided;
+  }
+
+  return `AUTO-${payload.role.slice(0, 3)}-${companyId.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+}
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     "/login",
@@ -573,6 +592,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       const userStatus = "PENDING_APPROVAL";
       const companyStatus = "PENDING_APPROVAL";
       const companyUserRole = payload.role === "SELLER" ? "SELLER_MANAGER" : "BUYER_BIDDER";
+      const registrationNumber = await buildRegistrationNumber(payload, companyId);
+      const city = payload.city?.trim() || payload.emirate?.trim() || null;
 
       try {
         const [createdUser] = await prisma.$transaction([
@@ -583,7 +604,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               passwordHash,
               role: payload.role,
               status: userStatus,
-              emirate: payload.emirate?.trim() || null,
+              emirate: city,
             },
           }),
           prisma.company.create({
@@ -591,7 +612,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               id: companyId,
               name: payload.companyName,
               phone: payload.phoneNumber?.trim() || null,
-              registrationNumber: payload.registrationNumber.trim(),
+              registrationNumber,
               country: payload.country.trim(),
               status: companyStatus,
             },
@@ -621,9 +642,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               companyName: payload.companyName,
               country: payload.country.trim(),
               email: createdUser.email,
-              emirate: payload.emirate?.trim() || null,
+              emirate: city,
               phoneNumber: payload.phoneNumber?.trim() || null,
-              registrationNumber: payload.registrationNumber.trim(),
+              registrationNumber: payload.registrationNumber?.trim() || null,
               role: createdUser.role as "SELLER" | "BUYER",
               status: userStatus,
             },

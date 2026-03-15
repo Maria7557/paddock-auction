@@ -12,7 +12,6 @@ import {
   WhySection,
 } from "@/components/home/HomeSections";
 import LotsSection from "@/components/home/LotsSection";
-import GlobalFooter from "@/components/shell/GlobalFooter";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
 import type { AuctionWeekEvent, Lot, LotStatus } from "@/src/types/auction";
@@ -197,7 +196,6 @@ export default async function HomePage() {
       {categories.length > 0 ? <CatsSection categories={categories} locale={display.locale} /> : null}
       <SellSection locale={display.locale} />
       <TrustSection locale={display.locale} />
-      <GlobalFooter locale={display.locale} />
     </>
   );
 }

@@ -52,6 +52,10 @@ export type LotDetail = {
   regionSpec: string;
   airbags: string;
   damage: string;
+  damageItems: Array<{
+    label: string;
+    level: "MINOR" | "MAJOR";
+  }>;
   bodyStyle: string;
   engine: string;
   transmission: string;
@@ -90,11 +94,158 @@ export type LotDetail = {
   }>;
 };
 
+type SimilarLot = LotDetail["similar"][number];
+
 const NOT_SPECIFIED = "Not specified";
 const DEFAULT_DESCRIPTION = "Seller has not provided a description for this vehicle yet.";
+const SIMILAR_AUCTION_STATES = new Set(["SCHEDULED", "LIVE", "EXTENDED"]);
+const DAMAGE_ZONE_LABELS: Record<string, string> = {
+  front_bumper: "Front Bumper",
+  hood: "Hood",
+  fender_fl: "Front Left Fender",
+  fender_fr: "Front Right Fender",
+  door_fl: "Front Left Door",
+  door_fr: "Front Right Door",
+  roof: "Roof",
+  door_rl: "Rear Left Door",
+  door_rr: "Rear Right Door",
+  trunk_area: "Trunk Area",
+  quarter_rl: "Rear Left Quarter Panel",
+  quarter_rr: "Rear Right Quarter Panel",
+  trunk: "Trunk Lid",
+  rear_bumper: "Rear Bumper",
+  underbody: "Underbody",
+};
+const DAMAGE_ZONE_ORDER = Object.keys(DAMAGE_ZONE_LABELS);
+
+function isDamageLevel(value: unknown): value is "MINOR" | "MAJOR" {
+  return value === "MINOR" || value === "MAJOR";
+}
+
+function getDamageItems(value: unknown): LotDetail["damageItems"] {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const damageMap = value as Record<string, unknown>;
+  const entries = Object.entries(damageMap).reduce<Array<[string, "MINOR" | "MAJOR"]>>((acc, [zoneId, level]) => {
+    if (isDamageLevel(level)) {
+      acc.push([zoneId, level]);
+    }
+
+    return acc;
+  }, []);
+
+  return entries
+    .sort(([left], [right]) => {
+      const leftIndex = DAMAGE_ZONE_ORDER.indexOf(left);
+      const rightIndex = DAMAGE_ZONE_ORDER.indexOf(right);
+
+      if (leftIndex === -1 && rightIndex === -1) {
+        return left.localeCompare(right);
+      }
+
+      if (leftIndex === -1) {
+        return 1;
+      }
+
+      if (rightIndex === -1) {
+        return -1;
+      }
+
+      return leftIndex - rightIndex;
+    })
+    .map(([zoneId, level]) => ({
+      label: DAMAGE_ZONE_LABELS[zoneId] ?? zoneId,
+      level,
+    }));
+}
 
 function isMeaningfulValue(value: string): boolean {
   return !["", "—", NOT_SPECIFIED].includes(value.trim());
+}
+
+function buildSimilarTitle(vehicle: Record<string, unknown>): string {
+  return `${String(vehicle.brand ?? vehicle.make ?? "").trim()} ${String(vehicle.model ?? "").trim()} ${String(vehicle.year ?? "").trim()}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildSimilarImage(vehicle: Record<string, unknown>): string {
+  if (Array.isArray(vehicle.images)) {
+    const firstImage = vehicle.images.find(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+
+    if (firstImage) {
+      return firstImage;
+    }
+  }
+
+  return "/vehicle-photo.svg";
+}
+
+function mapSimilarAuction(source: Record<string, unknown>): SimilarLot | null {
+  const vehicle = (source.vehicle as Record<string, unknown> | undefined) ?? {};
+  const id = String(source.id ?? "").trim();
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    auctionId: id,
+    title: buildSimilarTitle(vehicle) || `Lot ${id.slice(0, 8).toUpperCase()}`,
+    year: Number(vehicle.year ?? 0),
+    mileageKm: Number(vehicle.mileage ?? vehicle.mileageKm ?? 0),
+    currentBidAed: Number(source.currentPrice ?? source.currentBidAed ?? source.startingPrice ?? 0),
+    state: String(source.state ?? "SCHEDULED"),
+    imageUrl: buildSimilarImage(vehicle),
+  };
+}
+
+async function getFallbackSimilarLots(currentLot: LotDetail): Promise<SimilarLot[]> {
+  try {
+    const payload = await api.auctions.list<{
+      auctions?: Array<Record<string, unknown>>;
+      lots?: Array<Record<string, unknown>>;
+    }>(undefined, {
+      cache: "no-store",
+    });
+    const rawAuctions = payload.auctions ?? payload.lots ?? [];
+
+    return rawAuctions
+      .map(mapSimilarAuction)
+      .filter((item): item is SimilarLot => item !== null)
+      .filter((item) => item.id !== currentLot.auctionId && SIMILAR_AUCTION_STATES.has(item.state))
+      .map((item) => {
+        const sameMake = currentLot.make.trim() && item.title.toLowerCase().includes(currentLot.make.toLowerCase());
+        const sameModel = currentLot.model.trim() && item.title.toLowerCase().includes(currentLot.model.toLowerCase());
+        const sameState = item.state === currentLot.state;
+        const score =
+          (sameMake ? 4 : 0) +
+          (sameModel ? 3 : 0) +
+          (sameState ? 1 : 0) +
+          (item.year === currentLot.year ? 1 : 0);
+
+        return {
+          ...item,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return right.year - left.year;
+      })
+      .slice(0, 3)
+      .map(({ score: _score, ...item }) => item);
+  } catch {
+    return [];
+  }
 }
 
 async function getLot(auctionId: string): Promise<LotDetail | null> {
@@ -112,6 +263,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       : Array.isArray(data.bids)
         ? (data.bids as Array<Record<string, unknown>>)
         : [];
+    const damageItems = getDamageItems(vehicle.damageMap);
 
     return {
       id: String(auction.id ?? auctionId),
@@ -133,6 +285,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       regionSpec: String(vehicle.regionSpec ?? NOT_SPECIFIED),
       airbags: String(vehicle.airbags ?? NOT_SPECIFIED),
       damage: String(vehicle.damage ?? NOT_SPECIFIED),
+      damageItems,
       bodyStyle: String(vehicle.bodyType ?? vehicle.bodyStyle ?? NOT_SPECIFIED),
       engine: String(vehicle.engine ?? "—"),
       transmission: String(vehicle.transmission ?? NOT_SPECIFIED),
@@ -225,14 +378,13 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
   const isScheduled = lot.state === "SCHEDULED";
   const isActive = isLive || isScheduled;
   const summaryFacts = [
-    lot.year > 0 ? formatInteger(lot.year, display.locale) : null,
+    lot.year > 0 ? String(lot.year) : null,
     lot.mileageKm > 0 ? `${formatInteger(lot.mileageKm, display.locale)} ${isRu ? "км" : "km"}` : null,
-    isMeaningfulValue(lot.condition) ? lot.condition : null,
-    isMeaningfulValue(lot.regionSpec) ? lot.regionSpec : null,
-    isMeaningfulValue(lot.airbags) ? `${lot.airbags} ${isRu ? "подушек" : "airbags"}` : null,
   ].filter((fact): fact is string => fact !== null);
-  const specPills = [lot.regionSpec, lot.transmission, lot.bodyStyle].filter(isMeaningfulValue);
-  const hasDamage = isMeaningfulValue(lot.damage) && lot.damage !== "None";
+  const specPills = [lot.fuelType].filter(isMeaningfulValue);
+  const hasDamage = lot.damageItems.length > 0 || (isMeaningfulValue(lot.damage) && lot.damage !== "None");
+  const damageSummary = lot.damageItems.length > 0 ? (isRu ? "Повреждения отмечены" : "Damage reported") : lot.damage;
+  const similarLots = lot.similar.length > 0 ? lot.similar : await getFallbackSimilarLots(lot);
 
   return (
     <MarketShell mainClassName={styles.mainTight}>
@@ -259,7 +411,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
                 {hasDamage ? (
                   <span>
                     {summaryFacts.length > 0 ? <span className={styles.dot}>·</span> : null}
-                    <span className={styles.damage}>{lot.damage}</span>
+                    <span className={styles.damage}>{damageSummary}</span>
                   </span>
                 ) : null}
               </div>
@@ -296,7 +448,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        {lot.similar.length > 0 ? <SimilarVehicles lots={lot.similar} display={display} /> : null}
+        {similarLots.length > 0 ? <SimilarVehicles lots={similarLots} display={display} /> : null}
       </div>
 
       {isActive ? (

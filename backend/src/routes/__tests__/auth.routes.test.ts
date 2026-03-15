@@ -286,8 +286,7 @@ describe("POST /api/auth/register", () => {
     password: "securepass99",
     role: "SELLER",
     companyName: "Fleet Corp LLC",
-    registrationNumber: "AE-12345",
-    country: "UAE",
+    country: "United Arab Emirates",
     phoneNumber: "+971501234567",
   } as const;
 
@@ -296,8 +295,9 @@ describe("POST /api/auth/register", () => {
     password: "securepass99",
     role: "BUYER",
     companyName: "Buyer Co",
-    registrationNumber: "AE-99999",
-    country: "UAE",
+    country: "United Arab Emirates",
+    city: "Dubai",
+    phoneNumber: "+971501234567",
   } as const;
 
   it("returns 201 for valid seller registration", async () => {
@@ -329,7 +329,7 @@ describe("POST /api/auth/register", () => {
         country: validSellerBody.country,
         email: validSellerBody.email,
         phoneNumber: validSellerBody.phoneNumber,
-        registrationNumber: validSellerBody.registrationNumber,
+        registrationNumber: null,
         role: "SELLER",
         status: "PENDING_APPROVAL",
       }),
@@ -364,7 +364,9 @@ describe("POST /api/auth/register", () => {
         companyName: validBuyerBody.companyName,
         country: validBuyerBody.country,
         email: validBuyerBody.email,
-        registrationNumber: validBuyerBody.registrationNumber,
+        emirate: validBuyerBody.city,
+        phoneNumber: validBuyerBody.phoneNumber,
+        registrationNumber: null,
         role: "BUYER",
         status: "PENDING_APPROVAL",
       }),
@@ -433,6 +435,22 @@ describe("POST /api/auth/register", () => {
       expect.arrayContaining([
         expect.objectContaining({
           path: "phoneNumber",
+        }),
+      ]),
+    );
+  });
+
+  it("returns 400 when buyer city is missing", async () => {
+    const { city: _city, ...payload } = validBuyerBody;
+
+    const res = await request.post("/api/auth/register").send(payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_REQUEST");
+    expect(res.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "city",
         }),
       ]),
     );

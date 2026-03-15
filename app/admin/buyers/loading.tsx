@@ -22,9 +22,9 @@ export default async function LoadingBuyersPage() {
                 <th>{t.buyers.table.name}</th>
                 <th>{t.buyers.table.phone}</th>
                 <th>{t.buyers.table.email}</th>
-                <th>{t.buyers.table.company}</th>
+                <th>{t.buyers.table.accountStatus}</th>
                 <th>{t.buyers.table.depositStatus}</th>
-                <th>{t.buyers.table.amount}</th>
+                <th>{t.buyers.table.registrationDate}</th>
                 <th>{t.buyers.table.actions}</th>
               </tr>
             </thead>

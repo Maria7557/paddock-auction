@@ -78,7 +78,7 @@ const depositUserIdParamsSchema = z.object({
 });
 
 const userStatusQuerySchema = z.object({
-  status: z.enum(["PENDING_APPROVAL", "BLOCKED", "ACTIVE", "PENDING_KYC"]).optional(),
+  status: z.enum(["PENDING_APPROVAL", "BLOCKED", "ACTIVE", "REJECTED", "PENDING_KYC"]).optional(),
 });
 
 const reasonSchema = z.object({
@@ -522,6 +522,25 @@ function mapAdminCompany(company: {
   };
 }
 
+function isSellerCompany(company: {
+  users: Array<{
+    role: string;
+  }>;
+}): boolean {
+  return company.users.some((membership) => membership.role === "SELLER_MANAGER");
+}
+
+function formatAdminStatus(value: string | null | undefined): string {
+  if (!value) {
+    return "Unknown";
+  }
+
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 async function assignVehicleToEvent(input: {
   actorId: string;
   vehicleId: string;
@@ -777,6 +796,195 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       await reply.code(200).send({
         vehicles: filteredVehicles,
+      });
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    "/admin/vehicles/:id",
+    async function getAdminVehicleDetailHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const vehicle = await prisma.vehicle.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        include: {
+          media: {
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              url: true,
+              type: true,
+              sortOrder: true,
+            },
+          },
+          auctions: {
+            where: {
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 1,
+            select: {
+              id: true,
+              state: true,
+              sellerCompanyId: true,
+              startsAt: true,
+              endsAt: true,
+              inspectionDropoffDate: true,
+              viewingEndsAt: true,
+              auctionStartsAt: true,
+              auctionEndsAt: true,
+              currentPrice: true,
+              startingPrice: true,
+              buyNowPrice: true,
+              minIncrement: true,
+              transitions: {
+                where: {
+                  trigger: {
+                    in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED"],
+                  },
+                },
+                orderBy: {
+                  createdAt: "desc",
+                },
+                take: 1,
+                select: {
+                  trigger: true,
+                  reason: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!vehicle) {
+        await reply.code(404).send({
+          error: "VEHICLE_NOT_FOUND",
+        });
+        return;
+      }
+
+      const latestAuction = vehicle.auctions[0] ?? null;
+      const assignedEventId = await resolveAssignedEventId(latestAuction?.transitions[0] ?? null);
+      const sellerCompanyId = latestAuction?.sellerCompanyId ?? null;
+      const [company, assignedEvent] = await Promise.all([
+        sellerCompanyId
+          ? prisma.company.findUnique({
+              where: {
+                id: sellerCompanyId,
+              },
+              select: {
+                id: true,
+                name: true,
+                status: true,
+              },
+            })
+          : null,
+        assignedEventId
+          ? prisma.auction.findUnique({
+              where: {
+                id: assignedEventId,
+              },
+              select: {
+                id: true,
+                startsAt: true,
+                state: true,
+                transitions: {
+                  where: {
+                    trigger: "EVENT_META",
+                  },
+                  orderBy: {
+                    createdAt: "desc",
+                  },
+                  take: 1,
+                  select: {
+                    reason: true,
+                  },
+                },
+              },
+            })
+          : null,
+      ]);
+      const eventMeta = await parseEventMeta(assignedEvent?.transitions[0]?.reason ?? null);
+      const photoUrls = vehicle.media
+        .filter((item) => item.type === "PHOTO")
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((item) => item.url);
+
+      await reply.code(200).send({
+        vehicle: {
+          id: vehicle.id,
+          label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
+          brand: vehicle.brand,
+          model: vehicle.model,
+          year: vehicle.year,
+          mileage: vehicle.mileage,
+          vin: vehicle.vin,
+          marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
+          status: await resolveVehicleStatus(latestAuction?.state ?? null),
+          photoUrls: photoUrls.length > 0 ? photoUrls : vehicle.images,
+          mulkiyaFrontUrl: vehicle.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
+          mulkiyaBackUrl: vehicle.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
+          fuelType: vehicle.fuelType,
+          transmission: vehicle.transmission,
+          bodyType: vehicle.bodyType,
+          regionSpec: vehicle.regionSpec,
+          condition: vehicle.condition,
+          serviceHistory: vehicle.serviceHistory,
+          description: vehicle.description,
+          engine: vehicle.engine,
+          driveType: vehicle.driveType,
+          exteriorColor: vehicle.exteriorColor,
+          interiorColor: vehicle.interiorColor,
+          airbags: vehicle.airbags,
+          damage: vehicle.damage,
+          damageMap: vehicle.damageMap,
+          company: company
+            ? {
+                id: company.id,
+                name: company.name,
+                status: company.status,
+              }
+            : null,
+          latestAuction: latestAuction
+            ? {
+                id: latestAuction.id,
+                state: latestAuction.state,
+                startsAt: latestAuction.startsAt.toISOString(),
+                endsAt: latestAuction.endsAt.toISOString(),
+                inspectionDropoffDate: latestAuction.inspectionDropoffDate?.toISOString() ?? null,
+                viewingEndsAt: latestAuction.viewingEndsAt?.toISOString() ?? null,
+                auctionStartsAt: latestAuction.auctionStartsAt?.toISOString() ?? null,
+                auctionEndsAt: latestAuction.auctionEndsAt?.toISOString() ?? null,
+                currentPriceAed: await toNumberValue(latestAuction.currentPrice),
+                startingPriceAed: await toNumberValue(latestAuction.startingPrice),
+                buyNowPriceAed:
+                  latestAuction.buyNowPrice === null ? null : await toNumberValue(latestAuction.buyNowPrice),
+                minIncrementAed: await toNumberValue(latestAuction.minIncrement),
+              }
+            : null,
+          assignedEvent: assignedEvent
+            ? {
+                id: assignedEvent.id,
+                title: eventMeta.title?.trim() || `Auction Event ${assignedEvent.id.slice(0, 8).toUpperCase()}`,
+                status: assignedEvent.state,
+                startsAt: assignedEvent.startsAt.toISOString(),
+              }
+            : null,
+        },
       });
     },
   );
@@ -1119,9 +1327,119 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     await reply.code(200).send({
-      companies: companies.map(mapAdminCompany),
+      companies: companies.filter(isSellerCompany).map(mapAdminCompany),
     });
   });
+
+  fastify.get<{ Params: { id: string } }>(
+    "/admin/companies/:id",
+    async function getCompanyDetailHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const company = await prisma.company.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        include: {
+          users: {
+            select: {
+              id: true,
+              role: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  role: true,
+                  status: true,
+                  kycVerified: true,
+                  emirate: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!company || !isSellerCompany(company)) {
+        await reply.code(404).send({
+          error: "COMPANY_NOT_FOUND",
+        });
+        return;
+      }
+
+      const recentAuctions = await prisma.auction.findMany({
+        where: {
+          sellerCompanyId: company.id,
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 8,
+        select: {
+          id: true,
+          state: true,
+          startsAt: true,
+          endsAt: true,
+          startingPrice: true,
+          buyNowPrice: true,
+          vehicle: {
+            select: {
+              id: true,
+              brand: true,
+              model: true,
+              year: true,
+            },
+          },
+        },
+      });
+
+      await reply.code(200).send({
+        company: {
+          id: company.id,
+          name: company.name,
+          country: company.country,
+          phone: company.phone?.trim() || null,
+          registrationNumber: company.registrationNumber,
+          status: company.status,
+          createdAt: company.createdAt.toISOString(),
+          members: company.users.map((membership) => ({
+            id: membership.user.id,
+            email: membership.user.email,
+            role: membership.role,
+            accountRole: membership.user.role,
+            status: membership.user.status,
+            city: membership.user.emirate,
+            createdAt: membership.user.createdAt.toISOString(),
+            kycVerified: membership.user.kycVerified,
+          })),
+          recentVehicles: await Promise.all(
+            recentAuctions.map(async (auction) => ({
+              auctionId: auction.id,
+              vehicleId: auction.vehicle.id,
+              label: `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}`,
+              status: await resolveVehicleStatus(auction.state),
+              startsAt: auction.startsAt.toISOString(),
+              endsAt: auction.endsAt.toISOString(),
+              startingPriceAed: await toNumberValue(auction.startingPrice),
+              buyNowPriceAed: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
+            })),
+          ),
+        },
+      });
+    },
+  );
 
   fastify.get("/admin/companies/pending", async function getPendingCompaniesHandler(
     request: FastifyRequest,
@@ -1154,7 +1472,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     await reply.code(200).send({
-      companies: companies.map(mapAdminCompany),
+      companies: companies.filter(isSellerCompany).map(mapAdminCompany),
     });
   });
 
@@ -1357,7 +1675,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       let whereClause:
         | {
             role?: "BUYER";
-            status?: "PENDING_APPROVAL" | "BLOCKED" | "ACTIVE" | { in: Array<"PENDING_APPROVAL" | "BLOCKED"> };
+            status?:
+              | "PENDING_APPROVAL"
+              | "BLOCKED"
+              | "ACTIVE"
+              | "REJECTED"
+              | { in: Array<"PENDING_APPROVAL" | "BLOCKED" | "REJECTED"> };
             kycVerified?: boolean;
           }
         | undefined;
@@ -1375,7 +1698,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       } else {
         whereClause = {
           status: {
-            in: ["PENDING_APPROVAL", "BLOCKED"],
+            in: ["PENDING_APPROVAL", "BLOCKED", "REJECTED"],
           },
         };
       }
@@ -1396,6 +1719,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
                 select: {
                   id: true,
                   name: true,
+                  phone: true,
                   status: true,
                 },
               },
@@ -1410,7 +1734,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         users: await Promise.all(
           users.map(async (user) => {
-            const walletBalance = await toNumberValue(user.wallet?.balance ?? 0);
+            const walletBalance = user.wallet?.balance == null ? 0 : await toNumberValue(user.wallet.balance);
 
             return {
               id: user.id,
@@ -1426,11 +1750,313 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
                 role: membership.role,
                 companyId: membership.company.id,
                 companyName: membership.company.name,
+                companyPhone: membership.company.phone ?? null,
                 companyStatus: membership.company.status,
               })),
             };
           }),
         ),
+      });
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    "/admin/users/:id",
+    async function getUserDetailHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = userIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        include: {
+          wallet: {
+            select: {
+              balance: true,
+            },
+          },
+          companyUsers: {
+            select: {
+              id: true,
+              role: true,
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  country: true,
+                  phone: true,
+                  registrationNumber: true,
+                  status: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        await reply.code(404).send({
+          error: "USER_NOT_FOUND",
+        });
+        return;
+      }
+
+      const walletBalanceAed = user.wallet?.balance == null ? 0 : await toNumberValue(user.wallet.balance);
+      const depositStatus =
+        user.status === "REJECTED"
+          ? "REJECTED"
+          : user.kycVerified
+            ? "APPROVED"
+            : walletBalanceAed > 0
+              ? "PENDING"
+              : "NONE";
+
+      await reply.code(200).send({
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          kycVerified: user.kycVerified,
+          city: user.emirate,
+          createdAt: user.createdAt.toISOString(),
+          walletBalanceAed,
+          depositStatus,
+          linkedCompanies: user.companyUsers.map((membership) => ({
+            id: membership.company.id,
+            name: membership.company.name,
+            country: membership.company.country,
+            phone: membership.company.phone?.trim() || null,
+            registrationNumber: membership.company.registrationNumber,
+            status: membership.company.status,
+            createdAt: membership.company.createdAt.toISOString(),
+            membershipRole: membership.role,
+          })),
+        },
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/users/:id/approve",
+    async function approveUserHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = userIdParamsSchema.safeParse(request.params);
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const { id } = parsedParams.data;
+      const updated = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({
+          where: {
+            id,
+          },
+          select: {
+            id: true,
+            role: true,
+            status: true,
+            companyUsers: {
+              where: {
+                role: "BUYER_BIDDER",
+              },
+              select: {
+                companyId: true,
+              },
+            },
+          },
+        });
+
+        if (!user) {
+          return false;
+        }
+
+        if (user.role !== "BUYER") {
+          return "NOT_A_BUYER" as const;
+        }
+
+        await tx.user.update({
+          where: {
+            id,
+          },
+          data: {
+            status: "ACTIVE",
+          },
+        });
+
+        const companyIds = user.companyUsers.map((membership) => membership.companyId);
+
+        if (companyIds.length > 0) {
+          await tx.company.updateMany({
+            where: {
+              id: {
+                in: companyIds,
+              },
+            },
+            data: {
+              status: "ACTIVE",
+            },
+          });
+        }
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "BUYER_APPROVED",
+          entityType: "User",
+          entityId: id,
+          payload: {
+            userId: id,
+            status: "ACTIVE",
+            companyIds,
+          },
+        });
+
+        return true;
+      });
+
+      if (!updated) {
+        await reply.code(404).send({
+          error: "USER_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (updated === "NOT_A_BUYER") {
+        await reply.code(400).send({
+          error: "NOT_A_BUYER",
+        });
+        return;
+      }
+
+      await reply.code(200).send({
+        userId: id,
+        status: "ACTIVE",
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/users/:id/reject",
+    async function rejectUserHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = userIdParamsSchema.safeParse(request.params);
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const { id } = parsedParams.data;
+      const updated = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({
+          where: {
+            id,
+          },
+          select: {
+            id: true,
+            role: true,
+            companyUsers: {
+              where: {
+                role: "BUYER_BIDDER",
+              },
+              select: {
+                companyId: true,
+              },
+            },
+          },
+        });
+
+        if (!user) {
+          return false;
+        }
+
+        if (user.role !== "BUYER") {
+          return "NOT_A_BUYER" as const;
+        }
+
+        await tx.user.update({
+          where: {
+            id,
+          },
+          data: {
+            status: "REJECTED",
+          },
+        });
+
+        const companyIds = user.companyUsers.map((membership) => membership.companyId);
+
+        if (companyIds.length > 0) {
+          await tx.company.updateMany({
+            where: {
+              id: {
+                in: companyIds,
+              },
+            },
+            data: {
+              status: "REJECTED",
+            },
+          });
+        }
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "BUYER_REJECTED",
+          entityType: "User",
+          entityId: id,
+          payload: {
+            userId: id,
+            status: "REJECTED",
+            companyIds,
+          },
+        });
+
+        return true;
+      });
+
+      if (!updated) {
+        await reply.code(404).send({
+          error: "USER_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (updated === "NOT_A_BUYER") {
+        await reply.code(400).send({
+          error: "NOT_A_BUYER",
+        });
+        return;
+      }
+
+      await reply.code(200).send({
+        userId: id,
+        status: "REJECTED",
       });
     },
   );

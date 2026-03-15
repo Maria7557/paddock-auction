@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
+import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
 import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
@@ -30,6 +31,7 @@ export function CompaniesTable({ companies, locale }: CompaniesTableProps) {
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<{ id: string; label: string } | null>(null);
 
   const filtered = useMemo(() => {
     if (tab === "all") {
@@ -123,8 +125,16 @@ export function CompaniesTable({ companies, locale }: CompaniesTableProps) {
                     })}
                   </td>
                   <td>
-                    {company.status === "PENDING" ? (
-                      <div className={styles.actions}>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setSelectedCompany({ id: company.id, label: company.name })}
+                      >
+                        {t.companies.actions.view}
+                      </button>
+                      {company.status === "PENDING" ? (
+                        <>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
@@ -141,10 +151,11 @@ export function CompaniesTable({ companies, locale }: CompaniesTableProps) {
                         >
                           {t.companies.actions.reject}
                         </button>
-                      </div>
-                    ) : (
-                      <span className={styles.metaText}>{t.companies.actions.noPendingAction}</span>
-                    )}
+                        </>
+                      ) : (
+                        <span className={styles.metaText}>{t.companies.actions.noPendingAction}</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -159,6 +170,17 @@ export function CompaniesTable({ companies, locale }: CompaniesTableProps) {
           </table>
         </div>
       </section>
+      {selectedCompany ? (
+        <AdminDetailModal
+          entity={{
+            kind: "company",
+            id: selectedCompany.id,
+            label: selectedCompany.label,
+          }}
+          locale={locale}
+          onClose={() => setSelectedCompany(null)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { LucideProps } from 'lucide-react';
 import {
   Building2, Calendar, Eye, Shield, Check, X,
-  Users, Car, MapPin, Tag, FileText, Zap, ArrowRight, Percent, Clock,
+  Users, Car, MapPin, Tag, FileText, Zap, ArrowRight, Percent, Clock, Heart,
 } from 'lucide-react';
 
 export const IconBuilding  = (p: LucideProps) => <Building2  {...p} />;
@@ -19,3 +19,4 @@ export const IconZap       = (p: LucideProps) => <Zap        {...p} />;
 export const IconArrowRight= (p: LucideProps) => <ArrowRight {...p} />;
 export const IconPercent   = (p: LucideProps) => <Percent    {...p} />;
 export const IconClock     = (p: LucideProps) => <Clock      {...p} />;
+export const IconHeart     = (p: LucideProps) => <Heart      {...p} />;

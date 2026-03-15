@@ -1,0 +1,55 @@
+.termsRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.termsCheckbox {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+.termsLink {
+  display: inline;
+  border: 0;
+  background: transparent;
+  color: var(--green-600);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 200;
+}
+
+.modalCard {
+  width: min(560px, 100%);
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-lift);
+  padding: 24px;
+}
+
+.modalCard h2 {
+  margin: 0 0 12px;
+}
+
+.modalCard p {
+  margin: 0 0 12px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}

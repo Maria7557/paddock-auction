@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 
+import GlobalFooter from "@/components/shell/GlobalFooter";
 import MarketHeader from "@/components/shell/MarketHeader";
 import { DEFAULT_LOCALE, isSupportedLocale } from "@/src/i18n/routing";
 import "./globals.css";
@@ -41,6 +42,7 @@ export default async function RootLayout({
       <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} antialiased`}>
         <MarketHeader />
         {children}
+        <GlobalFooter locale={locale} />
       </body>
     </html>
   );

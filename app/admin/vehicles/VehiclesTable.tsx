@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
+import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
 import { api } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
@@ -55,6 +56,7 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
   const [priceDraftById, setPriceDraftById] = useState<Record<string, string>>({});
   const [eventDraftById, setEventDraftById] = useState<Record<string, string>>({});
   const [eventOptions, setEventOptions] = useState<EventOption[]>(events);
+  const [selectedVehicle, setSelectedVehicle] = useState<{ id: string; label: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -298,8 +300,16 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                     )}
                   </td>
                   <td>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setSelectedVehicle({ id: row.id, label: row.title })}
+                      >
+                        {t.vehicles.actions.view}
+                      </button>
                     {row.status === "PENDING" ? (
-                      <div className={styles.actions}>
+                      <>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
@@ -316,10 +326,11 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                         >
                           {t.vehicles.actions.reject}
                         </button>
-                      </div>
+                      </>
                     ) : (
                       <span className={styles.metaText}>{t.vehicles.actions.noPendingAction}</span>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -334,6 +345,17 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
           </table>
         </div>
       </section>
+      {selectedVehicle ? (
+        <AdminDetailModal
+          entity={{
+            kind: "vehicle",
+            id: selectedVehicle.id,
+            label: selectedVehicle.label,
+          }}
+          locale={locale}
+          onClose={() => setSelectedVehicle(null)}
+        />
+      ) : null}
     </section>
   );
 }

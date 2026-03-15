@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 
-import { IconArrowRight, IconCalendar, IconClock, IconPercent } from "@/components/ui/icons";
+import { IconArrowRight, IconCalendar, IconClock, IconHeart } from "@/components/ui/icons";
+import { api } from "@/src/lib/api-client";
 import { toIntlLocale, withLocalePath } from "@/src/i18n/routing";
 import { AED_USD_PEG_RATE, formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 
@@ -52,6 +53,21 @@ function formatCountdown(ms: number) {
   };
 }
 
+function formatOpeningLabel(value: string, intlLocale: string): string {
+  const openingDate = new Date(value);
+  const dateLabel = openingDate.toLocaleDateString(intlLocale, {
+    day: "numeric",
+    month: "short",
+  });
+  const timeLabel = openingDate.toLocaleTimeString(intlLocale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  return `${dateLabel} ${timeLabel}`;
+}
+
 function LiveCountdown({ endsAt }: { endsAt: string }) {
   const [cd, setCd] = useState(() => formatCountdown(new Date(endsAt).getTime() - Date.now()));
 
@@ -90,86 +106,131 @@ export function LotCard({
   const isRu = display.locale === "ru";
   const intlLocale = toIntlLocale(display.locale);
   const saving = marketPrice ? savingPct(marketPrice, currentBid) : 0;
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [wishlistBusy, setWishlistBusy] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setViewerRole(window.localStorage.getItem("fleetbid_role"));
+  }, []);
+
+  async function toggleWishlist(event: MouseEvent<HTMLButtonElement>): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (viewerRole !== "BUYER" || wishlistBusy) {
+      return;
+    }
+
+    const nextSaved = !saved;
+    setSaved(nextSaved);
+    setWishlistBusy(true);
+
+    try {
+      if (nextSaved) {
+        await api.buyer.wishlist.add(lotId);
+      } else {
+        await api.buyer.wishlist.remove(lotId);
+      }
+    } catch {
+      setSaved(!nextSaved);
+    } finally {
+      setWishlistBusy(false);
+    }
+  }
 
   return (
-    <Link href={withLocalePath(`/auctions/${lotId}`, display.locale)} className={styles.card}>
-      <div className={styles.imgWrap}>
-        <Image
-          src={imageUrl || "/vehicle-photo.svg"}
-          alt={title}
-          fill
-          sizes="(max-width: 768px) 100vw, 400px"
-          style={{ objectFit: "cover", transition: "transform 0.4s" }}
-        />
-        <div className={styles.pillTl}>
-          {isLive ? (
-            <span className="pill pill-live">
-              <span className="live-dot" />
-              LIVE
-            </span>
-          ) : (
-            <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
-          )}
-        </div>
-      </div>
+    <article className={styles.card}>
+      {viewerRole === "BUYER" ? (
+        <button
+          type="button"
+          className={`${styles.wishlistBtn} ${saved ? styles.wishlistActive : ""}`}
+          onClick={(event) => void toggleWishlist(event)}
+          disabled={wishlistBusy}
+          aria-label={saved ? (isRu ? "Убрать из избранного" : "Remove from watchlist") : isRu ? "Добавить в избранное" : "Add to watchlist"}
+          aria-pressed={saved}
+        >
+          <IconHeart size={18} />
+        </button>
+      ) : null}
 
-      <div className={styles.body}>
-        <div className={styles.title}>{title}</div>
-        <div className={styles.meta}>
-          {formatInteger(year, display.locale)} · {formatInteger(mileage, display.locale)} {isRu ? "км" : "KM"}
-          {regionSpec ? ` · ${regionSpec}` : ""}
+      <Link href={withLocalePath(`/auctions/${lotId}`, display.locale)} className={styles.cardLink}>
+        <div className={styles.imgWrap}>
+          <Image
+            src={imageUrl || "/vehicle-photo.svg"}
+            alt={title}
+            fill
+            sizes="(max-width: 768px) 100vw, 400px"
+            style={{ objectFit: "cover", transition: "transform 0.4s" }}
+          />
+          <div className={styles.pillTl}>
+            {isLive ? (
+              <span className="pill pill-live">
+                <span className="live-dot" />
+                LIVE
+              </span>
+            ) : (
+              <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
+            )}
+          </div>
         </div>
 
-        <div className={styles.strip}>
-          <div className={`${styles.stripCell} ${styles.ours}`}>
-            <div className={styles.stripLbl}>{isRu ? "Цена FleetBid" : "FleetBid price"}</div>
-            <div className={styles.stripPrice}>{formatMoneyFromAed(currentBid, display)}</div>
-            {saving > 0 && (
-              <div className={styles.saving}>
-                <IconPercent size={11} color="var(--green-600)" />
-                {isRu ? `На ${saving}% дешевле` : `${saving}% cheaper`}
+        <div className={styles.body}>
+          <div className={styles.title}>{title}</div>
+          <div className={styles.meta}>
+            {year > 0 ? String(year) : "—"} · {formatInteger(mileage, display.locale)} {isRu ? "км" : "KM"}
+            {regionSpec ? ` · ${regionSpec}` : ""}
+          </div>
+
+          <div className={styles.strip}>
+            <div className={`${styles.stripCell} ${styles.ours}`}>
+              <div className={styles.stripLbl}>{isRu ? "Цена FleetBid" : "FleetBid price"}</div>
+              <div className={styles.stripPrice}>{formatMoneyFromAed(currentBid, display)}</div>
+              {saving > 0 && (
+                <div className={styles.saving}>{isRu ? `На ${saving}% дешевле` : `${saving}% cheaper`}</div>
+              )}
+            </div>
+            {marketPrice ? (
+              <>
+                <div className={styles.divider} />
+                <div className={styles.stripCell}>
+                  <div className={styles.stripLbl}>{isRu ? "Рыночная цена" : "Market price"}</div>
+                  <div className={styles.marketPrice}>{formatMoneyFromAed(marketPrice, display)}</div>
+                  <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div className={styles.timing}>
+            {isLive ? (
+              <div className={styles.timingLeft}>
+                <IconClock size={14} color="var(--ink-secondary)" />
+                {isRu ? "До конца " : "Ends in "}
+                <LiveCountdown endsAt={endTime} />
+              </div>
+            ) : (
+              <div className={styles.timingLeft}>
+                <IconCalendar size={14} color="var(--ink-secondary)" />
+                {isRu ? "Старт " : "Opens "}
+                {formatOpeningLabel(endTime, intlLocale)}
               </div>
             )}
           </div>
-          {marketPrice ? (
-            <>
-              <div className={styles.divider} />
-              <div className={styles.stripCell}>
-                <div className={styles.stripLbl}>{isRu ? "Рыночная цена" : "Market price"}</div>
-                <div className={styles.marketPrice}>{formatMoneyFromAed(marketPrice, display)}</div>
-                <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
-              </div>
-            </>
-          ) : null}
-        </div>
 
-        <div className={styles.timing}>
-          {isLive ? (
-            <div className={styles.timingLeft}>
-              <IconClock size={14} color="var(--ink-secondary)" />
-              {isRu ? "До конца " : "Ends in "}
-              <LiveCountdown endsAt={endTime} />
+          <div className={styles.buyBtn}>
+            <div>
+              <div className={styles.buyLabel}>{isLive ? (isRu ? "Купить сейчас от" : "Buy Now from") : isRu ? "Старт от" : "Starting from"}</div>
+              <div className={styles.buyPrice}>{formatMoneyFromAed(currentBid, display)}</div>
             </div>
-          ) : (
-            <div className={styles.timingLeft}>
-              <IconCalendar size={14} color="var(--ink-secondary)" />
-              {isRu ? "Старт " : "Opens "}
-              {new Date(endTime).toLocaleDateString(intlLocale, {
-                day: "numeric",
-                month: "short",
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className={styles.buyBtn}>
-          <div>
-            <div className={styles.buyLabel}>{isLive ? (isRu ? "Купить сейчас от" : "Buy Now from") : isRu ? "Старт от" : "Starting from"}</div>
-            <div className={styles.buyPrice}>{formatMoneyFromAed(currentBid, display)}</div>
+            <IconArrowRight size={18} color="#fff" />
           </div>
-          <IconArrowRight size={18} color="#fff" />
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 }

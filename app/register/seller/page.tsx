@@ -1,25 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
+import { AutocompleteField } from "@/components/register/AutocompleteField";
 import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
+import { type LocationCountry } from "@/src/lib/location_directory";
+import { LOCATION_COUNTRIES } from "@/src/lib/location_countries";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
-import styles from "./page.module.css";
+
+import styles from "../register-form.module.css";
 
 export default function SellerRegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [registrationNumber, setRegistrationNumber] = useState("");
-  const [country, setCountry] = useState("UAE");
+  const [country, setCountry] = useState("United Arab Emirates");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [countries] = useState<LocationCountry[]>(LOCATION_COUNTRIES);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  async function onSubmit(): Promise<void> {
+  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
     if (!companyName.trim()) {
       setFeedback("Company name is required.");
       return;
@@ -27,11 +34,6 @@ export default function SellerRegisterPage() {
 
     if (!email.trim()) {
       setFeedback("Email is required.");
-      return;
-    }
-
-    if (!registrationNumber.trim()) {
-      setFeedback("Registration number is required.");
       return;
     }
 
@@ -69,7 +71,6 @@ export default function SellerRegisterPage() {
         password: credentials.password,
         role: "SELLER",
         companyName,
-        registrationNumber,
         country,
         phoneNumber,
         termsAccepted,
@@ -96,7 +97,7 @@ export default function SellerRegisterPage() {
       }
 
       if (payload?.error === "CONFLICT") {
-        setFeedback("Email or company registration number is already registered.");
+        setFeedback("Email or company account is already registered.");
         return;
       }
 
@@ -118,7 +119,7 @@ export default function SellerRegisterPage() {
           <h1>Register Your Company</h1>
           <p>Create your seller account. You will enter the workspace immediately, while publishing stays locked until admin approval.</p>
 
-          <div className="auth-form">
+          <form className="auth-form" onSubmit={onSubmit}>
             <label>
               Company name
               <input
@@ -139,27 +140,20 @@ export default function SellerRegisterPage() {
                 required
               />
             </label>
-            <label>
-              Registration number
-              <input
-                type="text"
-                placeholder="AE-12345"
-                value={registrationNumber}
-                onChange={(event) => setRegistrationNumber(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              Country
-              <select value={country} onChange={(event) => setCountry(event.target.value)} required>
-                <option value="UAE">UAE</option>
-                <option value="Saudi Arabia">Saudi Arabia</option>
-                <option value="Qatar">Qatar</option>
-                <option value="Kuwait">Kuwait</option>
-                <option value="Bahrain">Bahrain</option>
-                <option value="Oman">Oman</option>
-              </select>
-            </label>
+            <AutocompleteField
+              label="Country"
+              listId="seller-country-options"
+              value={country}
+              onChange={setCountry}
+              placeholder="Start typing a country"
+              helperText="Start typing to search all countries."
+              required
+            />
+            <datalist id="seller-country-options">
+              {countries.map((option) => (
+                <option key={option.isoCode} value={option.name} />
+              ))}
+            </datalist>
             <label>
               Phone number
               <input
@@ -197,13 +191,18 @@ export default function SellerRegisterPage() {
                 checked={termsAccepted}
                 onChange={(event) => setTermsAccepted(event.target.checked)}
                 required
-              />{" "}
-              I agree to the Terms and Conditions
+              />
+              <span>
+                I agree to the{" "}
+                <button type="button" className={styles.termsLink} onClick={() => setIsTermsOpen(true)}>
+                  Terms and Conditions
+                </button>
+              </span>
             </label>
-            <button type="button" className="button button-primary" onClick={() => void onSubmit()} disabled={isSubmitting}>
+            <button type="submit" className="button button-primary" disabled={isSubmitting}>
               {isSubmitting ? "Submitting..." : "Submit registration"}
             </button>
-          </div>
+          </form>
 
           {feedback ? <p className="text-muted">{feedback}</p> : null}
 
@@ -212,6 +211,21 @@ export default function SellerRegisterPage() {
           </p>
         </article>
       </section>
+
+      {isTermsOpen ? (
+        <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="seller-terms-title">
+          <div className={styles.modalCard}>
+            <h2 id="seller-terms-title">Terms and Conditions</h2>
+            <p>FleetBid seller accounts must publish only legitimate fleet inventory, keep vehicle data accurate, and respect auction timelines.</p>
+            <p>By continuing, you confirm that your company is authorized to list the vehicles it uploads and that FleetBid may review and approve listings before they go live.</p>
+            <div className={styles.modalActions}>
+              <button type="button" className="button button-primary" onClick={() => setIsTermsOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MarketShell>
   );
 }

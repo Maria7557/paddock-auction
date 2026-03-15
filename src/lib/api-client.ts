@@ -436,6 +436,8 @@ export const api = {
     vehicles: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/admin/vehicles", query), options),
+      get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        getRequest<T>(`/api/admin/vehicles/${id}`, options),
       approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/vehicles/${id}/approve`, undefined, options),
       reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
@@ -464,6 +466,8 @@ export const api = {
     companies: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/admin/companies", query), options),
+      get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        getRequest<T>(`/api/admin/companies/${id}`, options),
       pending: async <T = unknown>(options?: RequestInit): Promise<T> =>
         getRequest<T>("/api/admin/companies/pending", options),
       approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
@@ -474,6 +478,12 @@ export const api = {
     users: {
       pending: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/admin/users/pending", query), options),
+      get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        getRequest<T>(`/api/admin/users/${id}`, options),
+      approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/users/${id}/approve`, undefined, options),
+      reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/users/${id}/reject`, undefined, options),
       approveKyc: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/users/${id}/approve-kyc`, undefined, options),
       block: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>

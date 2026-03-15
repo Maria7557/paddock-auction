@@ -1,12 +1,16 @@
 .card {
+  position: relative;
   background: var(--bg-card);
   border-radius: var(--radius-card);
   border: 1px solid var(--line-soft);
   overflow: hidden;
-  cursor: pointer;
   transition: box-shadow 0.22s, transform 0.22s;
   box-shadow: var(--shadow-card);
+}
+
+.cardLink {
   display: block;
+  cursor: pointer;
   text-decoration: none;
   color: inherit;
 }
@@ -27,6 +31,40 @@
 
 .pillTl { position: absolute; top: 10px; left: 10px; }
 .pillTr { position: absolute; top: 10px; right: 10px; }
+
+.wishlistBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,0.65);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.94);
+  color: var(--ink-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.wishlistBtn:hover {
+  transform: translateY(-1px);
+  color: var(--green-600);
+}
+
+.wishlistBtn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.wishlistActive {
+  background: var(--green-100);
+  color: var(--green-600);
+  border-color: rgba(17,106,67,0.22);
+}
 
 .body { padding: 16px 18px 18px; }
 

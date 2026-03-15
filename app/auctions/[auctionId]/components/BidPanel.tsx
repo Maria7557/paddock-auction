@@ -206,7 +206,9 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   }, [lot.auctionId, router, saved]);
 
   const nextBid = livePrice + lot.minStepAed;
-  const saving = savingPct(lot.buyNowAed || lot.currentBidAed * 1.3, livePrice);
+  const marketReference = lot.actualCashValue > 0 ? lot.actualCashValue : 0;
+  const buyNowSaving =
+    lot.buyNowAed > 0 && marketReference > lot.buyNowAed ? savingPct(marketReference, lot.buyNowAed) : 0;
   const countdownDone = cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
 
   const countdownDate = new Date(countdownIso);
@@ -307,7 +309,16 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             <div className={styles.priceCell}>
               <div className={styles.priceLabel}>Buy Now</div>
               <div className={styles.buyNowPrice}>{formatMoneyFromAed(lot.buyNowAed, display)}</div>
-              {saving > 0 && <div className={styles.savingBadge}>{isRu ? `−${saving}% ниже рынка` : `−${saving}% below market`}</div>}
+              {marketReference > 0 ? (
+                <div className={styles.marketReference}>
+                  {isRu ? "Рыночная цена" : "Market price"} {formatMoneyFromAed(marketReference, display)}
+                </div>
+              ) : null}
+              {buyNowSaving > 0 ? (
+                <div className={styles.savingBadge}>
+                  {isRu ? `${buyNowSaving}% ниже рынка` : `${buyNowSaving}% below market`}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

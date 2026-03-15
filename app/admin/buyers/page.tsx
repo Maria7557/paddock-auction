@@ -7,15 +7,17 @@ import { BuyersTable } from "./BuyersTable";
 export const dynamic = "force-dynamic";
 
 type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
   id: string;
   name: string;
   phone: string;
   email: string;
-  company: string;
+  accountStatus: AccountStatus;
   depositStatus: DepositStatus;
   amountAed: number;
+  createdAt: string;
 };
 
 function toNumber(value: { toString(): string } | null): number {
@@ -58,7 +60,7 @@ function inferName(email: string): string {
 
 async function getBuyerRows(): Promise<BuyerRow[]> {
   const requestOptions = await withServerCookies({ cache: "no-store" });
-  const statuses = ["ACTIVE", "PENDING_APPROVAL", "BLOCKED", "PENDING_KYC"] as const;
+  const statuses = ["ACTIVE", "PENDING_APPROVAL", "BLOCKED", "REJECTED", "PENDING_KYC"] as const;
   const responses = await Promise.all(
     statuses.map((status) =>
       api.admin.users.pending<{
@@ -69,8 +71,9 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
           status: string;
           kycVerified: boolean;
           walletBalance?: number | null;
+          createdAt: string;
           companyUsers?: Array<{
-            companyName?: string;
+            companyPhone?: string | null;
           }>;
         }>;
       }>({ status }, requestOptions).catch(() => ({ users: [] })),
@@ -85,8 +88,9 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
       status: string;
       kycVerified: boolean;
       walletBalance?: number | null;
+      createdAt: string;
       companyUsers?: Array<{
-        companyName?: string;
+        companyPhone?: string | null;
       }>;
     }
   >();
@@ -101,17 +105,19 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
     }
   }
 
-  return [...usersById.values()].map((user: { id: string; email: string; role: string; status: string; kycVerified: boolean; walletBalance?: number | null; companyUsers?: Array<{ companyName?: string }> }) => {
+  return [...usersById.values()].map((user: { id: string; email: string; role: string; status: string; kycVerified: boolean; walletBalance?: number | null; createdAt: string; companyUsers?: Array<{ companyPhone?: string | null }> }) => {
     const amountAed = toNumber(user.walletBalance ?? null);
+    const phone = user.companyUsers?.find((membership) => membership.companyPhone?.trim())?.companyPhone?.trim() || "-";
 
     return {
       id: user.id,
       name: inferName(user.email),
-      phone: "-",
+      phone,
       email: user.email,
-      company: user.companyUsers?.[0]?.companyName ?? "-",
+      accountStatus: user.status as AccountStatus,
       depositStatus: resolveDepositStatus(user.status, user.kycVerified, amountAed),
       amountAed,
+      createdAt: user.createdAt,
     };
   });
 }

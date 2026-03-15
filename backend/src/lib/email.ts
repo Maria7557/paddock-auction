@@ -41,7 +41,7 @@ type AdminRegistrationEmailInput = RegistrationEmailInput & {
   country: string;
   emirate?: string | null;
   phoneNumber?: string | null;
-  registrationNumber: string;
+  registrationNumber?: string | null;
 };
 
 type PasswordResetEmailInput = {
@@ -322,6 +322,7 @@ export async function sendAdminRegistrationEmail(
     ? `${input.country} / ${input.emirate.trim()}`
     : input.country;
   const phoneLine = input.phoneNumber?.trim() || "Not provided";
+  const registrationNumberLine = input.registrationNumber?.trim() || "Not provided";
 
   return sendBulkEmail(
     {
@@ -331,7 +332,7 @@ export async function sendAdminRegistrationEmail(
           <p><strong>Email:</strong> ${input.email}</p>
           <p><strong>Role:</strong> ${input.role}</p>
           <p><strong>Company:</strong> ${input.companyName}</p>
-          <p><strong>Registration number:</strong> ${input.registrationNumber}</p>
+          <p><strong>Registration number:</strong> ${registrationNumberLine}</p>
           <p><strong>Phone:</strong> ${phoneLine}</p>
           <p><strong>Location:</strong> ${locationLine}</p>
           <p><strong>Status:</strong> ${input.status}</p>
@@ -344,7 +345,7 @@ export async function sendAdminRegistrationEmail(
         `Email: ${input.email}`,
         `Role: ${input.role}`,
         `Company: ${input.companyName}`,
-        `Registration number: ${input.registrationNumber}`,
+        `Registration number: ${registrationNumberLine}`,
         `Phone: ${phoneLine}`,
         `Location: ${locationLine}`,
         `Status: ${input.status}`,

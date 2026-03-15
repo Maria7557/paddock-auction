@@ -60,7 +60,7 @@ export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display
               <div className={styles.body}>
                 <div className={styles.lotTitle}>{lot.title}</div>
                 <div className={styles.lotMeta}>
-                  {formatInteger(lot.year, display.locale)} · {formatInteger(lot.mileageKm, display.locale)} {isRu ? "км" : "km"}
+                  {String(lot.year)} · {formatInteger(lot.mileageKm, display.locale)} {isRu ? "км" : "km"}
                 </div>
                 <div className={styles.lotPrice}>{formatMoneyFromAed(lot.currentBidAed, display)}</div>
               </div>

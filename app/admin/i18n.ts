@@ -14,6 +14,7 @@ type AdminLocaleCopy = {
     pending: string;
     approved: string;
     rejected: string;
+    blocked: string;
     none: string;
     draft: string;
     scheduled: string;
@@ -40,6 +41,7 @@ type AdminLocaleCopy = {
       actions: string;
     };
     actions: {
+      view: string;
       approve: string;
       reject: string;
       noPendingAction: string;
@@ -53,19 +55,22 @@ type AdminLocaleCopy = {
       pending: string;
       all: string;
     };
-    table: {
-      name: string;
-      phone: string;
-      email: string;
-      company: string;
-      depositStatus: string;
-      amount: string;
-      actions: string;
-    };
-    actions: {
-      approveDeposit: string;
-      rejectDeposit: string;
-      noPendingAction: string;
+      table: {
+        name: string;
+        phone: string;
+        email: string;
+        accountStatus: string;
+        depositStatus: string;
+        registrationDate: string;
+        actions: string;
+      };
+      actions: {
+        view: string;
+        approve: string;
+        reject: string;
+        approveDeposit: string;
+        rejectDeposit: string;
+        noPendingAction: string;
     };
     empty: string;
   };
@@ -87,6 +92,7 @@ type AdminLocaleCopy = {
       actions: string;
     };
     actions: {
+      view: string;
       save: string;
       edit: string;
       unassign: string;
@@ -174,6 +180,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       pending: "Pending",
       approved: "Approved",
       rejected: "Rejected",
+      blocked: "Blocked",
       none: "None",
       draft: "Draft",
       scheduled: "Scheduled",
@@ -200,6 +207,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         actions: "Actions",
       },
       actions: {
+        view: "View",
         approve: "Approve",
         reject: "Reject",
         noPendingAction: "No pending action",
@@ -208,21 +216,24 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
     },
     buyers: {
       heading: "Buyers",
-      sectionTitle: "Buyer Deposit Review",
+      sectionTitle: "Buyer Accounts & Deposit Review",
       tabs: {
-        pending: "Pending Deposit Approval",
+        pending: "New / Pending",
         all: "All",
       },
       table: {
         name: "Name",
         phone: "Phone",
         email: "Email",
-        company: "Company",
+        accountStatus: "Account Status",
         depositStatus: "Deposit Status",
-        amount: "Amount",
+        registrationDate: "Registration Date",
         actions: "Actions",
       },
       actions: {
+        view: "View",
+        approve: "Approve",
+        reject: "Reject",
         approveDeposit: "Approve Deposit",
         rejectDeposit: "Reject Deposit",
         noPendingAction: "No pending action",
@@ -247,6 +258,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         actions: "Actions",
       },
       actions: {
+        view: "View",
         save: "Save",
         edit: "Edit",
         unassign: "Unassign",
@@ -332,6 +344,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       pending: "На рассмотрении",
       approved: "Одобрено",
       rejected: "Отклонено",
+      blocked: "Заблокирован",
       none: "Нет",
       draft: "Черновик",
       scheduled: "Запланировано",
@@ -358,6 +371,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         actions: "Действия",
       },
       actions: {
+        view: "Открыть",
         approve: "Одобрить",
         reject: "Отклонить",
         noPendingAction: "Нет ожидающих действий",
@@ -366,21 +380,24 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
     },
     buyers: {
       heading: "Покупатели",
-      sectionTitle: "Проверка депозитов покупателей",
+      sectionTitle: "Аккаунты покупателей и депозиты",
       tabs: {
-        pending: "Ожидают одобрения депозита",
+        pending: "Новые / ожидают действия",
         all: "Все",
       },
       table: {
         name: "Имя",
         phone: "Телефон",
         email: "Email",
-        company: "Компания",
+        accountStatus: "Статус аккаунта",
         depositStatus: "Статус депозита",
-        amount: "Сумма",
+        registrationDate: "Дата регистрации",
         actions: "Действия",
       },
       actions: {
+        view: "Открыть",
+        approve: "Одобрить",
+        reject: "Отклонить",
         approveDeposit: "Одобрить депозит",
         rejectDeposit: "Отклонить депозит",
         noPendingAction: "Нет ожидающих действий",
@@ -405,6 +422,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         actions: "Действия",
       },
       actions: {
+        view: "Открыть",
         save: "Сохранить",
         edit: "Изменить",
         unassign: "Снять",

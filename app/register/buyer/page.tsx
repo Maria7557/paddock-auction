@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
+import { AutocompleteField } from "@/components/register/AutocompleteField";
 import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
+import {
+  findCountryByName,
+  loadCountryCities,
+  type LocationCountry,
+} from "@/src/lib/location_directory";
+import { LOCATION_COUNTRIES } from "@/src/lib/location_countries";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 export default function BuyerRegisterPage() {
@@ -11,11 +18,35 @@ export default function BuyerRegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [registrationNumber, setRegistrationNumber] = useState("");
-  const [country, setCountry] = useState("UAE");
-  const [emirate, setEmirate] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [country, setCountry] = useState("United Arab Emirates");
+  const [city, setCity] = useState("");
+  const [countries] = useState<LocationCountry[]>(LOCATION_COUNTRIES);
+  const [cities, setCities] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const matchedCountry = findCountryByName(countries, country);
+
+    if (!matchedCountry) {
+      setCities([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    void loadCountryCities(matchedCountry.isoCode).then((nextCities) => {
+      if (active) {
+        setCities(nextCities);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [countries, country]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -25,8 +56,18 @@ export default function BuyerRegisterPage() {
       return;
     }
 
-    if (!registrationNumber.trim()) {
-      setFeedback("Registration number is required.");
+    if (!country.trim()) {
+      setFeedback("Country is required.");
+      return;
+    }
+
+    if (!city.trim()) {
+      setFeedback("City is required.");
+      return;
+    }
+
+    if (!phoneNumber.trim()) {
+      setFeedback("Phone number is required.");
       return;
     }
 
@@ -49,9 +90,9 @@ export default function BuyerRegisterPage() {
         password: credentials.password,
         role: "BUYER",
         companyName,
-        registrationNumber,
         country,
-        emirate,
+        city,
+        phoneNumber,
       });
 
       const { user } = await api.auth.login(credentials.email, credentials.password);
@@ -75,7 +116,7 @@ export default function BuyerRegisterPage() {
       }
 
       if (payload?.error === "CONFLICT") {
-        setFeedback("Email or company registration number is already registered.");
+        setFeedback("Email or company account is already registered.");
         return;
       }
 
@@ -119,26 +160,43 @@ export default function BuyerRegisterPage() {
               />
             </label>
             <label>
-              Registration number
+              Phone number
               <input
-                type="text"
-                placeholder="AE-99999"
-                value={registrationNumber}
-                onChange={(event) => setRegistrationNumber(event.target.value)}
+                type="tel"
+                placeholder="+971 50 123 4567"
+                value={phoneNumber}
+                onChange={(event) => setPhoneNumber(event.target.value)}
                 required
               />
             </label>
-            <label>
-              Country
-              <select value={country} onChange={(event) => setCountry(event.target.value)} required>
-                <option value="UAE">UAE</option>
-                <option value="Saudi Arabia">Saudi Arabia</option>
-                <option value="Qatar">Qatar</option>
-                <option value="Kuwait">Kuwait</option>
-                <option value="Bahrain">Bahrain</option>
-                <option value="Oman">Oman</option>
-              </select>
-            </label>
+            <AutocompleteField
+              label="Country"
+              listId="buyer-country-options"
+              value={country}
+              onChange={setCountry}
+              placeholder="Start typing a country"
+              helperText="Start typing to search all countries."
+              required
+            />
+            <datalist id="buyer-country-options">
+              {countries.map((option) => (
+                <option key={option.isoCode} value={option.name} />
+              ))}
+            </datalist>
+            <AutocompleteField
+              label="City"
+              listId="buyer-city-options"
+              value={city}
+              onChange={setCity}
+              placeholder="Start typing a city"
+              helperText="Start typing to search cities for the selected country."
+              required
+            />
+            <datalist id="buyer-city-options">
+              {cities.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
             <label>
               Password
               <input
@@ -148,22 +206,6 @@ export default function BuyerRegisterPage() {
                 required
                 minLength={8}
               />
-            </label>
-            <label>
-              Emirate
-              <select value={emirate} onChange={(event) => setEmirate(event.target.value)} required>
-                <option value="" disabled>
-                  Select emirate
-                </option>
-                <option value="Dubai">Dubai</option>
-                <option value="Abu Dhabi">Abu Dhabi</option>
-                <option value="Sharjah">Sharjah</option>
-                <option value="Ajman">Ajman</option>
-                <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                <option value="Fujairah">Fujairah</option>
-                <option value="Umm Al Quwain">Umm Al Quwain</option>
-                <option value="Other">Other</option>
-              </select>
             </label>
             <label>
               Confirm password
