@@ -10,12 +10,25 @@ export default function BuyerRegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [country, setCountry] = useState("UAE");
   const [emirate, setEmirate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
+    if (!companyName.trim()) {
+      setFeedback("Company name is required.");
+      return;
+    }
+
+    if (!registrationNumber.trim()) {
+      setFeedback("Registration number is required.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setFeedback("Password confirmation does not match.");
@@ -30,17 +43,41 @@ export default function BuyerRegisterPage() {
         email,
         password,
         role: "BUYER",
+        companyName,
+        registrationNumber,
+        country,
         emirate,
       });
 
       setFeedback("Account created. Pending admin approval.");
+      setEmail("");
+      setCompanyName("");
       setPassword("");
       setConfirmPassword("");
+      setRegistrationNumber("");
+      setCountry("UAE");
+      setEmirate("");
     } catch (error) {
-      const payload = getApiErrorPayload<{ error?: string }>(error);
+      const payload = getApiErrorPayload<{
+        error?: string;
+        issues?: Array<{
+          path?: string;
+          message?: string;
+        }>;
+      }>(error);
 
       if (payload?.error === "EMAIL_ALREADY_EXISTS") {
         setFeedback("Email is already registered.");
+        return;
+      }
+
+      if (payload?.error === "CONFLICT") {
+        setFeedback("Email or company registration number is already registered.");
+        return;
+      }
+
+      if (payload?.error === "INVALID_REQUEST" && payload.issues?.[0]?.message) {
+        setFeedback(payload.issues[0].message);
         return;
       }
 
@@ -67,6 +104,37 @@ export default function BuyerRegisterPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 required
               />
+            </label>
+            <label>
+              Company name
+              <input
+                type="text"
+                placeholder="Buyer Co LLC"
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Registration number
+              <input
+                type="text"
+                placeholder="AE-99999"
+                value={registrationNumber}
+                onChange={(event) => setRegistrationNumber(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Country
+              <select value={country} onChange={(event) => setCountry(event.target.value)} required>
+                <option value="UAE">UAE</option>
+                <option value="Saudi Arabia">Saudi Arabia</option>
+                <option value="Qatar">Qatar</option>
+                <option value="Kuwait">Kuwait</option>
+                <option value="Bahrain">Bahrain</option>
+                <option value="Oman">Oman</option>
+              </select>
             </label>
             <label>
               Password

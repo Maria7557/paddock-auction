@@ -23,6 +23,7 @@ const registerSchema = z.object({
   companyName: z.string().trim().min(1),
   registrationNumber: z.string().trim().min(1),
   country: z.string().trim().min(1),
+  emirate: z.string().trim().min(1).optional(),
 });
 
 type LoginBody = z.infer<typeof loginSchema>;
@@ -216,6 +217,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               passwordHash,
               role: payload.role,
               status: userStatus,
+              emirate: payload.emirate?.trim() || null,
             },
           }),
           prisma.company.create({

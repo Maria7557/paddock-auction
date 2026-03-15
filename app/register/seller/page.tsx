@@ -12,6 +12,8 @@ export default function SellerRegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [country, setCountry] = useState("UAE");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,6 +27,16 @@ export default function SellerRegisterPage() {
 
     if (!email.trim()) {
       setFeedback("Email is required.");
+      return;
+    }
+
+    if (!registrationNumber.trim()) {
+      setFeedback("Registration number is required.");
+      return;
+    }
+
+    if (!country.trim()) {
+      setFeedback("Country is required.");
       return;
     }
 
@@ -52,20 +64,42 @@ export default function SellerRegisterPage() {
         password,
         role: "SELLER",
         companyName,
+        registrationNumber,
+        country,
         phoneNumber,
         termsAccepted,
       });
 
       setFeedback("Company registered. Pending admin approval.");
+      setCompanyName("");
+      setEmail("");
       setPassword("");
       setConfirmPassword("");
+      setRegistrationNumber("");
+      setCountry("UAE");
       setPhoneNumber("");
       setTermsAccepted(false);
     } catch (error) {
-      const payload = getApiErrorPayload<{ error?: string }>(error);
+      const payload = getApiErrorPayload<{
+        error?: string;
+        issues?: Array<{
+          path?: string;
+          message?: string;
+        }>;
+      }>(error);
 
       if (payload?.error === "EMAIL_ALREADY_EXISTS") {
         setFeedback("Email is already registered.");
+        return;
+      }
+
+      if (payload?.error === "CONFLICT") {
+        setFeedback("Email or company registration number is already registered.");
+        return;
+      }
+
+      if (payload?.error === "INVALID_REQUEST" && payload.issues?.[0]?.message) {
+        setFeedback(payload.issues[0].message);
         return;
       }
 
@@ -102,6 +136,27 @@ export default function SellerRegisterPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 required
               />
+            </label>
+            <label>
+              Registration number
+              <input
+                type="text"
+                placeholder="AE-12345"
+                value={registrationNumber}
+                onChange={(event) => setRegistrationNumber(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Country
+              <select value={country} onChange={(event) => setCountry(event.target.value)} required>
+                <option value="UAE">UAE</option>
+                <option value="Saudi Arabia">Saudi Arabia</option>
+                <option value="Qatar">Qatar</option>
+                <option value="Kuwait">Kuwait</option>
+                <option value="Bahrain">Bahrain</option>
+                <option value="Oman">Oman</option>
+              </select>
             </label>
             <label>
               Phone number
