@@ -18,13 +18,8 @@ function resolveLotImage(image: string | undefined): string {
   return image;
 }
 
-function estimateMarketPrice(currentBidAed: number): number {
-  return Math.max(Math.round(currentBidAed * 1.2), currentBidAed);
-}
-
 export function AuctionLotCard({ lot }: AuctionLotCardProps) {
   const heroImage = resolveLotImage(lot.images[0]);
-  const marketPrice = lot.marketPriceAed ?? estimateMarketPrice(lot.currentBidAed);
   const regionSpec = lot.specs.find((spec) => spec.label.toLowerCase() === "region")?.value;
 
   return (
@@ -38,7 +33,7 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       currentBid={lot.currentBidAed}
       status={lot.status}
       endTime={lot.endsAt}
-      marketPrice={marketPrice}
+      marketPrice={lot.marketPriceAed ?? undefined}
     />
   );
 }

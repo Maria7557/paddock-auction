@@ -351,6 +351,11 @@ async function findSellerVehicle(
       auctions: {
         some: {
           sellerCompanyId: companyId,
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
         },
       },
     },
@@ -361,6 +366,11 @@ async function findSellerVehicle(
       auctions: {
         where: {
           sellerCompanyId: companyId,
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
@@ -386,6 +396,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
     const auctions = await prisma.auction.findMany({
       where: {
         sellerCompanyId: companyId,
+        transitions: {
+          none: {
+            trigger: "EVENT_META",
+          },
+        },
       },
       select: {
         id: true,
@@ -467,6 +482,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           auctions: {
             some: {
               sellerCompanyId: companyId,
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
             },
           },
         },
@@ -474,6 +494,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           auctions: {
             where: {
               sellerCompanyId: companyId,
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
             },
             orderBy:
               sort === "oldest"
@@ -584,7 +609,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             year: payload.year,
             mileage: payload.mileage,
             vin: await normalizeVin(payload.vin),
-            marketPrice: payload.marketPrice,
+            marketPrice: payload.marketPrice ?? null,
             fuelType: payload.fuelType,
             transmission: payload.transmission,
             bodyType: payload.bodyType,
@@ -829,7 +854,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               year: payload.year,
               mileage: payload.mileage,
               vin: payload.vin ? await normalizeVin(payload.vin) : undefined,
-              marketPrice: payload.marketPrice,
+              marketPrice: payload.marketPrice === undefined ? undefined : payload.marketPrice,
               fuelType: payload.fuelType,
               transmission: payload.transmission,
               bodyType: payload.bodyType,
@@ -916,6 +941,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
       where: {
         vehicleId: id,
         sellerCompanyId: companyId,
+        transitions: {
+          none: {
+            trigger: "EVENT_META",
+          },
+        },
       },
       select: {
         id: true,
@@ -990,10 +1020,15 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { q, sort, status } = parsedQuery.data;
-      const auctions = await prisma.auction.findMany({
-        where: {
-          sellerCompanyId: companyId,
+    const auctions = await prisma.auction.findMany({
+      where: {
+        sellerCompanyId: companyId,
+        transitions: {
+          none: {
+            trigger: "EVENT_META",
+          },
         },
+      },
         include: {
           vehicle: {
             select: {
@@ -1203,6 +1238,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
       where: {
         id,
         sellerCompanyId: companyId,
+        transitions: {
+          none: {
+            trigger: "EVENT_META",
+          },
+        },
       },
       include: {
         vehicle: true,
@@ -1309,6 +1349,11 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         where: {
           id,
           sellerCompanyId: companyId,
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
         },
         select: {
           id: true,
@@ -1336,52 +1381,9 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
       const action = payload.action ?? "update";
 
       if (action === "publish") {
-        if (auction.state !== "DRAFT") {
-          await reply.code(409).send({
-            error: "INVALID_STATE",
-          });
-          return;
-        }
-
-        await prisma.$transaction(async (tx) => {
-          await tx.auction.update({
-            where: {
-              id,
-            },
-            data: {
-              state: "SCHEDULED",
-            },
-          });
-
-          await tx.auctionStateTransition.create({
-            data: {
-              auctionId: id,
-              fromState: "DRAFT",
-              toState: "SCHEDULED",
-              trigger: "AUCTION_PUBLISHED",
-              actorId,
-              reason: JSON.stringify({
-                sellerCompanyId: companyId,
-              }),
-            },
-          });
-
-          await createAuditLog(tx, {
-            actorId,
-            action: "SELLER_AUCTION_PUBLISHED",
-            entityType: "Auction",
-            entityId: id,
-            payload: {
-              companyId,
-              auctionId: id,
-              previousState: "DRAFT",
-              nextState: "SCHEDULED",
-            },
-          });
-        });
-
-        await reply.code(200).send({
-          success: true,
+        await reply.code(409).send({
+          error: "ADMIN_APPROVAL_REQUIRED",
+          message: "Draft auctions are reviewed and scheduled by FleetBid admin.",
         });
         return;
       }

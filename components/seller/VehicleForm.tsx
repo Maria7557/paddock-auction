@@ -17,6 +17,7 @@ import {
 import { type DamageMapValue, DamageDiagram } from "@/components/seller/DamageDiagram";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const LARGE_UPLOAD_WARNING_BYTES = 40 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const AIRBAG_OPTIONS = [
@@ -160,6 +161,14 @@ function validateUploadFile(file: File, allowedTypes: Set<string>): string | nul
   return null;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function VehicleForm({
   initialValues,
   submitLabel,
@@ -237,6 +246,22 @@ export function VehicleForm({
 
     return URL.createObjectURL(mulkiyaBack);
   }, [mulkiyaBack]);
+
+  const totalMediaBytes = useMemo(() => {
+    return (
+      photos.reduce((total, photo) => total + photo.file.size, 0) +
+      (mulkiyaFront?.size ?? 0) +
+      (mulkiyaBack?.size ?? 0)
+    );
+  }, [mulkiyaBack, mulkiyaFront, photos]);
+
+  const largeUploadWarning = useMemo(() => {
+    if (!showAuctionFields || totalMediaBytes < LARGE_UPLOAD_WARNING_BYTES) {
+      return null;
+    }
+
+    return `Large photo upload selected (${formatFileSize(totalMediaBytes)}). Upload may take longer, so compress images if possible.`;
+  }, [showAuctionFields, totalMediaBytes]);
 
   useEffect(() => {
     photosRef.current = photos;
@@ -759,6 +784,8 @@ export function VehicleForm({
               <span className={photos.length >= 10 ? "counter-ok" : "counter-warn"}>{photos.length}/10 minimum</span>
               {photos.length >= 10 ? <span className="counter-check">✓ Requirement met</span> : null}
             </div>
+
+            {largeUploadWarning ? <p className="inline-note tone-warning">{largeUploadWarning}</p> : null}
           </section>
 
           <section className="seller-form-full form-section">

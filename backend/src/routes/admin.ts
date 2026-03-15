@@ -116,6 +116,22 @@ const eventIdParamsSchema = z.object({
   id: z.string().trim().min(1),
 });
 
+const setMarketPriceSchema = z.object({
+  priceAed: z.coerce.number().positive(),
+});
+
+const assignVehicleEventSchema = z.object({
+  eventId: z.string().trim().min(1).nullable().optional(),
+});
+
+const eventVehicleSchema = z.object({
+  vehicleId: z.string().trim().min(1),
+});
+
+const eventOrderSchema = z.object({
+  vehicleIds: z.array(z.string().trim().min(1)).default([]),
+});
+
 async function toNumberValue(value: DecimalLike): Promise<number> {
   if (typeof value === "number") {
     return value;
@@ -265,6 +281,29 @@ async function parseEventOrder(reason: string | null): Promise<string[]> {
   }
 }
 
+async function resolveAssignedEventId(
+  transition:
+    | {
+        trigger: string;
+        reason: string | null;
+      }
+    | null
+    | undefined,
+): Promise<string | null> {
+  if (!transition || transition.trigger !== "EVENT_ASSIGNED" || !transition.reason) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(transition.reason) as { eventId?: string | null };
+    const eventId = parsed.eventId?.trim();
+
+    return eventId && eventId.length > 0 ? eventId : null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveVehicleStatus(state: string | null): Promise<"PENDING" | "APPROVED" | "REJECTED"> {
   if (!state || state === "DRAFT") {
     return "PENDING";
@@ -326,6 +365,185 @@ function mapAdminCompany(company: {
   };
 }
 
+async function assignVehicleToEvent(input: {
+  actorId: string;
+  vehicleId: string;
+  eventId: string | null;
+}): Promise<
+  | { ok: true; auctionId: string; eventId: string | null }
+  | { ok: false; statusCode: number; body: Record<string, string> }
+> {
+  const latestVehicleAuction = await prisma.vehicle.findUnique({
+    where: {
+      id: input.vehicleId,
+    },
+    select: {
+      id: true,
+      auctions: {
+        where: {
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: {
+          id: true,
+          state: true,
+          startsAt: true,
+          endsAt: true,
+          auctionStartsAt: true,
+          auctionEndsAt: true,
+        },
+      },
+    },
+  });
+
+  if (!latestVehicleAuction || latestVehicleAuction.auctions.length === 0) {
+    return {
+      ok: false,
+      statusCode: 404,
+      body: {
+        error: "VEHICLE_NOT_FOUND",
+      },
+    };
+  }
+
+  const latestAuction = latestVehicleAuction.auctions[0];
+
+  if (latestAuction.state === "CANCELED") {
+    return {
+      ok: false,
+      statusCode: 409,
+      body: {
+        error: "VEHICLE_REJECTED",
+      },
+    };
+  }
+
+  if (input.eventId) {
+    const event = await prisma.auction.findUnique({
+      where: {
+        id: input.eventId,
+      },
+      select: {
+        id: true,
+        state: true,
+        startsAt: true,
+        endsAt: true,
+      },
+    });
+
+    if (!event) {
+      return {
+        ok: false,
+        statusCode: 404,
+        body: {
+          error: "EVENT_NOT_FOUND",
+        },
+      };
+    }
+
+    if (!["DRAFT", "SCHEDULED"].includes(event.state)) {
+      return {
+        ok: false,
+        statusCode: 409,
+        body: {
+          error: "EVENT_ASSIGNMENT_LOCKED",
+        },
+      };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.auction.update({
+        where: {
+          id: latestAuction.id,
+        },
+        data: {
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+        },
+      });
+
+      await tx.auctionStateTransition.create({
+        data: {
+          auctionId: latestAuction.id,
+          fromState: latestAuction.state,
+          toState: latestAuction.state,
+          trigger: "EVENT_ASSIGNED",
+          actorId: input.actorId,
+          reason: JSON.stringify({
+            eventId: event.id,
+          }),
+        },
+      });
+
+      await createAuditLog(tx, {
+        actorId: input.actorId,
+        action: "VEHICLE_EVENT_ASSIGNED",
+        entityType: "Vehicle",
+        entityId: input.vehicleId,
+        payload: {
+          vehicleId: input.vehicleId,
+          auctionId: latestAuction.id,
+          eventId: event.id,
+        },
+      });
+    });
+
+    return {
+      ok: true,
+      auctionId: latestAuction.id,
+      eventId: input.eventId,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.auction.update({
+      where: {
+        id: latestAuction.id,
+      },
+      data: {
+        startsAt: latestAuction.auctionStartsAt ?? latestAuction.startsAt,
+        endsAt: latestAuction.auctionEndsAt ?? latestAuction.endsAt,
+      },
+    });
+
+    await tx.auctionStateTransition.create({
+      data: {
+        auctionId: latestAuction.id,
+        fromState: latestAuction.state,
+        toState: latestAuction.state,
+        trigger: "EVENT_UNASSIGNED",
+        actorId: input.actorId,
+        reason: JSON.stringify({
+          eventId: null,
+        }),
+      },
+    });
+
+    await createAuditLog(tx, {
+      actorId: input.actorId,
+      action: "VEHICLE_EVENT_UNASSIGNED",
+      entityType: "Vehicle",
+      entityId: input.vehicleId,
+      payload: {
+        vehicleId: input.vehicleId,
+        auctionId: latestAuction.id,
+        eventId: null,
+      },
+    });
+  });
+
+  return {
+    ok: true,
+    auctionId: latestAuction.id,
+    eventId: null,
+  };
+}
+
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook("preHandler", requireAdminAuth);
 
@@ -356,16 +574,61 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             },
           },
           auctions: {
+            where: {
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
+            },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 1,
             select: {
               id: true,
               state: true,
+              sellerCompanyId: true,
+              transitions: {
+                where: {
+                  trigger: {
+                    in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED"],
+                  },
+                },
+                orderBy: {
+                  createdAt: "desc",
+                },
+                take: 1,
+                select: {
+                  trigger: true,
+                  reason: true,
+                },
+              },
             },
           },
         },
         orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }],
       });
+
+      const sellerCompanyIds = Array.from(
+        new Set(
+          vehicles
+            .map((vehicle) => vehicle.auctions[0]?.sellerCompanyId)
+            .filter((companyId): companyId is string => typeof companyId === "string" && companyId.length > 0),
+        ),
+      );
+      const companies = sellerCompanyIds.length
+        ? await prisma.company.findMany({
+            where: {
+              id: {
+                in: sellerCompanyIds,
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          })
+        : [];
+      const companyNameById = new Map(companies.map((company) => [company.id, company.name]));
 
       const filteredVehicles = [];
 
@@ -373,15 +636,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         const latestAuction = vehicle.auctions[0] ?? null;
         const latestState = latestAuction?.state ?? null;
         const resolvedStatus = await resolveVehicleStatus(latestState);
+        const assignedEventId = await resolveAssignedEventId(latestAuction?.transitions[0] ?? null);
 
         if (status !== "ALL" && resolvedStatus !== status) {
           continue;
         }
 
-        if (
-          onlyUnassigned &&
-          (latestState === "SCHEDULED" || latestState === "LIVE" || latestState === "EXTENDED")
-        ) {
+        if (onlyUnassigned && assignedEventId) {
           continue;
         }
 
@@ -391,11 +652,14 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           model: vehicle.model,
           year: vehicle.year,
           vin: vehicle.vin,
-          marketPriceAed: await toNumberValue(vehicle.marketPrice),
+          marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
           status: resolvedStatus,
           imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
           label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
           latestAuctionId: latestAuction?.id ?? null,
+          companyName:
+            companyNameById.get(latestAuction?.sellerCompanyId ?? "") ?? "Fleet Operator",
+          assignedEventId,
         });
       }
 
@@ -432,6 +696,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           auctions: {
+            where: {
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
+            },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 1,
             select: {
@@ -494,6 +765,126 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    "/admin/vehicles/:id/set-market-price",
+    async function setAdminVehicleMarketPriceHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+      const parsedBody = setMarketPriceSchema.safeParse(request.body ?? {});
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const { id } = parsedParams.data;
+      const vehicle = await prisma.vehicle.findUnique({
+        where: {
+          id,
+        },
+        select: {
+          id: true,
+          marketPrice: true,
+        },
+      });
+
+      if (!vehicle) {
+        await reply.code(404).send({
+          error: "VEHICLE_NOT_FOUND",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.vehicle.update({
+          where: {
+            id,
+          },
+          data: {
+            marketPrice: parsedBody.data.priceAed,
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "VEHICLE_MARKET_PRICE_SET",
+          entityType: "Vehicle",
+          entityId: id,
+          payload: {
+            vehicleId: id,
+            previousMarketPrice:
+              vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
+            nextMarketPrice: parsedBody.data.priceAed,
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        success: true,
+        vehicleId: id,
+        marketPriceAed: parsedBody.data.priceAed,
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    "/admin/vehicles/:id/assign-event",
+    async function assignAdminVehicleEventHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+      const parsedBody = assignVehicleEventSchema.safeParse(request.body ?? {});
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const { id } = parsedParams.data;
+      const assignment = await assignVehicleToEvent({
+        actorId,
+        vehicleId: id,
+        eventId: parsedBody.data.eventId ?? null,
+      });
+
+      if (!assignment.ok) {
+        await reply.code(assignment.statusCode).send(assignment.body);
+        return;
+      }
+
+      await reply.code(200).send({
+        success: true,
+        vehicleId: id,
+        eventId: assignment.eventId,
+      });
+    },
+  );
+
   fastify.post<{ Params: { id: string } }>(
     "/admin/vehicles/:id/reject",
     async function rejectAdminVehicleHandler(
@@ -521,6 +912,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           auctions: {
+            where: {
+              transitions: {
+                none: {
+                  trigger: "EVENT_META",
+                },
+              },
+            },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 1,
             select: {
@@ -1181,11 +1579,22 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       const where =
         rawStatus && (await isAuctionState(rawStatus))
           ? {
+              transitions: {
+                some: {
+                  trigger: "EVENT_META",
+                },
+              },
               state: rawStatus as (typeof auctionStates)[number],
             }
-          : undefined;
+          : {
+              transitions: {
+                some: {
+                  trigger: "EVENT_META",
+                },
+              },
+            };
 
-      const auctions = await prisma.auction.findMany({
+      const events = await prisma.auction.findMany({
         where,
         include: {
           transitions: {
@@ -1200,46 +1609,43 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
         orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       });
+      const lots = await prisma.auction.findMany({
+        where: {
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
+        },
+        select: {
+          startsAt: true,
+          endsAt: true,
+        },
+      });
+      const lotsCountByWindow = new Map<string, number>();
 
-      const grouped = new Map<
-        string,
-        {
-          id: string;
-          title: string;
-          startsAt: string;
-          endsAt: string;
-          status: string;
-          lotsCount: number;
-        }
-      >();
-
-      for (const auction of auctions) {
-        const key = `${auction.startsAt.toISOString()}::${auction.endsAt.toISOString()}`;
-        const existing = grouped.get(key);
-
-        if (existing) {
-          grouped.set(key, {
-            ...existing,
-            lotsCount: existing.lotsCount + 1,
-          });
-          continue;
-        }
-
-        const meta = await parseEventMeta(auction.transitions[0]?.reason ?? null);
-
-        grouped.set(key, {
-          id: auction.id,
-          title:
-            meta.title?.trim() || `Auction Event ${auction.startsAt.toLocaleDateString("en-GB")}`,
-          startsAt: auction.startsAt.toISOString(),
-          endsAt: auction.endsAt.toISOString(),
-          status: auction.state,
-          lotsCount: 1,
-        });
+      for (const lot of lots) {
+        const key = `${lot.startsAt.toISOString()}::${lot.endsAt.toISOString()}`;
+        lotsCountByWindow.set(key, (lotsCountByWindow.get(key) ?? 0) + 1);
       }
 
       await reply.code(200).send({
-        events: [...grouped.values()],
+        events: await Promise.all(
+          events.map(async (event) => {
+            const key = `${event.startsAt.toISOString()}::${event.endsAt.toISOString()}`;
+            const meta = await parseEventMeta(event.transitions[0]?.reason ?? null);
+
+            return {
+              id: event.id,
+              title:
+                meta.title?.trim() || `Auction Event ${event.startsAt.toLocaleDateString("en-GB")}`,
+              startsAt: event.startsAt.toISOString(),
+              endsAt: event.endsAt.toISOString(),
+              status: event.state,
+              lotsCount: lotsCountByWindow.get(key) ?? 0,
+            };
+          }),
+        ),
       });
     },
   );
@@ -1281,6 +1687,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
     const endsAt = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000);
     const seedAuction = await prisma.auction.findFirst({
+      where: {
+        transitions: {
+          none: {
+            trigger: "EVENT_META",
+          },
+        },
+      },
       select: {
         vehicleId: true,
         sellerCompanyId: true,
@@ -1410,6 +1823,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
     const lots = await prisma.auction.findMany({
       where: {
+        id: {
+          not: event.id,
+        },
         startsAt: event.startsAt,
         endsAt: event.endsAt,
       },
@@ -1458,7 +1874,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: lot.vehicleId,
           title: `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`,
           vin: lot.vehicle.vin,
-          marketPriceAed: await toNumberValue(lot.vehicle.marketPrice),
+          marketPriceAed: lot.vehicle.marketPrice === null ? null : await toNumberValue(lot.vehicle.marketPrice),
           imageUrl: lot.vehicle.images[0] ?? null,
         })),
       ),
@@ -1533,6 +1949,200 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       success: true,
     });
   });
+
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    "/admin/events/:id/reorder",
+    async function reorderAdminEventLotsHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = eventIdParamsSchema.safeParse(request.params);
+      const parsedBody = eventOrderSchema.safeParse(request.body ?? {});
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const event = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!event) {
+        await reply.code(404).send({
+          error: "EVENT_NOT_FOUND",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: event.id,
+            fromState: event.state,
+            toState: event.state,
+            trigger: "EVENT_ORDER",
+            actorId,
+            reason: JSON.stringify({
+              vehicleIds: parsedBody.data.vehicleIds,
+            }),
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "EVENT_REORDERED",
+          entityType: "Event",
+          entityId: event.id,
+          payload: {
+            eventId: event.id,
+            vehicleIds: parsedBody.data.vehicleIds,
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        success: true,
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    "/admin/events/:id/add-vehicle",
+    async function addVehicleToAdminEventHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = eventIdParamsSchema.safeParse(request.params);
+      const parsedBody = eventVehicleSchema.safeParse(request.body ?? {});
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const event = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!event) {
+        await reply.code(404).send({
+          error: "EVENT_NOT_FOUND",
+        });
+        return;
+      }
+
+      const assignment = await assignVehicleToEvent({
+        actorId,
+        vehicleId: parsedBody.data.vehicleId,
+        eventId: event.id,
+      });
+
+      if (!assignment.ok) {
+        await reply.code(assignment.statusCode).send(assignment.body);
+        return;
+      }
+
+      await reply.code(200).send({
+        success: true,
+        vehicleId: parsedBody.data.vehicleId,
+        eventId: event.id,
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    "/admin/events/:id/remove-vehicle",
+    async function removeVehicleFromAdminEventHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = eventIdParamsSchema.safeParse(request.params);
+      const parsedBody = eventVehicleSchema.safeParse(request.body ?? {});
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const event = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!event) {
+        await reply.code(404).send({
+          error: "EVENT_NOT_FOUND",
+        });
+        return;
+      }
+
+      const assignment = await assignVehicleToEvent({
+        actorId,
+        vehicleId: parsedBody.data.vehicleId,
+        eventId: null,
+      });
+
+      if (!assignment.ok) {
+        await reply.code(assignment.statusCode).send(assignment.body);
+        return;
+      }
+
+      await reply.code(200).send({
+        success: true,
+        vehicleId: parsedBody.data.vehicleId,
+        eventId: assignment.eventId,
+      });
+    },
+  );
 
   fastify.get("/admin/deposits/pending-returns", async function getPendingReturnsHandler(
     request: FastifyRequest,

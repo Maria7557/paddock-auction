@@ -306,10 +306,10 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             <button type="button" className="button button-secondary" onClick={() => void patchAuction("update")} disabled={busy}>
               {busy ? "Saving..." : "Save Draft"}
             </button>
-            <button type="button" className="button button-primary" onClick={() => void patchAuction("publish")} disabled={busy}>
-              Publish
-            </button>
           </div>
+          <p className="text-muted" style={{ marginTop: "12px" }}>
+            FleetBid admin reviews this draft, sets the market price, and assigns the event date before it goes live.
+          </p>
         </section>
       ) : null}
 

@@ -676,6 +676,25 @@ describe("PATCH /api/seller/auctions/:id", () => {
     });
   });
 
+  it("returns 409 when seller tries to publish directly", async () => {
+    mockPrisma.auction.findFirst.mockResolvedValue({
+      id: "a1",
+      state: "DRAFT",
+      startsAt: new Date("2026-03-14T08:00:00.000Z"),
+      endsAt: new Date("2026-03-14T10:00:00.000Z"),
+    });
+
+    const res = await request
+      .patch("/api/seller/auctions/a1")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        action: "publish",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("ADMIN_APPROVAL_REQUIRED");
+  });
+
   it("returns 404 when auction is not found", async () => {
     mockPrisma.auction.findFirst.mockResolvedValue(null);
 

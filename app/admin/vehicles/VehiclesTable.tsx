@@ -20,7 +20,7 @@ type VehicleRow = {
   vin: string;
   status: VehicleStatus;
   companyName: string;
-  marketPriceAed: number;
+  marketPriceAed: number | null;
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
@@ -36,6 +36,7 @@ type EventsResponse = {
     id: string;
     title: string;
     startsAt: string;
+    status: string;
   }[];
 };
 
@@ -60,19 +61,21 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
 
     async function loadEvents(): Promise<void> {
       try {
-        const payload = await api.admin.events.list<EventsResponse>({ status: "SCHEDULED" }, {
+        const payload = await api.admin.events.list<EventsResponse>(undefined, {
           cache: "no-store",
         });
-        const nextOptions = (payload.events ?? []).map((event) => ({
-          id: event.id,
-          label: `${event.title} • ${new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}`,
-        }));
+        const nextOptions = (payload.events ?? [])
+          .filter((event) => event.status === "DRAFT" || event.status === "SCHEDULED")
+          .map((event) => ({
+            id: event.id,
+            label: `${event.title} • ${new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`,
+          }));
 
         if (!cancelled) {
           setEventOptions(nextOptions);
@@ -216,7 +219,7 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                         <input
                           type="number"
                           min={1}
-                          value={priceDraftById[row.id] ?? String(row.marketPriceAed || "")}
+                          value={priceDraftById[row.id] ?? (row.marketPriceAed === null ? "" : String(row.marketPriceAed))}
                           onChange={(event) =>
                             setPriceDraftById((prev) => ({
                               ...prev,
@@ -235,7 +238,7 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                       </div>
                     ) : (
                       <div className={styles.inlineEdit}>
-                        <span>{formatAed(row.marketPriceAed || 0)}</span>
+                        <span>{row.marketPriceAed === null ? "-" : formatAed(row.marketPriceAed)}</span>
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
@@ -243,7 +246,7 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                             setEditingPriceId(row.id);
                             setPriceDraftById((prev) => ({
                               ...prev,
-                              [row.id]: String(row.marketPriceAed || ""),
+                              [row.id]: row.marketPriceAed === null ? "" : String(row.marketPriceAed),
                             }));
                           }}
                         >

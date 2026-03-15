@@ -17,7 +17,7 @@ type VehicleRow = {
   vin: string;
   status: VehicleStatus;
   companyName: string;
-  marketPriceAed: number;
+  marketPriceAed: number | null;
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
@@ -28,24 +28,12 @@ type EventOption = {
   label: string;
   startsAt: string;
   endsAt: string;
+  status: string;
 };
 
-function resolveVehicleStatus(state: string | null): VehicleStatus {
-  if (!state || state === "DRAFT") {
-    return "PENDING";
-  }
-
-  if (state === "CANCELED") {
-    return "REJECTED";
-  }
-
-  return "APPROVED";
-}
-
 async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
-  const t = getAdminCopy(locale);
   const requestOptions = await withServerCookies({ cache: "no-store" });
-  const [vehiclesPayload, scheduledEventsPayload] = await Promise.all([
+  const [vehiclesPayload, eventsPayload] = await Promise.all([
     api.admin.vehicles.list<{
       vehicles?: Array<{
         id: string;
@@ -53,11 +41,13 @@ async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: Vehicle
         model: string;
         year: number;
         vin: string;
-        marketPriceAed: number;
-        status: string;
+        marketPriceAed: number | null;
+        status: VehicleStatus;
         imageUrl: string | null;
         label: string;
+        companyName?: string | null;
         latestAuctionId?: string | null;
+        assignedEventId?: string | null;
       }>;
     }>({ status: "ALL" }, requestOptions),
     api.admin.events.list<{
@@ -66,54 +56,42 @@ async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: Vehicle
         title: string;
         startsAt: string;
         endsAt: string;
+        status: string;
       }>;
-    }>({ status: "SCHEDULED" }, requestOptions).catch(() => ({ events: [] })),
+    }>(undefined, requestOptions).catch(() => ({ events: [] })),
   ]);
-  const scheduledEvents = scheduledEventsPayload.events ?? [];
-  const eventDetails = await Promise.all(
-    scheduledEvents.map((event) =>
-      api.admin.events.get<{
-        id: string;
-        lots?: Array<{
-          vehicleId: string;
-        }>;
-      }>(event.id, requestOptions).catch(() => null),
-    ),
-  );
-  const eventByVehicleId = new Map<string, EventOption>();
-  const events: EventOption[] = scheduledEvents.map((event) => ({
-    id: event.id,
-    label: new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    startsAt: event.startsAt,
-    endsAt: event.endsAt,
-  }));
-
-  scheduledEvents.forEach((event, index) => {
-    for (const lot of eventDetails[index]?.lots ?? []) {
-      eventByVehicleId.set(lot.vehicleId, events[index]);
-    }
-  });
+  const t = getAdminCopy(locale);
+  const events: EventOption[] = (eventsPayload.events ?? [])
+    .filter((event) => event.status === "DRAFT" || event.status === "SCHEDULED")
+    .map((event) => ({
+      id: event.id,
+      label: new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      status: event.status,
+    }));
+  const eventById = new Map(events.map((event) => [event.id, event]));
 
   const rows: VehicleRow[] = (vehiclesPayload.vehicles ?? []).map((vehicle) => {
     const title = vehicle.label?.trim() || `${vehicle.brand} ${vehicle.model} ${vehicle.year}`.trim();
-    const matchingEvent = eventByVehicleId.get(vehicle.id);
+    const matchingEvent = vehicle.assignedEventId ? eventById.get(vehicle.assignedEventId) : null;
 
     return {
       id: vehicle.id,
       imageUrl: vehicle.imageUrl ?? null,
       title,
       vin: vehicle.vin,
-      status: resolveVehicleStatus(vehicle.status ?? null),
-      companyName: t.defaults.fleetOperator,
-      marketPriceAed: Number(vehicle.marketPriceAed ?? 0),
+      status: vehicle.status,
+      companyName: vehicle.companyName?.trim() || t.defaults.fleetOperator,
+      marketPriceAed: vehicle.marketPriceAed ?? null,
       auctionId: vehicle.latestAuctionId ?? null,
-      assignedEventId: matchingEvent?.id ?? null,
+      assignedEventId: vehicle.assignedEventId ?? matchingEvent?.id ?? null,
       assignedEventLabel: matchingEvent?.label ?? null,
     };
   });
