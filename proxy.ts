@@ -8,7 +8,6 @@ import {
   stripLocalePrefix,
   withLocalePath,
 } from "@/src/i18n/routing";
-import { verifyJwt } from "@/src/lib/auth";
 
 const LOCALE_COOKIE = "fb_locale";
 const CURRENCY_COOKIE = "fb_currency";
@@ -72,58 +71,6 @@ function applyPublicLocaleRouting(request: NextRequest): NextResponse | null {
   return null;
 }
 
-function getTokenFromRequest(request: NextRequest): string | null {
-  const authorizationHeader = request.headers.get("authorization")?.trim() ?? "";
-
-  if (authorizationHeader.toLowerCase().startsWith("bearer ")) {
-    const token = authorizationHeader.slice(7).trim();
-
-    if (token.length > 0) {
-      return token;
-    }
-  }
-
-  const cookieToken = request.cookies.get("token")?.value?.trim();
-
-  if (cookieToken && cookieToken.length > 0) {
-    return cookieToken;
-  }
-
-  return null;
-}
-
-function unauthorizedResponse(): NextResponse {
-  return NextResponse.json(
-    {
-      error: "UNAUTHORIZED",
-    },
-    {
-      status: 401,
-    },
-  );
-}
-
-function forbiddenResponse(): NextResponse {
-  return NextResponse.json(
-    {
-      error: "FORBIDDEN",
-    },
-    {
-      status: 403,
-    },
-  );
-}
-
-function isProtectedApiPath(pathname: string, method: string): boolean {
-  if (pathname === "/api/auctions") {
-    return method !== "GET";
-  }
-
-  return ["/api/bids", "/api/seller", "/api/buyer", "/api/wallet", "/api/admin"].some((prefix) =>
-    pathname.startsWith(prefix),
-  );
-}
-
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const localeRoutingResponse = applyPublicLocaleRouting(request);
 
@@ -137,40 +84,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  if (!isProtectedApiPath(pathname, request.method.toUpperCase())) {
-    return NextResponse.next();
-  }
-
-  const token = getTokenFromRequest(request);
-
-  if (!token) {
-    return unauthorizedResponse();
-  }
-
-  const verified = await verifyJwt(token);
-
-  if (!verified) {
-    return unauthorizedResponse();
-  }
-
-  if (pathname.startsWith("/api/admin") && verified.role !== "ADMIN") {
-    return forbiddenResponse();
-  }
-
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-user-id", verified.userId);
-  requestHeaders.set("x-user-role", verified.role);
-  requestHeaders.set("x-kyc-verified", verified.kycVerified ? "true" : "false");
-
-  if (verified.companyId) {
-    requestHeaders.set("x-company-id", verified.companyId);
-  }
-
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  return NextResponse.next();
 }
 
 export const config = {
