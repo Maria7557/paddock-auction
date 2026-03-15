@@ -281,6 +281,51 @@ async function isAuctionState(value: string): Promise<boolean> {
   return auctionStates.includes(value as (typeof auctionStates)[number]);
 }
 
+function mapAdminCompany(company: {
+  id: string;
+  name: string;
+  phone?: string | null;
+  status: string;
+  createdAt: Date;
+  users: Array<{
+    id: string;
+    role: string;
+    user: {
+      id: string;
+      email: string;
+      status: string;
+    };
+  }>;
+}): {
+  id: string;
+  name: string;
+  phone: string | null;
+  status: string;
+  createdAt: string;
+  companyUsers: Array<{
+    id: string;
+    role: string;
+    userId: string;
+    userEmail: string;
+    userStatus: string;
+  }>;
+} {
+  return {
+    id: company.id,
+    name: company.name,
+    phone: company.phone?.trim() || null,
+    status: company.status,
+    createdAt: company.createdAt.toISOString(),
+    companyUsers: company.users.map((membership) => ({
+      id: membership.id,
+      role: membership.role,
+      userId: membership.user.id,
+      userEmail: membership.user.email,
+      userStatus: membership.user.status,
+    })),
+  };
+}
+
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook("preHandler", requireAdminAuth);
 
@@ -538,6 +583,36 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.get("/admin/companies", async function getCompaniesHandler(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    void request;
+
+    const companies = await prisma.company.findMany({
+      include: {
+        users: {
+          select: {
+            id: true,
+            role: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+
+    await reply.code(200).send({
+      companies: companies.map(mapAdminCompany),
+    });
+  });
+
   fastify.get("/admin/companies/pending", async function getPendingCompaniesHandler(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -569,19 +644,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     await reply.code(200).send({
-      companies: companies.map((company) => ({
-        id: company.id,
-        name: company.name,
-        status: company.status,
-        createdAt: company.createdAt.toISOString(),
-        companyUsers: company.users.map((membership) => ({
-          id: membership.id,
-          role: membership.role,
-          userId: membership.user.id,
-          userEmail: membership.user.email,
-          userStatus: membership.user.status,
-        })),
-      })),
+      companies: companies.map(mapAdminCompany),
     });
   });
 

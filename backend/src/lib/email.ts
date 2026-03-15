@@ -40,6 +40,7 @@ type RegistrationEmailInput = {
 type AdminRegistrationEmailInput = RegistrationEmailInput & {
   country: string;
   emirate?: string | null;
+  phoneNumber?: string | null;
   registrationNumber: string;
 };
 
@@ -314,6 +315,7 @@ export async function sendAdminRegistrationEmail(
   const locationLine = input.emirate?.trim()
     ? `${input.country} / ${input.emirate.trim()}`
     : input.country;
+  const phoneLine = input.phoneNumber?.trim() || "Not provided";
 
   return sendBulkEmail(
     {
@@ -324,6 +326,7 @@ export async function sendAdminRegistrationEmail(
           <p><strong>Role:</strong> ${input.role}</p>
           <p><strong>Company:</strong> ${input.companyName}</p>
           <p><strong>Registration number:</strong> ${input.registrationNumber}</p>
+          <p><strong>Phone:</strong> ${phoneLine}</p>
           <p><strong>Location:</strong> ${locationLine}</p>
           <p><strong>Status:</strong> ${input.status}</p>
         </div>
@@ -336,6 +339,7 @@ export async function sendAdminRegistrationEmail(
         `Role: ${input.role}`,
         `Company: ${input.companyName}`,
         `Registration number: ${input.registrationNumber}`,
+        `Phone: ${phoneLine}`,
         `Location: ${locationLine}`,
         `Status: ${input.status}`,
       ].join("\n"),

@@ -230,6 +230,7 @@ describe("POST /api/auth/register", () => {
     companyName: "Fleet Corp LLC",
     registrationNumber: "AE-12345",
     country: "UAE",
+    phoneNumber: "+971501234567",
   } as const;
 
   const validBuyerBody = {
@@ -269,6 +270,7 @@ describe("POST /api/auth/register", () => {
         companyName: validSellerBody.companyName,
         country: validSellerBody.country,
         email: validSellerBody.email,
+        phoneNumber: validSellerBody.phoneNumber,
         registrationNumber: validSellerBody.registrationNumber,
         role: "SELLER",
         status: "PENDING_APPROVAL",
@@ -360,6 +362,22 @@ describe("POST /api/auth/register", () => {
       .send({ ...validSellerBody, companyName: "" });
 
     expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when seller phone number is missing", async () => {
+    const { phoneNumber: _phoneNumber, ...payload } = validSellerBody;
+
+    const res = await request.post("/api/auth/register").send(payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_REQUEST");
+    expect(res.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "phoneNumber",
+        }),
+      ]),
+    );
   });
 
   it("returns 400 when required fields are missing", async () => {

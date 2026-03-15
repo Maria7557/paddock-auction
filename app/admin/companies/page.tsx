@@ -48,37 +48,20 @@ async function getCompanyRows(): Promise<CompanyRow[]> {
       status: normalizeCompanyStatus(company.status),
       createdAt: company.createdAt,
     }));
-
-  try {
-    const payload = await api.admin.companies.list<{
-      companies?: Array<{
-        id: string;
-        name: string;
-        status: string;
-        createdAt: string;
-        phone?: string | null;
-        companyUsers?: Array<{
-          userEmail?: string;
-        }>;
+  const payload = await api.admin.companies.list<{
+    companies?: Array<{
+      id: string;
+      name: string;
+      status: string;
+      createdAt: string;
+      phone?: string | null;
+      companyUsers?: Array<{
+        userEmail?: string;
       }>;
-    }>(undefined, requestOptions);
+    }>;
+  }>(undefined, requestOptions);
 
-    return toCompanyRows(payload.companies ?? []);
-  } catch {
-    const payload = await api.admin.companies.pending<{
-      companies?: Array<{
-        id: string;
-        name: string;
-        status: string;
-        createdAt: string;
-        companyUsers?: Array<{
-          userEmail?: string;
-        }>;
-      }>;
-    }>(requestOptions);
-
-    return toCompanyRows(payload.companies ?? []);
-  }
+  return toCompanyRows(payload.companies ?? []);
 }
 
 export default async function AdminCompaniesPage() {
