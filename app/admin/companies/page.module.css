@@ -35,6 +35,17 @@
   background: var(--bg-subtle);
 }
 
+.feedback {
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(176, 48, 48, 0.16);
+  background: rgba(176, 48, 48, 0.06);
+  color: #8f2d2d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .scrollWrap {
   overflow-x: auto;
 }

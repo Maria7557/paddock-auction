@@ -767,16 +767,9 @@ const LISTING_AUCTION_STATES: AuctionState[] = [
   "CLOSED",
   "EXTENDED",
 ];
-const FALLBACK_LOT_IMAGES = [
-  "/images/car-elantra.jpg",
-  "/images/car-gwagon.jpg",
-  "/images/car-bentley.jpg",
-  "/images/car-mclaren.jpg",
-  "/images/car-mustang.jpg",
-];
 
 function normalizeAuctionStatus(state: AuctionState): AuctionStatus {
-  if (state === "LIVE") {
+  if (state === "LIVE" || state === "EXTENDED") {
     return "LIVE";
   }
 
@@ -784,7 +777,7 @@ function normalizeAuctionStatus(state: AuctionState): AuctionStatus {
     return "SCHEDULED";
   }
 
-  if (state === "PAYMENT_PENDING") {
+  if (state === "PAYMENT_PENDING" || state === "PAID") {
     return "PAYMENT_PENDING";
   }
 
@@ -799,30 +792,15 @@ function deriveLotNumber(auctionId: string): string {
   return `LOT-${auctionId.slice(0, 8).toUpperCase()}`;
 }
 
-function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
-  if (vehicle?.images && vehicle.images.length > 0) {
-    return vehicle.images;
+function deriveLotImages(vehicle: DbVehicle | null): string[] {
+  const realImages =
+    vehicle?.images.filter((image): image is string => typeof image === "string" && image.trim().length > 0) ?? [];
+
+  if (realImages.length > 0) {
+    return realImages;
   }
 
-  const brand = vehicle?.brand.trim().toLowerCase() ?? "";
-
-  if (brand.includes("bentley")) {
-    return ["/images/car-bentley.jpg"];
-  }
-
-  if (brand.includes("mercedes") || brand.includes("nissan") || brand.includes("gmc")) {
-    return ["/images/car-gwagon.jpg"];
-  }
-
-  if (brand.includes("mustang") || brand.includes("ford")) {
-    return ["/images/car-mustang.jpg"];
-  }
-
-  if (brand.includes("mclaren") || brand.includes("ferrari") || brand.includes("lamborghini")) {
-    return ["/images/car-mclaren.jpg"];
-  }
-
-  return [FALLBACK_LOT_IMAGES[index % FALLBACK_LOT_IMAGES.length] ?? "/vehicle-photo.svg"];
+  return ["/vehicle-photo.svg"];
 }
 
 function buildSpecs(vehicle: DbVehicle | null): AuctionSpec[] {
@@ -844,12 +822,10 @@ function toAuctionLot({
   auction,
   vehicle,
   company,
-  index,
 }: {
   auction: DbAuction;
   vehicle: DbVehicle | null;
   company: DbCompany | null;
-  index: number;
 }): AuctionLot {
   const title = `${vehicle?.brand ?? "Vehicle"} ${vehicle?.model ?? auction.id.slice(0, 6)}`.trim();
   const status = normalizeAuctionStatus(auction.state);
@@ -882,7 +858,7 @@ function toAuctionLot({
     depositRequiredAed: 5000,
     depositReady: true,
     watchlisted: false,
-    images: deriveLotImages(vehicle, index),
+    images: deriveLotImages(vehicle),
     vehicle: {
       description: vehicle?.description ?? null,
       engine: vehicle?.engine ?? null,
@@ -904,12 +880,11 @@ function toAuctionLot({
 }
 
 async function hydrateAuctionLots(auctions: DbAuction[]): Promise<AuctionLot[]> {
-  return auctions.map((auction, index) =>
+  return auctions.map((auction) =>
     toAuctionLot({
       auction,
       vehicle: null,
       company: null,
-      index,
     }),
   );
 }
@@ -1011,7 +986,7 @@ function toApiAuctionLot(
     vin: normalizedVehicle.vin,
     status,
     currentBidAed,
-    marketPriceAed: toNumberValue(normalizedVehicle.marketPrice, 0),
+    marketPriceAed: normalizedVehicle.marketPrice === null ? null : toNumberValue(normalizedVehicle.marketPrice, 0),
     minimumStepAed,
     endsAt: toDateString(source.endsAt, new Date(Date.now() + HOUR).toISOString()),
     startsAt: toDateString(source.startsAt, now),
@@ -1019,7 +994,7 @@ function toApiAuctionLot(
     depositRequiredAed: 5000,
     depositReady: true,
     watchlisted: false,
-    images: deriveLotImages(normalizedVehicle, index),
+    images: deriveLotImages(normalizedVehicle),
     vehicle: {
       description: normalizedVehicle.description,
       engine: normalizedVehicle.engine,
@@ -1046,9 +1021,9 @@ export async function readHomepageLots(): Promise<AuctionLot[]> {
     const rawLots = payload.auctions ?? payload.lots ?? [];
 
     return rawLots
-      .slice(0, 6)
       .map((auction, index) => toApiAuctionLot(auction, index))
-      .filter((lot) => HOMEPAGE_AUCTION_STATES.includes(lot.status));
+      .filter((lot) => HOMEPAGE_AUCTION_STATES.includes(lot.status))
+      .slice(0, 6);
   } catch {
     return [];
   }

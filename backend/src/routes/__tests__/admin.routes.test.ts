@@ -35,7 +35,14 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
+const { mockEmail } = vi.hoisted(() => ({
+  mockEmail: {
+    sendNewEventAnnouncementEmail: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../lib/email", () => mockEmail);
 
 import { buildServer } from "../../server";
 
@@ -174,6 +181,7 @@ describe("GET /api/admin/companies/pending", () => {
       {
         id: "c1",
         name: "Fleet Corp",
+        phone: "+971501112233",
         status: "PENDING_APPROVAL",
         createdAt: new Date("2026-03-14T08:00:00.000Z"),
         users: [
@@ -197,6 +205,7 @@ describe("GET /api/admin/companies/pending", () => {
     expect(res.status).toBe(200);
     expect(res.body.companies).toHaveLength(1);
     expect(res.body.companies[0].name).toBe("Fleet Corp");
+    expect(res.body.companies[0].phone).toBe("+971501112233");
   });
 
   it("returns empty array when no pending companies", async () => {
@@ -209,6 +218,67 @@ describe("GET /api/admin/companies/pending", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       companies: [],
+    });
+  });
+});
+
+describe("GET /api/admin/companies", () => {
+  it("returns 200 with companies across statuses", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: "c2",
+        name: "Active Fleet",
+        phone: "+971501234567",
+        status: "ACTIVE",
+        createdAt: new Date("2026-03-15T09:00:00.000Z"),
+        users: [
+          {
+            id: "cu2",
+            role: "SELLER_MANAGER",
+            user: {
+              id: "u2",
+              email: "active@example.com",
+              status: "ACTIVE",
+            },
+          },
+        ],
+      },
+      {
+        id: "c1",
+        name: "Pending Fleet",
+        phone: null,
+        status: "PENDING_APPROVAL",
+        createdAt: new Date("2026-03-14T08:00:00.000Z"),
+        users: [
+          {
+            id: "cu1",
+            role: "SELLER_MANAGER",
+            user: {
+              id: "u1",
+              email: "pending@example.com",
+              status: "PENDING_APPROVAL",
+            },
+          },
+        ],
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/companies")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.companies).toHaveLength(2);
+    expect(res.body.companies[0]).toMatchObject({
+      id: "c2",
+      name: "Active Fleet",
+      phone: "+971501234567",
+      status: "ACTIVE",
+    });
+    expect(res.body.companies[1]).toMatchObject({
+      id: "c1",
+      name: "Pending Fleet",
+      status: "PENDING_APPROVAL",
     });
   });
 });
@@ -492,6 +562,10 @@ describe("POST /api/admin/events", () => {
       sellerCompanyId: "seller-company",
       minIncrement: 500,
     });
+    mockPrisma.user.findMany.mockResolvedValue([
+      { email: "buyer@example.com" },
+      { email: "seller@example.com" },
+    ]);
 
     const tx = buildAdminTx();
     tx.auction.create.mockResolvedValue({
@@ -514,6 +588,17 @@ describe("POST /api/admin/events", () => {
       id: "ev1",
       success: true,
     });
+    expect(mockEmail.sendNewEventAnnouncementEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Prime lots",
+        endsAt: expect.any(Date),
+        eventId: "ev1",
+        recipients: ["buyer@example.com", "seller@example.com"],
+        startsAt: expect.any(Date),
+        title: "Evening Event",
+      }),
+      expect.anything(),
+    );
   });
 });
 

@@ -6,6 +6,7 @@ import { z, type ZodError } from "zod";
 
 import { prisma } from "../db";
 import { requireAuth } from "../lib/auth";
+import { sendAdminRegistrationEmail, sendUserRegistrationEmail } from "../lib/email";
 
 const { loadJose } = require("../lib/jose-runtime.cjs") as {
   loadJose: () => Promise<typeof import("jose")>;
@@ -23,7 +24,16 @@ const registerSchema = z.object({
   companyName: z.string().trim().min(1),
   registrationNumber: z.string().trim().min(1),
   country: z.string().trim().min(1),
+  phoneNumber: z.string().trim().optional(),
   emirate: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.role === "SELLER" && !value.phoneNumber) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["phoneNumber"],
+      message: "Phone number is required.",
+    });
+  }
 });
 
 type LoginBody = z.infer<typeof loginSchema>;
@@ -224,6 +234,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             data: {
               id: companyId,
               name: payload.companyName,
+              phone: payload.phoneNumber?.trim() || null,
               registrationNumber: payload.registrationNumber.trim(),
               country: payload.country.trim(),
               status: companyStatus,
@@ -237,6 +248,31 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               role: companyUserRole,
             },
           }),
+        ]);
+
+        await Promise.all([
+          sendUserRegistrationEmail(
+            {
+              companyName: payload.companyName,
+              email: createdUser.email,
+              role: createdUser.role as "SELLER" | "BUYER",
+              status: userStatus,
+            },
+            fastify.log,
+          ),
+          sendAdminRegistrationEmail(
+            {
+              companyName: payload.companyName,
+              country: payload.country.trim(),
+              email: createdUser.email,
+              emirate: payload.emirate?.trim() || null,
+              phoneNumber: payload.phoneNumber?.trim() || null,
+              registrationNumber: payload.registrationNumber.trim(),
+              role: createdUser.role as "SELLER" | "BUYER",
+              status: userStatus,
+            },
+            fastify.log,
+          ),
         ]);
 
         await reply.code(201).send({

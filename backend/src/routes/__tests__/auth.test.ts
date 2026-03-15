@@ -5,6 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 const compareMock = vi.fn();
 const hashMock = vi.fn();
+const sendAdminRegistrationEmailMock = vi.fn();
+const sendUserRegistrationEmailMock = vi.fn();
 const mockPrisma = {
   user: {
     findUnique: vi.fn(),
@@ -28,6 +30,11 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("../../db", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("../../lib/email", () => ({
+  sendAdminRegistrationEmail: sendAdminRegistrationEmailMock,
+  sendUserRegistrationEmail: sendUserRegistrationEmailMock,
 }));
 
 async function signToken(payload: {
@@ -229,6 +236,27 @@ describe("authRoutes", () => {
     expect(mockPrisma.company.create).toHaveBeenCalledOnce();
     expect(mockPrisma.companyUser.create).toHaveBeenCalledOnce();
     expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+    expect(sendUserRegistrationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: "Buyer Co",
+        email: "buyer@example.com",
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
+    expect(sendAdminRegistrationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: "Buyer Co",
+        country: "AE",
+        email: "buyer@example.com",
+        phoneNumber: null,
+        registrationNumber: "BUY-123",
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({
       user: {
@@ -237,6 +265,69 @@ describe("authRoutes", () => {
         role: "BUYER",
       },
     });
+
+    await server.close();
+  });
+
+  it("stores seller phone number on company registration", async () => {
+    const server = await buildTestServer();
+
+    hashMock.mockResolvedValue("hashed-password");
+    mockPrisma.user.create.mockResolvedValue({
+      id: "generated-seller-id",
+      email: "seller@example.com",
+      role: "SELLER",
+    });
+    mockPrisma.company.create.mockResolvedValue({
+      id: "generated-company-id",
+    });
+    mockPrisma.companyUser.create.mockResolvedValue({
+      id: "generated-company-user-id",
+    });
+    mockPrisma.$transaction.mockResolvedValue([
+      {
+        id: "generated-seller-id",
+        email: "seller@example.com",
+        role: "SELLER",
+      },
+      {
+        id: "generated-company-id",
+      },
+      {
+        id: "generated-company-user-id",
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "Seller@Example.com",
+        password: "password-123",
+        role: "SELLER",
+        companyName: "Seller Co",
+        registrationNumber: "SELL-123",
+        country: "AE",
+        phoneNumber: "+971501234567",
+      },
+    });
+
+    expect(mockPrisma.company.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: "Seller Co",
+        phone: "+971501234567",
+        registrationNumber: "SELL-123",
+      }),
+    });
+    expect(sendAdminRegistrationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: "Seller Co",
+        email: "seller@example.com",
+        phoneNumber: "+971501234567",
+      }),
+      expect.anything(),
+    );
+    expect(response.statusCode).toBe(201);
 
     await server.close();
   });

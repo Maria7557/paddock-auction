@@ -113,8 +113,8 @@ function appendSearchParams(path: string, input?: SearchParamsInput): string {
 }
 
 function shouldApplyJsonContentType(body: BodyInit | null | undefined): boolean {
-  if (!body) {
-    return true;
+  if (body === null || body === undefined) {
+    return false;
   }
 
   if (typeof FormData !== "undefined" && body instanceof FormData) {

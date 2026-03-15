@@ -22,7 +22,15 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
+const { mockEmail } = vi.hoisted(() => ({
+  mockEmail: {
+    sendAdminRegistrationEmail: vi.fn(),
+    sendUserRegistrationEmail: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../lib/email", () => mockEmail);
 
 import { buildServer } from "../../server";
 
@@ -222,6 +230,7 @@ describe("POST /api/auth/register", () => {
     companyName: "Fleet Corp LLC",
     registrationNumber: "AE-12345",
     country: "UAE",
+    phoneNumber: "+971501234567",
   } as const;
 
   const validBuyerBody = {
@@ -247,6 +256,27 @@ describe("POST /api/auth/register", () => {
     expect(res.status).toBe(201);
     expect(res.body.user.email).toBe(validSellerBody.email);
     expect(res.body.user.role).toBe("SELLER");
+    expect(mockEmail.sendUserRegistrationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: validSellerBody.companyName,
+        email: validSellerBody.email,
+        role: "SELLER",
+        status: "PENDING_APPROVAL",
+      }),
+      expect.anything(),
+    );
+    expect(mockEmail.sendAdminRegistrationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: validSellerBody.companyName,
+        country: validSellerBody.country,
+        email: validSellerBody.email,
+        phoneNumber: validSellerBody.phoneNumber,
+        registrationNumber: validSellerBody.registrationNumber,
+        role: "SELLER",
+        status: "PENDING_APPROVAL",
+      }),
+      expect.anything(),
+    );
   });
 
   it("returns 201 for valid buyer registration", async () => {
@@ -262,6 +292,26 @@ describe("POST /api/auth/register", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe("BUYER");
+    expect(mockEmail.sendUserRegistrationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: validBuyerBody.companyName,
+        email: validBuyerBody.email,
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
+    expect(mockEmail.sendAdminRegistrationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyName: validBuyerBody.companyName,
+        country: validBuyerBody.country,
+        email: validBuyerBody.email,
+        registrationNumber: validBuyerBody.registrationNumber,
+        role: "BUYER",
+        status: "ACTIVE",
+      }),
+      expect.anything(),
+    );
   });
 
   it("calls $transaction for atomic User + Company + CompanyUser creation", async () => {
@@ -312,6 +362,22 @@ describe("POST /api/auth/register", () => {
       .send({ ...validSellerBody, companyName: "" });
 
     expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when seller phone number is missing", async () => {
+    const { phoneNumber: _phoneNumber, ...payload } = validSellerBody;
+
+    const res = await request.post("/api/auth/register").send(payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_REQUEST");
+    expect(res.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "phoneNumber",
+        }),
+      ]),
+    );
   });
 
   it("returns 400 when required fields are missing", async () => {

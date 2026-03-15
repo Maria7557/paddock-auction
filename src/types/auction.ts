@@ -18,7 +18,7 @@ export interface Lot {
   status: LotStatus;
   currentBidAed: number;
   startingBidAed: number;
-  marketPriceAed: number;
+  marketPriceAed: number | null;
   minStepAed: number;
   startsAt: string;
   endsAt: string;
@@ -31,8 +31,9 @@ export interface AuctionWeekEvent {
   lotCount: number;
   startingFromAed: number;
   location: string;
-  viewingStart: string;
-  viewingEnd: string;
+  viewingStart?: string | null;
+  viewingEnd?: string | null;
+  status?: 'LIVE' | 'SCHEDULED';
 }
 
 export interface PlatformStats {

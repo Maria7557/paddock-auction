@@ -90,29 +90,12 @@ export type LotDetail = {
   }>;
 };
 
-const DEFAULT_FEATURES = [
-  "Bluetooth Connectivity",
-  "Rear Camera",
-  "Cruise Control",
-  "Parking Sensors",
-  "Keyless Entry",
-  "Push Start",
-  "Climate Control",
-  "Navigation System",
-  "Leather Seats",
-  "Sunroof",
-];
+const NOT_SPECIFIED = "Not specified";
+const DEFAULT_DESCRIPTION = "Seller has not provided a description for this vehicle yet.";
 
-const DEFAULT_DESCRIPTION =
-  "Fleet vehicle from a UAE rental operator. This vehicle was part of an active rental fleet and has been regularly serviced and maintained according to manufacturer specifications.";
-
-const DEFAULT_HIGHLIGHTS = [
-  "Fully operational",
-  "Fleet maintained",
-  "Transparent history",
-  "Not insurance salvage",
-  "Not damaged liquidation stock",
-];
+function isMeaningfulValue(value: string): boolean {
+  return !["", "—", NOT_SPECIFIED].includes(value.trim());
+}
 
 async function getLot(auctionId: string): Promise<LotDetail | null> {
   try {
@@ -127,30 +110,32 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       lotNumber: String(auction.lotNumber ?? `LOT-${auctionId.slice(0, 8).toUpperCase()}`),
       auctionId: String(auction.id ?? auctionId),
       state: (auction.state as LotAuctionState | undefined) ?? "SCHEDULED",
-      title: `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim(),
+      title:
+        `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")}`.trim() ||
+        String(auction.lotNumber ?? `Lot ${auctionId.slice(0, 8).toUpperCase()}`),
       make: String(vehicle.brand ?? vehicle.make ?? ""),
       model: String(vehicle.model ?? ""),
       series: String(vehicle.series ?? vehicle.trim ?? ""),
-      year: Number(vehicle.year ?? 2022),
+      year: Number(vehicle.year ?? 0),
       vin: String(vehicle.vin ?? "—"),
       mileageKm: Number(vehicle.mileage ?? vehicle.mileageKm ?? 0),
-      color: String(vehicle.exteriorColor ?? vehicle.color ?? "Not specified"),
-      colorInterior: String(vehicle.interiorColor ?? "—"),
-      condition: String(vehicle.condition ?? "Good"),
-      regionSpec: String(vehicle.regionSpec ?? "GCC"),
-      airbags: String(vehicle.airbags ?? "Intact"),
-      damage: String(vehicle.damage ?? "None"),
-      bodyStyle: String(vehicle.bodyType ?? vehicle.bodyStyle ?? "Sedan"),
+      color: String(vehicle.exteriorColor ?? vehicle.color ?? NOT_SPECIFIED),
+      colorInterior: String(vehicle.interiorColor ?? NOT_SPECIFIED),
+      condition: String(vehicle.condition ?? NOT_SPECIFIED),
+      regionSpec: String(vehicle.regionSpec ?? NOT_SPECIFIED),
+      airbags: String(vehicle.airbags ?? NOT_SPECIFIED),
+      damage: String(vehicle.damage ?? NOT_SPECIFIED),
+      bodyStyle: String(vehicle.bodyType ?? vehicle.bodyStyle ?? NOT_SPECIFIED),
       engine: String(vehicle.engine ?? "—"),
-      transmission: String(vehicle.transmission ?? "Automatic"),
-      driveType: String(vehicle.driveType ?? vehicle.drivetrain ?? "—"),
-      fuelType: String(vehicle.fuelType ?? "Petrol"),
-      features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : DEFAULT_FEATURES,
+      transmission: String(vehicle.transmission ?? NOT_SPECIFIED),
+      driveType: String(vehicle.driveType ?? vehicle.drivetrain ?? NOT_SPECIFIED),
+      fuelType: String(vehicle.fuelType ?? NOT_SPECIFIED),
+      features: Array.isArray(vehicle.features) ? (vehicle.features as string[]) : [],
       description: String(vehicle.description ?? DEFAULT_DESCRIPTION),
-      highlights: Array.isArray(vehicle.highlights) ? (vehicle.highlights as string[]) : DEFAULT_HIGHLIGHTS,
-      sellerName: String(auction.sellerName ?? data.sellerName ?? "Fleet Operator"),
+      highlights: Array.isArray(vehicle.highlights) ? (vehicle.highlights as string[]) : [],
+      sellerName: String(auction.sellerName ?? data.sellerName ?? NOT_SPECIFIED),
       sellerRef: String(auction.sellerRef ?? ""),
-      location: String(auction.location ?? vehicle.location ?? "UAE, Dubai"),
+      location: String(auction.location ?? vehicle.location ?? NOT_SPECIFIED),
       auctionAt: String(auction.startsAt ?? auction.endsAt ?? new Date().toISOString()),
       actualCashValue: Number(auction.actualCashValue ?? 0),
       currentBidAed: Number(auction.currentPrice ?? auction.currentBidAed ?? 0),
@@ -162,7 +147,7 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
       images:
         Array.isArray(vehicle.images) && vehicle.images.length > 0
           ? (vehicle.images as string[])
-          : ["/images/car-elantra.jpg", "/images/car-gwagon.jpg", "/images/car-bentley.jpg"],
+          : ["/vehicle-photo.svg"],
       bids: Array.isArray(data.bids)
         ? (data.bids as Array<Record<string, unknown>>).map((bid) => ({
             id: String(bid.id ?? ""),
@@ -183,7 +168,12 @@ async function getLot(auctionId: string): Promise<LotDetail | null> {
               mileageKm: Number(similarVehicle.mileage ?? 0),
               currentBidAed: Number(item.currentPrice ?? item.currentBidAed ?? 0),
               state: String(item.state ?? "SCHEDULED"),
-              imageUrl: "/images/car-elantra.jpg",
+              imageUrl:
+                Array.isArray(similarVehicle.images) &&
+                typeof similarVehicle.images[0] === "string" &&
+                similarVehicle.images[0].trim().length > 0
+                  ? similarVehicle.images[0]
+                  : "/vehicle-photo.svg",
             };
           })
         : [],
@@ -228,6 +218,15 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
   const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
   const isScheduled = lot.state === "SCHEDULED";
   const isActive = isLive || isScheduled;
+  const summaryFacts = [
+    lot.year > 0 ? formatInteger(lot.year, display.locale) : null,
+    lot.mileageKm > 0 ? `${formatInteger(lot.mileageKm, display.locale)} ${isRu ? "км" : "km"}` : null,
+    isMeaningfulValue(lot.condition) ? lot.condition : null,
+    isMeaningfulValue(lot.regionSpec) ? lot.regionSpec : null,
+    isMeaningfulValue(lot.airbags) ? `${lot.airbags} ${isRu ? "подушек" : "airbags"}` : null,
+  ].filter((fact): fact is string => fact !== null);
+  const specPills = [lot.regionSpec, lot.transmission, lot.bodyStyle].filter(isMeaningfulValue);
+  const hasDamage = isMeaningfulValue(lot.damage) && lot.damage !== "None";
 
   return (
     <MarketShell mainClassName={styles.mainTight}>
@@ -245,32 +244,29 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             <h1 className={styles.h1}>{lot.title}</h1>
             <div className={styles.quickMeta}>
               <div className={styles.quickMetaFacts}>
-                <span>{formatInteger(lot.year, display.locale)}</span>
-                <span className={styles.dot}>·</span>
-                <span>
-                  {formatInteger(lot.mileageKm, display.locale)}&thinsp;{isRu ? "км" : "km"}
-                </span>
-                <span className={styles.dot}>·</span>
-                <span>{lot.condition}</span>
-                <span className={styles.dot}>·</span>
-                <span>{lot.regionSpec}</span>
-                <span className={styles.dot}>·</span>
-                <span>
-                  {lot.airbags} {isRu ? "подушек" : "airbags"}
-                </span>
-                {lot.damage !== "None" ? (
-                  <>
-                    <span className={styles.dot}>·</span>
+                {summaryFacts.map((fact, index) => (
+                  <span key={`${fact}-${index}`}>
+                    {index > 0 ? <span className={styles.dot}>·</span> : null}
+                    <span>{fact}</span>
+                  </span>
+                ))}
+                {hasDamage ? (
+                  <span>
+                    {summaryFacts.length > 0 ? <span className={styles.dot}>·</span> : null}
                     <span className={styles.damage}>{lot.damage}</span>
-                  </>
+                  </span>
                 ) : null}
               </div>
             </div>
-            <div className={styles.specPills}>
-              <span className={styles.pill}>{lot.regionSpec}</span>
-              <span className={styles.pill}>{lot.transmission}</span>
-              <span className={styles.pill}>{lot.bodyStyle}</span>
-            </div>
+            {specPills.length > 0 ? (
+              <div className={styles.specPills}>
+                {specPills.map((pill) => (
+                  <span key={pill} className={styles.pill}>
+                    {pill}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 

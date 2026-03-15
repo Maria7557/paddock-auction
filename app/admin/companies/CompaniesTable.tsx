@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
-import { api } from "@/src/lib/api-client";
+import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
 
 import styles from "./page.module.css";
 
@@ -25,6 +25,7 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
   const router = useRouter();
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (tab === "all") {
@@ -36,6 +37,7 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
 
   async function mutateCompany(id: string, action: "approve" | "reject"): Promise<void> {
     setBusyId(id);
+    setFeedback(null);
 
     try {
       if (action === "approve") {
@@ -45,6 +47,16 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
       }
 
       router.refresh();
+    } catch (error) {
+      const payload = getApiErrorPayload<{ error?: string }>(error);
+
+      if (payload?.error === "COMPANY_NOT_FOUND") {
+        setFeedback("Company no longer exists or was already updated. The list has been refreshed.");
+        router.refresh();
+        return;
+      }
+
+      setFeedback(getApiErrorMessage(error, "Failed to update company status."));
     } finally {
       setBusyId(null);
     }
@@ -66,6 +78,11 @@ export function CompaniesTable({ companies }: CompaniesTableProps) {
 
       <section className={styles.section}>
         <div className={styles.sectionTitle}>Company Review Queue</div>
+        {feedback ? (
+          <div className={styles.feedback} role="alert">
+            {feedback}
+          </div>
+        ) : null}
         <div className={styles.scrollWrap}>
           <table className={styles.table}>
             <thead>

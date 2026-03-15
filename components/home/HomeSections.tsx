@@ -28,11 +28,11 @@ type LocaleProps = {
   locale?: SupportedLocale;
 };
 
-const CATEGORY_RU: Record<string, { label: string; sub: string }> = {
-  luxury: { label: "Премиум-класс", sub: "Bentley, Rolls-Royce, Maserati" },
-  suv: { label: "SUV", sub: "G-Wagon, Land Cruiser, Patrol" },
-  sedan: { label: "Седаны", sub: "Elantra, Camry, Accord" },
-  sports: { label: "Спорт и суперкары", sub: "McLaren, Mustang, Ferrari" },
+const CATEGORY_RU: Record<string, string> = {
+  luxury: "Премиум-класс",
+  suv: "SUV",
+  sedan: "Седаны",
+  sports: "Спорт и купе",
 };
 
 const SELL_STEPS_EN = [
@@ -397,10 +397,75 @@ export function HowSection({ locale = "en" }: LocaleProps) {
 
 export function WeekSection({ event, display }: { event: AuctionWeekEvent; display: DisplaySettings }) {
   const isRu = display.locale === "ru";
-  const dateStr = new Date(event.date).toLocaleDateString(toIntlLocale(display.locale), {
+  const intlLocale = toIntlLocale(display.locale);
+  const isLive = event.status === "LIVE";
+  const eventDate = new Date(event.date);
+  const dateStr = eventDate.toLocaleDateString(intlLocale, {
+    timeZone: "Asia/Dubai",
     day: "numeric",
     month: "long",
     year: "numeric",
+  });
+  const timeStr = eventDate.toLocaleTimeString(intlLocale, {
+    timeZone: "Asia/Dubai",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const inspectionText =
+    event.viewingStart && event.viewingEnd
+      ? (() => {
+          const viewingStart = new Date(event.viewingStart);
+          const viewingEnd = new Date(event.viewingEnd);
+          const sameDay = viewingStart.toDateString() === viewingEnd.toDateString();
+          const startDate = viewingStart.toLocaleDateString(intlLocale, {
+            timeZone: "Asia/Dubai",
+            day: "numeric",
+            month: "long",
+          });
+          const endDate = viewingEnd.toLocaleDateString(intlLocale, {
+            timeZone: "Asia/Dubai",
+            day: "numeric",
+            month: "long",
+          });
+          const startTime = viewingStart.toLocaleTimeString(intlLocale, {
+            timeZone: "Asia/Dubai",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const endTime = viewingEnd.toLocaleTimeString(intlLocale, {
+            timeZone: "Asia/Dubai",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          if (sameDay) {
+            return isRu ? `Осмотр: ${startDate}, ${startTime}–${endTime} GST` : `Inspection: ${startDate}, ${startTime}–${endTime} GST`;
+          }
+
+          return isRu
+            ? `Осмотр: ${startDate}, ${startTime} GST — ${endDate}, ${endTime} GST`
+            : `Inspection: ${startDate}, ${startTime} GST — ${endDate}, ${endTime} GST`;
+        })()
+      : null;
+  const details: Array<{ icon: ReactNode; text: string }> = [];
+
+  if (event.location) {
+    details.push({ icon: <IconMapPin size={14} color="#fff" />, text: event.location });
+  }
+
+  if (inspectionText) {
+    details.push({ icon: <IconEye size={14} color="#fff" />, text: inspectionText });
+  }
+
+  details.push({
+    icon: <IconCar size={14} color="#fff" />,
+    text: isRu ? `${formatInteger(event.lotCount, display.locale)} лотов подтверждено` : `${formatInteger(event.lotCount, display.locale)} lots confirmed`,
+  });
+  details.push({
+    icon: <IconTag size={14} color="#fff" />,
+    text: isRu
+      ? `Стартовые ставки от ${formatMoneyFromAed(event.startingFromAed, display)}`
+      : `Starting bids from ${formatMoneyFromAed(event.startingFromAed, display)}`,
   });
 
   return (
@@ -408,11 +473,23 @@ export function WeekSection({ event, display }: { event: AuctionWeekEvent; displ
       <div className={`container ${styles.twoCol}`}>
         <div>
           <div className={`eyebrow eyebrow-white ${styles.liveEyebrow}`}>
-            <span className="live-dot" />
-            {isRu ? "Ближайшее событие" : "Upcoming Event"}
+            {isLive ? <span className="live-dot" /> : null}
+            {isLive ? (isRu ? "Идёт сейчас" : "Live Event") : isRu ? "Ближайшее событие" : "Upcoming Event"}
           </div>
           <h2 className={`section-h2 section-h2-white ${styles.weekH2}`}>
-            {isRu ? (
+            {isLive ? isRu ? (
+              <>
+                Живой
+                <br />
+                аукцион
+              </>
+            ) : (
+              <>
+                Live
+                <br />
+                Auction
+              </>
+            ) : isRu ? (
               <>
                 Аукцион
                 <br />
@@ -426,27 +503,9 @@ export function WeekSection({ event, display }: { event: AuctionWeekEvent; displ
               </>
             )}
           </h2>
-          <div className={styles.weekDate}>{dateStr} — 15:00 GST</div>
+          <div className={styles.weekDate}>{dateStr} — {timeStr} GST</div>
 
-          {[
-            { icon: <IconMapPin size={14} color="#fff" />, text: event.location },
-            {
-              icon: <IconEye size={14} color="#fff" />,
-              text: isRu ? "Осмотр: 4–5 марта, 10:00–17:00" : "Inspection: 4–5 March, 10:00–17:00",
-            },
-            {
-              icon: <IconCar size={14} color="#fff" />,
-              text: isRu
-                ? `${formatInteger(event.lotCount, display.locale)} лотов подтверждено · SUV, седаны, премиум`
-                : `${formatInteger(event.lotCount, display.locale)} lots confirmed · SUVs, Sedans, Luxury`,
-            },
-            {
-              icon: <IconTag size={14} color="#fff" />,
-              text: isRu
-                ? `Стартовые ставки от ${formatMoneyFromAed(event.startingFromAed, display)}`
-                : `Starting bids from ${formatMoneyFromAed(event.startingFromAed, display)}`,
-            },
-          ].map((detail, index) => (
+          {details.map((detail, index) => (
             <div key={index} className={styles.weekDetail}>
               <div className={styles.weekDetailIcon}>{detail.icon}</div>
               {detail.text}
@@ -473,7 +532,7 @@ export function CatsSection({
   categories,
   locale = "en",
 }: {
-  categories: { slug: string; label: string; sub: string; image: string }[];
+  categories: { slug: string; label: string; sub: string; image: string; href?: string }[];
   locale?: SupportedLocale;
 }) {
   const isRu = locale === "ru";
@@ -490,18 +549,18 @@ export function CatsSection({
         <div className={styles.catsGrid}>
           {categories.map((category) => {
             const translated = CATEGORY_RU[category.slug];
-            const label = isRu && translated ? translated.label : category.label;
-            const sub = isRu && translated ? translated.sub : category.sub;
+            const label = isRu && translated ? translated : category.label;
+            const sub = category.sub;
 
             return (
-              <Link key={category.slug} href={withLocalePath(`/auctions?category=${category.slug}`, locale)} className={styles.catCard}>
+              <Link key={category.slug} href={withLocalePath(category.href ?? "/auctions", locale)} className={styles.catCard}>
                 <Image src={category.image} alt={label} fill sizes="300px" style={{ objectFit: "cover" }} />
                 <div className={styles.catOverlay} />
                 <div className={styles.catContent}>
                   <div className={styles.catTitle}>{label}</div>
                   <div className={styles.catSub}>{sub}</div>
                   <div className={styles.catCta}>
-                    {isRu ? "Смотреть категорию" : "View Category"} <IconArrowRight size={12} color="#fff" />
+                    {isRu ? "Смотреть инвентарь" : "Browse Inventory"} <IconArrowRight size={12} color="#fff" />
                   </div>
                 </div>
               </Link>

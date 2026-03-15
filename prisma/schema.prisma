@@ -69,6 +69,7 @@ model Company {
   id                 String        @id @default(uuid())
   name               String
   country            String
+  phone              String?
   registrationNumber String        @unique
   status             CompanyStatus @default(PENDING)
   createdAt          DateTime      @default(now())
