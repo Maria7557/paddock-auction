@@ -25,6 +25,8 @@ import { DamageDiagram } from "@/components/seller/DamageDiagram";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const SELLER_AUCTION_PRICE_INCREMENT_AED = 500;
+const SELLER_AUCTION_MIN_PRICE_AED = SELLER_AUCTION_PRICE_INCREMENT_AED;
 const AIRBAG_OPTIONS = [
   { value: "NO_AIRBAGS", label: "No airbags" },
   { value: "2", label: "2 — Driver + Passenger" },
@@ -56,6 +58,58 @@ type VehicleFormProps = {
 };
 
 export { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues } from "@/components/seller/vehicle-form-state";
+
+function getVehicleMediaUploadPath(): string {
+  if (process.env.NODE_ENV === "production") {
+    return "/api/seller/vehicles/upload-photos";
+  }
+
+  return "/dev-api/seller/vehicles/upload-photos";
+}
+
+function createDevUploadBatchId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${Date.now()}-${crypto.randomUUID()}`;
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function uploadDevFile(
+  file: File,
+  options: {
+    batchId: string;
+    kind: "photo" | "mulkiya-front" | "mulkiya-back";
+    index?: number;
+  },
+): Promise<string> {
+  const params = new URLSearchParams({
+    batchId: options.batchId,
+    kind: options.kind,
+  });
+
+  if (typeof options.index === "number") {
+    params.set("index", String(options.index));
+  }
+
+  const response = await fetch(`/dev-api/seller/vehicles/upload-file?${params.toString()}`, {
+    method: "POST",
+    body: file,
+    headers: {
+      "content-type": file.type,
+    },
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: string; error?: string; message?: string }
+    | null;
+
+  if (!response.ok || !payload?.url) {
+    throw new Error(payload?.message ?? payload?.error ?? "Failed to upload media");
+  }
+
+  return payload.url;
+}
 
 function cleanLabel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -106,6 +160,10 @@ function formatTimelineDate(value: Date): string {
 
 function isValidInspectionDate(value: string, tomorrowISO: string, maxDateISO: string): boolean {
   return value >= tomorrowISO && value <= maxDateISO;
+}
+
+function isValidSellerAuctionPrice(value: number): boolean {
+  return value >= SELLER_AUCTION_MIN_PRICE_AED && value % SELLER_AUCTION_PRICE_INCREMENT_AED === 0;
 }
 
 function validateUploadFile(file: File, allowedTypes: Set<string>): string | null {
@@ -370,7 +428,37 @@ export function VehicleForm({
     setUploadingMedia(true);
 
     try {
-      const response = await fetch("/api/seller/vehicles/upload-photos", {
+      if (process.env.NODE_ENV !== "production") {
+        const batchId = createDevUploadBatchId();
+        const uploadedPhotos: string[] = [];
+
+        for (const [index, photo] of photos.entries()) {
+          uploadedPhotos.push(
+            await uploadDevFile(photo.file, {
+              batchId,
+              kind: "photo",
+              index: index + 1,
+            }),
+          );
+        }
+
+        const uploadedMulkiyaFront = await uploadDevFile(mulkiyaFront, {
+          batchId,
+          kind: "mulkiya-front",
+        });
+        const uploadedMulkiyaBack = await uploadDevFile(mulkiyaBack, {
+          batchId,
+          kind: "mulkiya-back",
+        });
+
+        return {
+          photos: uploadedPhotos,
+          mulkiyaFrontUrl: uploadedMulkiyaFront,
+          mulkiyaBackUrl: uploadedMulkiyaBack,
+        };
+      }
+
+      const response = await fetch(getVehicleMediaUploadPath(), {
         method: "POST",
         body: formData,
       });
@@ -407,6 +495,14 @@ export function VehicleForm({
 
         const startingPrice = Number(values.startingPriceAed);
         const buyNow = values.buyNowPriceAed ? Number(values.buyNowPriceAed) : null;
+
+        if (!isValidSellerAuctionPrice(startingPrice)) {
+          throw new Error("Starting Price must be at least AED 500 and in AED 500 increments.");
+        }
+
+        if (buyNow !== null && !isValidSellerAuctionPrice(buyNow)) {
+          throw new Error("Buy Now Price must be at least AED 500 and in AED 500 increments.");
+        }
 
         if (buyNow !== null && buyNow <= startingPrice) {
           throw new Error("Buy Now Price must be greater than Starting Price.");
@@ -845,8 +941,8 @@ export function VehicleForm({
             Starting Price AED
             <input
               type="number"
-              min={1}
-              step="500"
+              min={SELLER_AUCTION_MIN_PRICE_AED}
+              step={SELLER_AUCTION_PRICE_INCREMENT_AED}
               value={values.startingPriceAed}
               onChange={(event) => updateField("startingPriceAed", event.target.value)}
               required
@@ -860,8 +956,8 @@ export function VehicleForm({
             </p>
             <input
               type="number"
-              min={0}
-              step="500"
+              min={SELLER_AUCTION_MIN_PRICE_AED}
+              step={SELLER_AUCTION_PRICE_INCREMENT_AED}
               value={values.buyNowPriceAed}
               onChange={(event) => updateField("buyNowPriceAed", event.target.value)}
             />
