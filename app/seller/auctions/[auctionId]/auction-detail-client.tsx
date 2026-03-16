@@ -142,7 +142,8 @@ function stepState(step: (typeof TIMELINE_STEPS)[number], state: string): "done"
 
 export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDetailClientProps) {
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<AuctionDetailResponse | null>(null);
@@ -160,26 +161,41 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
   const created = searchParams.get("created") === "1";
   const partialSetup = searchParams.get("setup") === "partial";
 
-  const loadAuction = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadAuction = useCallback(
+    async ({ silent = false, syncForm = true }: { silent?: boolean; syncForm?: boolean } = {}) => {
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setInitialLoading(true);
+      }
 
-    try {
-      const payload = await api.seller.auctions.get<BackendAuctionDetailResponse>(auctionId, { cache: "no-store" });
-      const parsed = normalizeAuctionDetailResponse(payload);
-      setData(parsed);
-      setEditForm({
-        startsAt: parsed.auction.startsAt.slice(0, 16),
-        endsAt: parsed.auction.endsAt.slice(0, 16),
-        startingPriceAed: String(parsed.auction.startingPriceAed),
-        buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
-      });
-    } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
-    } finally {
-      setLoading(false);
-    }
-  }, [auctionId]);
+      setError(null);
+
+      try {
+        const payload = await api.seller.auctions.get<BackendAuctionDetailResponse>(auctionId, { cache: "no-store" });
+        const parsed = normalizeAuctionDetailResponse(payload);
+        setData(parsed);
+
+        if (syncForm) {
+          setEditForm({
+            startsAt: parsed.auction.startsAt.slice(0, 16),
+            endsAt: parsed.auction.endsAt.slice(0, 16),
+            startingPriceAed: String(parsed.auction.startingPriceAed),
+            buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
+          });
+        }
+      } catch (requestError) {
+        setError(getApiErrorMessage(requestError, "Unexpected error"));
+      } finally {
+        if (silent) {
+          setRefreshing(false);
+        } else {
+          setInitialLoading(false);
+        }
+      }
+    },
+    [auctionId],
+  );
 
   useEffect(() => {
     void loadAuction();
@@ -187,7 +203,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void loadAuction();
+      void loadAuction({ silent: true, syncForm: false });
     }, 5000);
 
     return () => {
@@ -261,7 +277,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
       await api.seller.auctions.update(auctionId, payload);
 
-      await loadAuction();
+      await loadAuction({ silent: true });
     } catch (patchError) {
       setError(getApiErrorMessage(patchError, "Auction update failed"));
     } finally {
@@ -269,11 +285,11 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     }
   }
 
-  if (loading) {
+  if (initialLoading && !data) {
     return <p className="text-muted">Loading auction...</p>;
   }
 
-  if (error) {
+  if (error && !data) {
     return <p className="inline-note tone-error">{error}</p>;
   }
 
@@ -285,6 +301,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
   return (
     <section className="seller-section-stack">
+      {error ? <p className="inline-note tone-error">{error}</p> : null}
       {created ? <p className="inline-note tone-success">Vehicle added and auction draft created</p> : null}
       {partialSetup ? (
         <p className="inline-note tone-warning">Vehicle was created, but some draft auction fields need review.</p>
@@ -300,7 +317,14 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             </h2>
             <p className="text-muted">VIN: {data.auction.vehicle?.vin ?? "-"}</p>
           </div>
-          <AuctionStatusBadge state={data.auction.state} />
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {refreshing ? (
+              <span className="text-muted" aria-live="polite">
+                Refreshing...
+              </span>
+            ) : null}
+            <AuctionStatusBadge state={data.auction.state} />
+          </div>
         </div>
 
         {countdownTarget ? (
