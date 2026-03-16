@@ -61,10 +61,29 @@ services:
     networks:
       - fleetbid-network
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - fleetbid-network
+
 volumes:
   postgres_data:
   frontend_uploads:
   seller_vehicle_media:
+  caddy_data:
+  caddy_config:
 
 networks:
   fleetbid-network:
