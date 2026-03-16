@@ -189,11 +189,11 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const display = await getPublicDisplaySettings();
 
   if (!lot) {
-    return { title: display.locale === "ru" ? "Лот не найден — FleetBid" : "Lot Not Found — FleetBid" };
+    return { title: display.locale === "ru" ? "Лот не найден" : "Lot Not Found" };
   }
 
   return {
-    title: `${lot.title} — FleetBid Auction`,
+    title: lot.title,
     description:
       display.locale === "ru"
         ? `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} км, спецификация ${lot.regionSpec}. Текущая ставка ${formatMoneyFromAed(lot.currentBidAed, display)}.`
