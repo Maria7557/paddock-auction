@@ -18,7 +18,6 @@ import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marke
 import type { AuctionWeekEvent, Lot, LotStatus } from "@/src/types/auction";
 
 export const metadata: Metadata = {
-  title: "FleetBid — Dubai Rent A Car Liquidation Auctions",
   description:
     "Buy UAE fleet vehicles at up to 50% below market price. Structured weekly auctions of fully-serviced rental cars.",
 };

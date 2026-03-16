@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { GuardedLink } from "@/components/navigation/NavigationGuard";
 
 type TabPillProps = {
   href: string;
@@ -22,8 +23,8 @@ export function TabPill({ href, label, variant = "default" }: TabPillProps) {
     .join(" ");
 
   return (
-    <Link href={href} className={classNames} aria-current={isActive ? "page" : undefined}>
+    <GuardedLink href={href} className={classNames} aria-current={isActive ? "page" : undefined}>
       {label}
-    </Link>
+    </GuardedLink>
   );
 }

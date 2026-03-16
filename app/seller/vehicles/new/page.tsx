@@ -1,58 +1,66 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 import { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues, VehicleForm } from "@/components/seller/VehicleForm";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 
+type CreateSellerVehicleResponse = {
+  vehicle?: {
+    id?: string;
+  };
+  vehicleId?: string;
+  auctionId?: string;
+};
+
+function toStartOfDayIso(value: string): string {
+  return new Date(`${value}T00:00:00.000Z`).toISOString();
+}
+
 export default function SellerNewVehiclePage() {
   const router = useRouter();
-  const [notice, setNotice] = useState<string | null>(null);
 
   async function handleSubmit(values: SellerVehicleFormValues): Promise<void> {
     try {
-      const inspectionDropoffDate = values.inspectionDropoffDate
-        ? new Date(`${values.inspectionDropoffDate}T00:00:00.000Z`).toISOString()
-        : undefined;
-
-      const payload = await api.seller.vehicles.create<{
-        vehicleId?: string;
-        vehicle?: {
-          id?: string;
-        };
-      }>({
+      const payload = await api.seller.vehicles.create<CreateSellerVehicleResponse>({
         brand: values.brand,
         model: values.model,
         year: Number(values.year),
         vin: values.vin,
-        regionSpec: values.regionSpec,
-        bodyType: values.bodyType,
-        fuelType: values.fuelType,
-        transmission: values.transmission,
-        airbags: values.airbags,
-        exteriorColor: values.color,
+        regionSpec: values.regionSpec || undefined,
+        bodyType: values.bodyType || undefined,
+        fuelType: values.fuelType || undefined,
+        transmission: values.transmission || undefined,
+        airbags: values.airbags || undefined,
+        exteriorColor: values.color || undefined,
         mileage: Number(values.mileageKm),
-        condition: values.condition,
-        serviceHistory: values.serviceHistory,
-        description: values.description,
+        condition: values.condition || undefined,
+        serviceHistory: values.serviceHistory || undefined,
+        description: values.description || undefined,
         damageMap: values.damageMap,
         images: values.photoUrls,
-        mulkiyaFrontUrl: values.mulkiyaFrontUrl,
-        mulkiyaBackUrl: values.mulkiyaBackUrl,
+        mulkiyaFrontUrl: values.mulkiyaFrontUrl || undefined,
+        mulkiyaBackUrl: values.mulkiyaBackUrl || undefined,
         startingPrice: Number(values.startingPriceAed),
-        buyNowPrice: values.buyNowPriceAed ? Number(values.buyNowPriceAed) : undefined,
-        inspectionDropoffDate,
+        buyNowPrice: values.buyNowPriceAed.trim() ? Number(values.buyNowPriceAed) : undefined,
+        inspectionDropoffDate: values.inspectionDropoffDate
+          ? toStartOfDayIso(values.inspectionDropoffDate)
+          : undefined,
       });
 
-      const vehicleId = payload?.vehicleId ?? payload?.vehicle?.id;
+      const vehicleId = payload.vehicleId ?? payload.vehicle?.id;
+      const auctionId = payload.auctionId;
 
       if (!vehicleId) {
         throw new Error("Failed to create vehicle");
       }
 
-      setNotice("Vehicle added and auction draft created");
-      router.push(`/seller/vehicles/${vehicleId}?created=1`);
+      if (auctionId) {
+        router.push(`/seller/auctions/${auctionId}?created=1`);
+        return;
+      }
+
+      router.push(`/seller/vehicles/${vehicleId}?created=1&setup=partial`);
     } catch (error) {
       throw new Error(getApiErrorMessage(error, "Failed to create vehicle"));
     }
@@ -71,8 +79,6 @@ export default function SellerNewVehiclePage() {
           onSubmit={handleSubmit}
           onCancel={() => router.push("/seller/vehicles")}
         />
-
-        {notice ? <p className="inline-note tone-success">{notice}</p> : null}
       </section>
     </section>
   );

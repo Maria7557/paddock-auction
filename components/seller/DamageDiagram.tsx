@@ -54,31 +54,65 @@ function nextDamage(current: DamageLevel): DamageLevel {
   return "NONE";
 }
 
+export function toggleMarkedDamageLevel(current: DamageLevel): DamageLevel {
+  if (current === "NONE") {
+    return "NONE";
+  }
+
+  return current === "MINOR" ? "MAJOR" : "MINOR";
+}
+
+export function getNextDiagramDamageMap(value: DamageMapValue, zoneId: string): DamageMapValue {
+  const current = getLevel(value, zoneId);
+  const next = nextDamage(current);
+  const updated: DamageMapValue = { ...value };
+
+  if (next === "NONE") {
+    delete updated[zoneId];
+  } else {
+    updated[zoneId] = next;
+  }
+
+  return updated;
+}
+
+export function getNextMarkedDamageMap(value: DamageMapValue, zoneId: string): DamageMapValue {
+  const current = getLevel(value, zoneId);
+  const next = toggleMarkedDamageLevel(current);
+
+  if (next === "NONE") {
+    return value;
+  }
+
+  return {
+    ...value,
+    [zoneId]: next,
+  };
+}
+
+export function getDamageMapWithoutZone(value: DamageMapValue, zoneId: string): DamageMapValue {
+  if (!value[zoneId]) {
+    return value;
+  }
+
+  const updated: DamageMapValue = { ...value };
+  delete updated[zoneId];
+  return updated;
+}
+
 export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
   const [view, setView] = useState<DiagramView>("top");
 
   function toggleZone(zoneId: string): void {
-    const current = getLevel(value, zoneId);
-    const next = nextDamage(current);
-    const updated: DamageMapValue = { ...value };
+    onChange(getNextDiagramDamageMap(value, zoneId));
+  }
 
-    if (next === "NONE") {
-      delete updated[zoneId];
-    } else {
-      updated[zoneId] = next;
-    }
-
-    onChange(updated);
+  function toggleMarkedZone(zoneId: string): void {
+    onChange(getNextMarkedDamageMap(value, zoneId));
   }
 
   function removeZone(zoneId: string): void {
-    if (!value[zoneId]) {
-      return;
-    }
-
-    const updated: DamageMapValue = { ...value };
-    delete updated[zoneId];
-    onChange(updated);
+    onChange(getDamageMapWithoutZone(value, zoneId));
   }
 
   const markedZones = ZONE_ORDER
@@ -351,13 +385,20 @@ export function DamageDiagram({ value, onChange }: DamageDiagramProps) {
             ) : (
               markedZones.map((zone) => (
                 <div key={zone.id} className={`damage-item ${zone.level.toLowerCase()}`}>
-                  <span className="damage-item-label">{zone.label}</span>
-                  <span className="damage-item-right">
-                    <span className="damage-item-badge">{zone.level.toLowerCase()}</span>
-                    <button type="button" className="damage-item-remove" onClick={() => removeZone(zone.id)} title="Remove">
-                      x
-                    </button>
-                  </span>
+                  <button
+                    type="button"
+                    className="damage-item-toggle"
+                    onClick={() => toggleMarkedZone(zone.id)}
+                    title={`Toggle ${zone.label} damage severity`}
+                  >
+                    <span className="damage-item-label">{zone.label}</span>
+                    <span className="damage-item-right">
+                      <span className="damage-item-badge">{zone.level.toLowerCase()}</span>
+                    </span>
+                  </button>
+                  <button type="button" className="damage-item-remove" onClick={() => removeZone(zone.id)} title="Remove">
+                    x
+                  </button>
                 </div>
               ))
             )}

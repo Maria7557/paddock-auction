@@ -76,6 +76,9 @@ export default function BuyerLoginPage() {
           </form>
 
           {feedback ? <p className="text-muted">{feedback}</p> : null}
+          <p className="text-muted auth-forgot-password">
+            <Link href="/forgot-password">Forgot password?</Link>
+          </p>
 
           <p className="text-muted">
             New buyer? <Link href="/register/buyer">Register here</Link>

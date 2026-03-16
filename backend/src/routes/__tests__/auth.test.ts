@@ -6,17 +6,25 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 const compareMock = vi.fn();
 const hashMock = vi.fn();
 const sendAdminRegistrationEmailMock = vi.fn();
+const sendPasswordResetCodeEmailMock = vi.fn();
 const sendUserRegistrationEmailMock = vi.fn();
 const mockPrisma = {
   user: {
     findUnique: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
   },
   company: {
     create: vi.fn(),
   },
   companyUser: {
     create: vi.fn(),
+  },
+  passwordResetCode: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   $transaction: vi.fn(),
 };
@@ -34,6 +42,7 @@ vi.mock("../../db", () => ({
 
 vi.mock("../../lib/email", () => ({
   sendAdminRegistrationEmail: sendAdminRegistrationEmailMock,
+  sendPasswordResetCodeEmail: sendPasswordResetCodeEmailMock,
   sendUserRegistrationEmail: sendUserRegistrationEmailMock,
 }));
 

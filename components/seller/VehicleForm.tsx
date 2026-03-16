@@ -2,6 +2,13 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useNavigationGuard } from "@/components/navigation/NavigationGuard";
+import {
+  hasVehicleFormUnsavedChanges,
+  type SellerVehicleFormValues,
+  toVehicleFormValues,
+} from "@/components/seller/vehicle-form-state";
+
 import {
   BODY_TYPES,
   COLORS,
@@ -13,13 +20,15 @@ import {
   UAE_BRANDS,
   YEARS,
 } from "@/src/lib/vehicle_data";
-
-import { type DamageMapValue, DamageDiagram } from "@/components/seller/DamageDiagram";
+import { DamageDiagram } from "@/components/seller/DamageDiagram";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const LARGE_UPLOAD_WARNING_BYTES = 40 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const SELLER_AUCTION_PRICE_INCREMENT_AED = 500;
+const SELLER_AUCTION_MIN_PRICE_AED = SELLER_AUCTION_PRICE_INCREMENT_AED;
+const VEHICLE_MEDIA_UPLOAD_PATH = "/api/seller/vehicles/upload-photos";
 const AIRBAG_OPTIONS = [
   { value: "NO_AIRBAGS", label: "No airbags" },
   { value: "2", label: "2 — Driver + Passenger" },
@@ -41,54 +50,6 @@ type UploadMediaResponse = {
   mulkiyaBackUrl: string;
 };
 
-export type SellerVehicleFormValues = {
-  brand: string;
-  model: string;
-  year: string;
-  vin: string;
-  regionSpec: string;
-  bodyType: string;
-  fuelType: string;
-  transmission: string;
-  airbags: string;
-  color: string;
-  mileageKm: string;
-  condition: string;
-  serviceHistory: string;
-  description: string;
-  damageMap: DamageMapValue;
-  photoUrls: string[];
-  mulkiyaFrontUrl: string;
-  mulkiyaBackUrl: string;
-  startingPriceAed: string;
-  buyNowPriceAed: string;
-  inspectionDropoffDate: string;
-};
-
-export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
-  brand: "",
-  model: "",
-  year: "",
-  vin: "",
-  regionSpec: "",
-  bodyType: "",
-  fuelType: "",
-  transmission: "",
-  airbags: "",
-  color: "",
-  mileageKm: "",
-  condition: "",
-  serviceHistory: "",
-  description: "",
-  damageMap: {},
-  photoUrls: [],
-  mulkiyaFrontUrl: "",
-  mulkiyaBackUrl: "",
-  startingPriceAed: "",
-  buyNowPriceAed: "",
-  inspectionDropoffDate: "",
-};
-
 type VehicleFormProps = {
   initialValues?: Partial<SellerVehicleFormValues>;
   submitLabel: string;
@@ -97,6 +58,8 @@ type VehicleFormProps = {
   onSubmit: (values: SellerVehicleFormValues) => Promise<void>;
   onCancel?: () => void;
 };
+
+export { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues } from "@/components/seller/vehicle-form-state";
 
 function cleanLabel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -149,6 +112,10 @@ function isValidInspectionDate(value: string, tomorrowISO: string, maxDateISO: s
   return value >= tomorrowISO && value <= maxDateISO;
 }
 
+function isValidSellerAuctionPrice(value: number): boolean {
+  return value >= SELLER_AUCTION_MIN_PRICE_AED && value % SELLER_AUCTION_PRICE_INCREMENT_AED === 0;
+}
+
 function validateUploadFile(file: File, allowedTypes: Set<string>): string | null {
   if (!allowedTypes.has(file.type)) {
     return "Invalid file type. Allowed: JPG, PNG (Mulkiya also supports PDF).";
@@ -177,12 +144,7 @@ export function VehicleForm({
   onSubmit,
   onCancel,
 }: VehicleFormProps) {
-  const [values, setValues] = useState<SellerVehicleFormValues>({
-    ...EMPTY_VEHICLE_FORM,
-    ...initialValues,
-    damageMap: initialValues?.damageMap ?? EMPTY_VEHICLE_FORM.damageMap,
-    photoUrls: initialValues?.photoUrls ?? EMPTY_VEHICLE_FORM.photoUrls,
-  });
+  const [values, setValues] = useState<SellerVehicleFormValues>(() => toVehicleFormValues(initialValues));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -199,6 +161,7 @@ export function VehicleForm({
   const mulkiyaBackRef = useRef<HTMLInputElement | null>(null);
 
   const uaeBrands = useMemo(() => Object.keys(UAE_BRANDS).map((key) => toBrandLabel(key)), []);
+  const startingValues = useMemo(() => toVehicleFormValues(initialValues), [initialValues]);
 
   const matchedUaeBrandKey = useMemo(() => findUaeBrandKey(values.brand), [values.brand]);
 
@@ -262,6 +225,17 @@ export function VehicleForm({
 
     return `Large photo upload selected (${formatFileSize(totalMediaBytes)}). Upload may take longer, so compress images if possible.`;
   }, [showAuctionFields, totalMediaBytes]);
+  const hasUnsavedChanges = useMemo(
+    () =>
+      hasVehicleFormUnsavedChanges(startingValues, {
+        values,
+        hasPendingPhotoUploads: photos.length > 0,
+        hasPendingMulkiyaFrontUpload: Boolean(mulkiyaFront),
+        hasPendingMulkiyaBackUpload: Boolean(mulkiyaBack),
+      }),
+    [mulkiyaBack, mulkiyaFront, photos.length, startingValues, values],
+  );
+  const { confirmOwnNavigation } = useNavigationGuard({ when: hasUnsavedChanges });
 
   useEffect(() => {
     photosRef.current = photos;
@@ -427,7 +401,7 @@ export function VehicleForm({
     setUploadingMedia(true);
 
     try {
-      const response = await fetch("/api/seller/vehicles/upload-photos", {
+      const response = await fetch(VEHICLE_MEDIA_UPLOAD_PATH, {
         method: "POST",
         body: formData,
       });
@@ -465,6 +439,14 @@ export function VehicleForm({
         const startingPrice = Number(values.startingPriceAed);
         const buyNow = values.buyNowPriceAed ? Number(values.buyNowPriceAed) : null;
 
+        if (!isValidSellerAuctionPrice(startingPrice)) {
+          throw new Error("Starting Price must be at least AED 500 and in AED 500 increments.");
+        }
+
+        if (buyNow !== null && !isValidSellerAuctionPrice(buyNow)) {
+          throw new Error("Buy Now Price must be at least AED 500 and in AED 500 increments.");
+        }
+
         if (buyNow !== null && buyNow <= startingPrice) {
           throw new Error("Buy Now Price must be greater than Starting Price.");
         }
@@ -483,6 +465,18 @@ export function VehicleForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCancel(): void {
+    if (!onCancel) {
+      return;
+    }
+
+    if (!confirmOwnNavigation()) {
+      return;
+    }
+
+    onCancel();
   }
 
   return (
@@ -892,8 +886,8 @@ export function VehicleForm({
             Starting Price AED
             <input
               type="number"
-              min={500}
-              step="500"
+              min={SELLER_AUCTION_MIN_PRICE_AED}
+              step={SELLER_AUCTION_PRICE_INCREMENT_AED}
               value={values.startingPriceAed}
               onChange={(event) => updateField("startingPriceAed", event.target.value)}
               required
@@ -907,8 +901,8 @@ export function VehicleForm({
             </p>
             <input
               type="number"
-              min={500}
-              step="500"
+              min={SELLER_AUCTION_MIN_PRICE_AED}
+              step={SELLER_AUCTION_PRICE_INCREMENT_AED}
               value={values.buyNowPriceAed}
               onChange={(event) => updateField("buyNowPriceAed", event.target.value)}
             />
@@ -970,7 +964,7 @@ export function VehicleForm({
         </button>
 
         {onCancel ? (
-          <button type="button" className="button button-secondary" onClick={onCancel}>
+          <button type="button" className="button button-secondary" onClick={handleCancel}>
             Cancel
           </button>
         ) : null}

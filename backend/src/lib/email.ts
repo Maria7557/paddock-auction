@@ -44,6 +44,12 @@ type AdminRegistrationEmailInput = RegistrationEmailInput & {
   registrationNumber: string;
 };
 
+type PasswordResetEmailInput = {
+  code: string;
+  email: string;
+  expiresInMinutes: number;
+};
+
 type NewEventEmailInput = {
   description?: string;
   endsAt: Date;
@@ -343,6 +349,38 @@ export async function sendAdminRegistrationEmail(
         `Location: ${locationLine}`,
         `Status: ${input.status}`,
       ].join("\n"),
+    },
+    logger,
+  );
+}
+
+export async function sendPasswordResetCodeEmail(
+  input: PasswordResetEmailInput,
+  logger?: LoggerLike,
+): Promise<boolean> {
+  const resetUrl = `${getAppUrl()}/forgot-password`;
+
+  return sendDirectEmail(
+    {
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+          <h2>Password reset request</h2>
+          <p>Use this passcode to reset your FleetBid password:</p>
+          <p style="font-size: 28px; font-weight: 700; letter-spacing: 0.12em;">${input.code}</p>
+          <p>This passcode expires in ${input.expiresInMinutes} minutes and can only be used once.</p>
+          <p>If you did not request a password reset, you can safely ignore this email.</p>
+          <p>Open the reset page: <a href="${resetUrl}">${resetUrl}</a></p>
+        </div>
+      `,
+      subject: "Your FleetBid password reset code",
+      text: [
+        "Password reset request",
+        `Use this passcode to reset your FleetBid password: ${input.code}`,
+        `This passcode expires in ${input.expiresInMinutes} minutes and can only be used once.`,
+        "If you did not request a password reset, you can safely ignore this email.",
+        `Open the reset page: ${resetUrl}`,
+      ].join("\n"),
+      to: input.email,
     },
     logger,
   );

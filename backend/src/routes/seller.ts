@@ -18,6 +18,7 @@ type DecimalLike =
     };
 
 type JsonObject = Record<string, unknown>;
+const DEFAULT_SELLER_AUCTION_MIN_INCREMENT = 500;
 
 const sellerVehicleSchema = z.object({
   brand: z.string().trim().min(1),
@@ -66,7 +67,7 @@ const sellerAuctionCreateSchema = z.object({
   auctionEndsAt: z.string().datetime().optional(),
   startingPrice: z.coerce.number().nonnegative().default(0),
   buyNowPrice: z.coerce.number().positive().optional(),
-  minIncrement: z.coerce.number().positive().default(1),
+  minIncrement: z.coerce.number().positive().default(DEFAULT_SELLER_AUCTION_MIN_INCREMENT),
 });
 
 const sellerAuctionUpdateSchema = z.object({
@@ -649,7 +650,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             startingPrice,
             currentPrice: startingPrice,
             buyNowPrice: payload.buyNowPrice,
-            minIncrement: 500,
+            minIncrement: DEFAULT_SELLER_AUCTION_MIN_INCREMENT,
           },
         });
 

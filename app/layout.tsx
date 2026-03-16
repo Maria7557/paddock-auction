@@ -19,9 +19,10 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Paddock UAE Vehicle Auctions",
-    template: "%s | Paddock UAE Vehicle Auctions",
+    default: "FleetBid UAE Vehicle Auctions",
+    template: "%s | FleetBid UAE Vehicle Auctions",
   },
+  applicationName: "FleetBid",
   description:
     "Production B2B vehicle marketplace for UAE with trusted live auctions, deposit-gated bidding, and fast settlement UX.",
 };

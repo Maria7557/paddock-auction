@@ -6,7 +6,7 @@ import { AuctionsClient } from "./AuctionsClient";
 import styles from "./page.module.css";
 
 export const metadata = {
-  title: "All Auctions — FleetBid",
+  title: "All Auctions",
 };
 
 type SearchParamsInput = Record<string, string | string[] | undefined>;

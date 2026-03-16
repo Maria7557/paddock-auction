@@ -45,7 +45,7 @@ export default function LoginPage() {
     <MarketShell>
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
-          <h1>Sign in</h1>
+          <h1>Log in</h1>
           <p>Access admin, buyer, or company workspace.</p>
 
           <form className="auth-form" onSubmit={onSubmit}>
@@ -69,18 +69,28 @@ export default function LoginPage() {
               />
             </label>
             <button type="submit" className="button button-primary" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign in"}
+              {isSubmitting ? "Logging in..." : "Log in"}
             </button>
           </form>
 
           {feedback ? <p className="text-muted">{feedback}</p> : null}
 
-          <div className="inline-actions" style={{ marginTop: "12px" }}>
+          <div className="inline-actions auth-panel-actions">
             <Link href="/login/buyer" className="button button-secondary">
               Buyer Login
             </Link>
             <Link href="/login/seller" className="button button-secondary">
               Company Login
+            </Link>
+          </div>
+
+          <p className="text-muted auth-forgot-password">
+            <Link href="/forgot-password">Forgot password?</Link>
+          </p>
+
+          <div className="auth-bottom-cta">
+            <Link href="/register" className="button button-secondary btn-full">
+              Create an account
             </Link>
           </div>
         </article>

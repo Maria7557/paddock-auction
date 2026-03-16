@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirmNavigation } from "@/components/navigation/NavigationGuard";
+
 type SellerTopbarProps = {
   companyName: string;
   companyStatus: string;
@@ -22,6 +24,7 @@ function statusLabel(status: string): string {
 
 export function SellerTopbar({ companyName, companyStatus, onToggleSidebar }: SellerTopbarProps) {
   const label = statusLabel(companyStatus);
+  const confirmNavigation = useConfirmNavigation();
 
   return (
     <header className="seller-topbar">
@@ -43,11 +46,15 @@ export function SellerTopbar({ companyName, companyStatus, onToggleSidebar }: Se
           type="button"
           className="seller-logout-btn"
           onClick={() => {
+            if (!confirmNavigation()) {
+              return;
+            }
+
             if (typeof window !== "undefined") {
               window.localStorage.removeItem("fleetbid_token");
               window.localStorage.removeItem("fleetbid_role");
               document.cookie = "token=; Max-Age=0; Path=/; SameSite=Lax";
-              window.location.href = "/login";
+              window.location.assign("/login");
             }
           }}
         >

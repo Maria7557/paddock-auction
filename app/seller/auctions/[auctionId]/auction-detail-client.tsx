@@ -1,12 +1,44 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { BidLadder } from "@/components/seller/BidLadder";
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
+
+type BackendAuctionDetailResponse = {
+  auction: {
+    id: string;
+    state: string;
+    startsAt: string;
+    endsAt: string;
+    inspectionDropoffDate: string | null;
+    viewingEndsAt: string | null;
+    auctionStartsAt: string | null;
+    auctionEndsAt: string | null;
+    startingPrice: number;
+    buyNowPrice: number | null;
+    currentPrice: number;
+    bidsCount: number;
+    vehicle: {
+      id: string;
+      brand: string;
+      model: string;
+      year: number;
+      vin: string;
+    } | null;
+  };
+  bids: Array<{
+    id: string;
+    rank: number;
+    companyName: string;
+    amount: number;
+    createdAt: string;
+  }>;
+};
 
 type AuctionDetailResponse = {
   auction: {
@@ -19,7 +51,7 @@ type AuctionDetailResponse = {
     auctionStartsAt: string | null;
     auctionEndsAt: string | null;
     startingPriceAed: number;
-    buyNowPriceAed: number;
+    buyNowPriceAed: number | null;
     currentBidAed: number;
     totalBids: number;
     vehicle: {
@@ -44,6 +76,38 @@ type SellerAuctionDetailClientProps = {
 };
 
 const TIMELINE_STEPS = ["CREATED", "SCHEDULED", "LIVE", "ENDED"] as const;
+const SELLER_AUCTION_PRICE_INCREMENT_AED = 500;
+
+function isValidSellerAuctionPrice(value: number): boolean {
+  return value >= SELLER_AUCTION_PRICE_INCREMENT_AED && value % SELLER_AUCTION_PRICE_INCREMENT_AED === 0;
+}
+
+function normalizeAuctionDetailResponse(payload: BackendAuctionDetailResponse): AuctionDetailResponse {
+  return {
+    auction: {
+      id: payload.auction.id,
+      state: payload.auction.state,
+      startsAt: payload.auction.startsAt,
+      endsAt: payload.auction.endsAt,
+      inspectionDropoffDate: payload.auction.inspectionDropoffDate,
+      viewingEndsAt: payload.auction.viewingEndsAt,
+      auctionStartsAt: payload.auction.auctionStartsAt,
+      auctionEndsAt: payload.auction.auctionEndsAt,
+      startingPriceAed: payload.auction.startingPrice,
+      buyNowPriceAed: payload.auction.buyNowPrice,
+      currentBidAed: payload.auction.currentPrice,
+      totalBids: payload.auction.bidsCount,
+      vehicle: payload.auction.vehicle,
+    },
+    bids: payload.bids.map((bid) => ({
+      id: bid.id,
+      rank: bid.rank,
+      companyName: bid.companyName,
+      amountAed: bid.amount,
+      createdAt: bid.createdAt,
+    })),
+  };
+}
 
 function stepState(step: (typeof TIMELINE_STEPS)[number], state: string): "done" | "active" | "todo" {
   const normalized = state.toUpperCase();
@@ -77,7 +141,9 @@ function stepState(step: (typeof TIMELINE_STEPS)[number], state: string): "done"
 }
 
 export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDetailClientProps) {
-  const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<AuctionDetailResponse | null>(null);
@@ -92,26 +158,44 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     startingPriceAed: "",
     buyNowPriceAed: "",
   });
+  const created = searchParams.get("created") === "1";
+  const partialSetup = searchParams.get("setup") === "partial";
 
-  const loadAuction = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadAuction = useCallback(
+    async ({ silent = false, syncForm = true }: { silent?: boolean; syncForm?: boolean } = {}) => {
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setInitialLoading(true);
+      }
 
-    try {
-      const parsed = await api.seller.auctions.get<AuctionDetailResponse>(auctionId, { cache: "no-store" });
-      setData(parsed);
-      setEditForm({
-        startsAt: parsed.auction.startsAt.slice(0, 16),
-        endsAt: parsed.auction.endsAt.slice(0, 16),
-        startingPriceAed: String(parsed.auction.startingPriceAed),
-        buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
-      });
-    } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Unexpected error"));
-    } finally {
-      setLoading(false);
-    }
-  }, [auctionId]);
+      setError(null);
+
+      try {
+        const payload = await api.seller.auctions.get<BackendAuctionDetailResponse>(auctionId, { cache: "no-store" });
+        const parsed = normalizeAuctionDetailResponse(payload);
+        setData(parsed);
+
+        if (syncForm) {
+          setEditForm({
+            startsAt: parsed.auction.startsAt.slice(0, 16),
+            endsAt: parsed.auction.endsAt.slice(0, 16),
+            startingPriceAed: String(parsed.auction.startingPriceAed),
+            buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
+          });
+        }
+      } catch (requestError) {
+        setError(getApiErrorMessage(requestError, "Unexpected error"));
+      } finally {
+        if (silent) {
+          setRefreshing(false);
+        } else {
+          setInitialLoading(false);
+        }
+      }
+    },
+    [auctionId],
+  );
 
   useEffect(() => {
     void loadAuction();
@@ -119,7 +203,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void loadAuction();
+      void loadAuction({ silent: true, syncForm: false });
     }, 5000);
 
     return () => {
@@ -163,18 +247,37 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
       const payload: Record<string, unknown> = { action };
 
       if (action === "update") {
+        const startingPrice = Number(editForm.startingPriceAed);
+
+        if (!isValidSellerAuctionPrice(startingPrice)) {
+          setError("Starting Price must be at least AED 500 and in AED 500 increments.");
+          return;
+        }
+
         payload.startsAt = new Date(editForm.startsAt).toISOString();
         payload.endsAt = new Date(editForm.endsAt).toISOString();
-        payload.startingPriceAed = Number(editForm.startingPriceAed);
+        payload.startingPrice = startingPrice;
 
         if (editForm.buyNowPriceAed.trim()) {
-          payload.buyNowPriceAed = Number(editForm.buyNowPriceAed);
+          const buyNowPrice = Number(editForm.buyNowPriceAed);
+
+          if (!isValidSellerAuctionPrice(buyNowPrice)) {
+            setError("Buy Now Price must be at least AED 500 and in AED 500 increments.");
+            return;
+          }
+
+          if (buyNowPrice <= startingPrice) {
+            setError("Buy Now Price must be greater than Starting Price.");
+            return;
+          }
+
+          payload.buyNowPrice = buyNowPrice;
         }
       }
 
       await api.seller.auctions.update(auctionId, payload);
 
-      await loadAuction();
+      await loadAuction({ silent: true });
     } catch (patchError) {
       setError(getApiErrorMessage(patchError, "Auction update failed"));
     } finally {
@@ -182,11 +285,11 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     }
   }
 
-  if (loading) {
+  if (initialLoading && !data) {
     return <p className="text-muted">Loading auction...</p>;
   }
 
-  if (error) {
+  if (error && !data) {
     return <p className="inline-note tone-error">{error}</p>;
   }
 
@@ -198,6 +301,12 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
   return (
     <section className="seller-section-stack">
+      {error ? <p className="inline-note tone-error">{error}</p> : null}
+      {created ? <p className="inline-note tone-success">Vehicle added and auction draft created</p> : null}
+      {partialSetup ? (
+        <p className="inline-note tone-warning">Vehicle was created, but some draft auction fields need review.</p>
+      ) : null}
+
       <section className="surface-panel seller-section-block">
         <div className="seller-section-head">
           <div>
@@ -208,7 +317,14 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             </h2>
             <p className="text-muted">VIN: {data.auction.vehicle?.vin ?? "-"}</p>
           </div>
-          <AuctionStatusBadge state={data.auction.state} />
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {refreshing ? (
+              <span className="text-muted" aria-live="polite">
+                Refreshing...
+              </span>
+            ) : null}
+            <AuctionStatusBadge state={data.auction.state} />
+          </div>
         </div>
 
         {countdownTarget ? (
@@ -265,8 +381,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Starting Price (AED)
               <input
                 type="number"
-                min={500}
-                step="500"
+                min={SELLER_AUCTION_PRICE_INCREMENT_AED}
+                step={SELLER_AUCTION_PRICE_INCREMENT_AED}
                 value={editForm.startingPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, startingPriceAed: event.target.value }))}
               />
@@ -276,8 +392,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Buy Now Price (AED)
               <input
                 type="number"
-                min={500}
-                step="500"
+                min={SELLER_AUCTION_PRICE_INCREMENT_AED}
+                step={SELLER_AUCTION_PRICE_INCREMENT_AED}
                 value={editForm.buyNowPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, buyNowPriceAed: event.target.value }))}
               />

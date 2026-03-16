@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { GuardedLink } from "@/components/navigation/NavigationGuard";
 
 type SellerSidebarProps = {
   mobileOpen: boolean;
@@ -41,34 +42,34 @@ export function SellerSidebar({ mobileOpen, onNavigate }: SellerSidebarProps) {
   return (
     <aside className={className} aria-label="Seller navigation">
       {PRIMARY_ITEMS.map((item) => (
-        <Link
+        <GuardedLink
           key={item.href}
           href={item.href}
           className={`seller-nav-item ${isActive(pathname, item.href) ? "active" : ""}`}
           onClick={onNavigate}
         >
           {item.label}
-        </Link>
+        </GuardedLink>
       ))}
 
       <div className="seller-nav-divider" />
-      <Link
+      <GuardedLink
         href="/seller/settings"
         className={`seller-nav-item ${pathname.startsWith("/seller/settings") ? "active" : ""}`}
         onClick={onNavigate}
       >
         Settings
-      </Link>
+      </GuardedLink>
       <div className="seller-nav-submenu">
         {SETTINGS_ITEMS.map((item) => (
-          <Link
+          <GuardedLink
             key={item.href}
             href={item.href}
             className={`seller-nav-item seller-nav-item-sub ${isActive(pathname, item.href) ? "active" : ""}`}
             onClick={onNavigate}
           >
             {item.label}
-          </Link>
+          </GuardedLink>
         ))}
       </div>
     </aside>

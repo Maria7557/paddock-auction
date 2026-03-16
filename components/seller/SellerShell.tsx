@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { NavigationGuardProvider } from "@/components/navigation/NavigationGuard";
 import { SellerSidebar } from "@/components/seller/SellerSidebar";
 import { SellerTopbar } from "@/components/seller/SellerTopbar";
 
@@ -15,19 +16,21 @@ export function SellerShell({ companyName, companyStatus, children }: SellerShel
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="container seller-shell-wrap">
-      <div className="seller-layout">
-        <SellerSidebar mobileOpen={mobileOpen} onNavigate={() => setMobileOpen(false)} />
+    <NavigationGuardProvider>
+      <div className="container seller-shell-wrap">
+        <div className="seller-layout">
+          <SellerSidebar mobileOpen={mobileOpen} onNavigate={() => setMobileOpen(false)} />
 
-        <main className="seller-main">
-          <SellerTopbar
-            companyName={companyName}
-            companyStatus={companyStatus}
-            onToggleSidebar={() => setMobileOpen((previous) => !previous)}
-          />
-          {children}
-        </main>
+          <main className="seller-main">
+            <SellerTopbar
+              companyName={companyName}
+              companyStatus={companyStatus}
+              onToggleSidebar={() => setMobileOpen((previous) => !previous)}
+            />
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </NavigationGuardProvider>
   );
 }

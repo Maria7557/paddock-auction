@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 
 import bcrypt from "bcryptjs";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -6,7 +6,11 @@ import { z, type ZodError } from "zod";
 
 import { prisma } from "../db";
 import { requireAuth } from "../lib/auth";
-import { sendAdminRegistrationEmail, sendUserRegistrationEmail } from "../lib/email";
+import {
+  sendAdminRegistrationEmail,
+  sendPasswordResetCodeEmail,
+  sendUserRegistrationEmail,
+} from "../lib/email";
 
 const { loadJose } = require("../lib/jose-runtime.cjs") as {
   loadJose: () => Promise<typeof import("jose")>;
@@ -36,12 +40,93 @@ const registerSchema = z.object({
   }
 });
 
+const passwordResetRequestSchema = z.object({
+  email: z.string().trim().email(),
+});
+
+const passwordResetConfirmSchema = z.object({
+  email: z.string().trim().email(),
+  code: z.string().trim().regex(/^\d{6}$/, "Passcode must be 6 digits."),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+  confirmPassword: z.string().min(8, "Password must be at least 8 characters."),
+}).superRefine((value, ctx) => {
+  if (value.password !== value.confirmPassword) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["confirmPassword"],
+      message: "Passwords do not match.",
+    });
+  }
+});
+
 type LoginBody = z.infer<typeof loginSchema>;
 type RegisterBody = z.infer<typeof registerSchema>;
+type PasswordResetRequestBody = z.infer<typeof passwordResetRequestSchema>;
+type PasswordResetConfirmBody = z.infer<typeof passwordResetConfirmSchema>;
 type JwtRole = "SELLER" | "BUYER" | "ADMIN";
 
-async function normalizeEmail(email: string): Promise<string> {
+type AuthUserRecord = {
+  id: string;
+  email: string;
+  passwordHash: string | null;
+  role: string;
+  companyUsers: Array<{
+    companyId: string;
+    role: string;
+  }>;
+};
+
+type PasswordResetRecord = {
+  id: string;
+  userId: string;
+  email: string;
+  codeHash: string;
+  attemptCount: number;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+};
+
+const PASSWORD_RESET_CODE_LENGTH = 6;
+const PASSWORD_RESET_CODE_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_CODE_TTL_MINUTES = PASSWORD_RESET_CODE_TTL_MS / 60_000;
+const PASSWORD_RESET_ACCEPTED_MESSAGE = "If an account exists for that email, a passcode has been sent.";
+const PASSWORD_RESET_INVALID_MESSAGE = "The passcode is invalid or expired.";
+
+function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function getPasswordResetSecret(): string {
+  const secret = process.env.PASSWORD_RESET_SECRET?.trim() || process.env.JWT_SECRET?.trim();
+
+  if (!secret) {
+    throw new Error("PASSWORD_RESET_SECRET or JWT_SECRET must be configured");
+  }
+
+  return secret;
+}
+
+function generatePasswordResetCode(): string {
+  return randomInt(0, 10 ** PASSWORD_RESET_CODE_LENGTH)
+    .toString()
+    .padStart(PASSWORD_RESET_CODE_LENGTH, "0");
+}
+
+function hashPasswordResetCode(email: string, code: string): string {
+  return createHash("sha256")
+    .update(`${normalizeEmail(email)}:${code}:${getPasswordResetSecret()}`)
+    .digest("hex");
+}
+
+function passwordResetCodeMatches(storedHash: string, candidateHash: string): boolean {
+  if (storedHash.length !== candidateHash.length) {
+    return false;
+  }
+
+  return timingSafeEqual(Buffer.from(storedHash, "utf8"), Buffer.from(candidateHash, "utf8"));
 }
 
 async function getJwtSecret(): Promise<Uint8Array> {
@@ -153,6 +238,20 @@ async function shouldUseSecureCookie(request: FastifyRequest): Promise<boolean> 
   return true;
 }
 
+async function sendPasswordResetAccepted(reply: FastifyReply): Promise<void> {
+  await reply.code(200).send({
+    success: true,
+    message: PASSWORD_RESET_ACCEPTED_MESSAGE,
+  });
+}
+
+async function sendInvalidPasswordResetCode(reply: FastifyReply): Promise<void> {
+  await reply.code(400).send({
+    error: "INVALID_RESET_CODE",
+    message: PASSWORD_RESET_INVALID_MESSAGE,
+  });
+}
+
 async function setAuthCookie(request: FastifyRequest, reply: FastifyReply, token: string): Promise<void> {
   const maxAge = await getTokenMaxAge();
 
@@ -174,6 +273,63 @@ async function isUniqueConstraintError(error: unknown): Promise<boolean> {
   );
 }
 
+async function loadAuthUserByEmail(email: string): Promise<AuthUserRecord | null> {
+  return prisma.user.findUnique({
+    where: {
+      email,
+    },
+    select: {
+      id: true,
+      email: true,
+      passwordHash: true,
+      role: true,
+      companyUsers: {
+        select: {
+          companyId: true,
+          role: true,
+        },
+        take: 1,
+      },
+    },
+  });
+}
+
+async function loadLatestActivePasswordReset(email: string): Promise<PasswordResetRecord | null> {
+  return prisma.passwordResetCode.findFirst({
+    where: {
+      email,
+      consumedAt: null,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
+async function sendAuthSuccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  user: AuthUserRecord,
+): Promise<void> {
+  const companyLink = user.companyUsers[0] ?? null;
+  const role = await mapJwtRole(user.role, companyLink?.role ?? null);
+  const token = await signAuthToken({
+    userId: user.id,
+    role,
+    companyId: companyLink?.companyId ?? undefined,
+    email: user.email,
+  });
+
+  await setAuthCookie(request, reply, token);
+  await reply.code(200).send({
+    user: {
+      id: user.id,
+      email: user.email,
+      role,
+    },
+  });
+}
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     "/login",
@@ -189,25 +345,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const payload: LoginBody = parsed.data;
-      const email = await normalizeEmail(payload.email);
-      const user = await prisma.user.findUnique({
-        where: {
-          email,
-        },
-        select: {
-          id: true,
-          email: true,
-          passwordHash: true,
-          role: true,
-          companyUsers: {
-            select: {
-              companyId: true,
-              role: true,
-            },
-            take: 1,
-          },
-        },
-      });
+      const email = normalizeEmail(payload.email);
+      const user = await loadAuthUserByEmail(email);
 
       if (!user || !user.passwordHash) {
         await sendUnauthorized(reply);
@@ -221,23 +360,194 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const companyLink = user.companyUsers[0] ?? null;
-      const role = await mapJwtRole(user.role, companyLink?.role ?? null);
-      const token = await signAuthToken({
-        userId: user.id,
-        role,
-        companyId: companyLink?.companyId ?? undefined,
-        email: user.email,
-      });
+      await sendAuthSuccess(request, reply, user);
+    },
+  );
 
-      await setAuthCookie(request, reply, token);
-      await reply.code(200).send({
-        user: {
-          id: user.id,
-          email: user.email,
-          role,
+  fastify.post(
+    "/password-reset/request",
+    async function passwordResetRequestHandler(
+      request: FastifyRequest<{ Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsed = passwordResetRequestSchema.safeParse(request.body);
+
+      if (!parsed.success) {
+        await sendValidationError(reply, parsed.error);
+        return;
+      }
+
+      const payload: PasswordResetRequestBody = parsed.data;
+      const email = normalizeEmail(payload.email);
+      const user = await loadAuthUserByEmail(email);
+
+      if (!user || !user.passwordHash) {
+        await sendPasswordResetAccepted(reply);
+        return;
+      }
+
+      const now = new Date();
+      const latestReset = await loadLatestActivePasswordReset(email);
+
+      if (
+        latestReset &&
+        latestReset.expiresAt.getTime() > now.getTime() &&
+        now.getTime() - latestReset.createdAt.getTime() < PASSWORD_RESET_RESEND_COOLDOWN_MS
+      ) {
+        await sendPasswordResetAccepted(reply);
+        return;
+      }
+
+      const code = generatePasswordResetCode();
+      const expiresAt = new Date(now.getTime() + PASSWORD_RESET_CODE_TTL_MS);
+
+      await prisma.passwordResetCode.updateMany({
+        where: {
+          userId: user.id,
+          consumedAt: null,
+        },
+        data: {
+          consumedAt: now,
         },
       });
+
+      await prisma.passwordResetCode.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          email: user.email,
+          codeHash: hashPasswordResetCode(email, code),
+          expiresAt,
+        },
+      });
+
+      await sendPasswordResetCodeEmail(
+        {
+          code,
+          email: user.email,
+          expiresInMinutes: PASSWORD_RESET_CODE_TTL_MINUTES,
+        },
+        fastify.log,
+      );
+
+      await sendPasswordResetAccepted(reply);
+    },
+  );
+
+  fastify.post(
+    "/password-reset/confirm",
+    async function passwordResetConfirmHandler(
+      request: FastifyRequest<{ Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsed = passwordResetConfirmSchema.safeParse(request.body);
+
+      if (!parsed.success) {
+        await sendValidationError(reply, parsed.error);
+        return;
+      }
+
+      const payload: PasswordResetConfirmBody = parsed.data;
+      const email = normalizeEmail(payload.email);
+      const user = await loadAuthUserByEmail(email);
+
+      if (!user || !user.passwordHash) {
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      const resetRecord = await loadLatestActivePasswordReset(email);
+      const now = new Date();
+
+      if (!resetRecord) {
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      if (resetRecord.expiresAt.getTime() <= now.getTime()) {
+        await prisma.passwordResetCode.update({
+          where: {
+            id: resetRecord.id,
+          },
+          data: {
+            consumedAt: now,
+          },
+        });
+
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      if (resetRecord.attemptCount >= PASSWORD_RESET_MAX_ATTEMPTS) {
+        await prisma.passwordResetCode.update({
+          where: {
+            id: resetRecord.id,
+          },
+          data: {
+            consumedAt: now,
+          },
+        });
+
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      const codeHash = hashPasswordResetCode(email, payload.code);
+
+      if (!passwordResetCodeMatches(resetRecord.codeHash, codeHash)) {
+        const nextAttemptCount = resetRecord.attemptCount + 1;
+
+        await prisma.passwordResetCode.update({
+          where: {
+            id: resetRecord.id,
+          },
+          data: {
+            attemptCount: nextAttemptCount,
+            consumedAt: nextAttemptCount >= PASSWORD_RESET_MAX_ATTEMPTS ? now : null,
+          },
+        });
+
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      const consumeResult = await prisma.passwordResetCode.updateMany({
+        where: {
+          id: resetRecord.id,
+          consumedAt: null,
+        },
+        data: {
+          consumedAt: now,
+        },
+      });
+
+      if (consumeResult.count !== 1) {
+        await sendInvalidPasswordResetCode(reply);
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(payload.password, 12);
+
+      await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          passwordHash,
+        },
+      });
+
+      await prisma.passwordResetCode.updateMany({
+        where: {
+          userId: user.id,
+          consumedAt: null,
+        },
+        data: {
+          consumedAt: now,
+        },
+      });
+
+      await sendAuthSuccess(request, reply, user);
     },
   );
 
@@ -255,7 +565,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const payload: RegisterBody = parsed.data;
-      const email = await normalizeEmail(payload.email);
+      const email = normalizeEmail(payload.email);
       const passwordHash = await bcrypt.hash(payload.password, 12);
       const userId = randomUUID();
       const companyId = randomUUID();
