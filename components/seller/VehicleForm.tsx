@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useNavigationGuard } from "@/components/navigation/NavigationGuard";
 import {
   hasVehicleFormUnsavedChanges,
   type SellerVehicleFormValues,
@@ -203,6 +204,7 @@ export function VehicleForm({
       }),
     [mulkiyaBack, mulkiyaFront, photos.length, startingValues, values],
   );
+  const { confirmOwnNavigation } = useNavigationGuard({ when: hasUnsavedChanges });
 
   useEffect(() => {
     photosRef.current = photos;
@@ -231,23 +233,6 @@ export function VehicleForm({
       }
     };
   }, [mulkiyaBackPreview]);
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) {
-      return;
-    }
-
-    function handleBeforeUnload(event: BeforeUnloadEvent): void {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [hasUnsavedChanges]);
 
   function updateField<K extends keyof SellerVehicleFormValues>(key: K, value: SellerVehicleFormValues[K]): void {
     setValues((previous) => ({
@@ -448,7 +433,7 @@ export function VehicleForm({
       return;
     }
 
-    if (hasUnsavedChanges && !window.confirm("You have unsaved changes. Leave this form?")) {
+    if (!confirmOwnNavigation()) {
       return;
     }
 

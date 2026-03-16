@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useConfirmNavigation } from "@/components/navigation/NavigationGuard";
+
 type ProfileLogoutButtonProps = {
   className?: string;
   label?: string;
@@ -14,9 +16,14 @@ export function ProfileLogoutButton({
   loadingLabel = "Logging out...",
 }: ProfileLogoutButtonProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const confirmNavigation = useConfirmNavigation();
 
   async function onLogout(): Promise<void> {
     if (isSubmitting) {
+      return;
+    }
+
+    if (!confirmNavigation()) {
       return;
     }
 
@@ -32,7 +39,7 @@ export function ProfileLogoutButton({
       window.localStorage.removeItem("fleetbid_token");
       window.localStorage.removeItem("fleetbid_role");
       document.cookie = "token=; Max-Age=0; Path=/; SameSite=Lax";
-      window.location.href = "/login";
+      window.location.assign("/login");
     }
   }
 
