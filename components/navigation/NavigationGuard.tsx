@@ -11,6 +11,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -51,6 +52,11 @@ function readBlockerMessage(blockers: Record<string, NavigationBlocker>): string
 
 export function NavigationGuardProvider({ children }: NavigationGuardProviderProps) {
   const [blockers, setBlockers] = useState<Record<string, NavigationBlocker>>({});
+  const blockersRef = useRef(blockers);
+
+  useEffect(() => {
+    blockersRef.current = blockers;
+  }, [blockers]);
 
   const setBlocker = useCallback((id: string, blocker: NavigationBlocker | null) => {
     setBlockers((previous) => {
@@ -83,7 +89,7 @@ export function NavigationGuardProvider({ children }: NavigationGuardProviderPro
         return true;
       }
 
-      const message = overrideMessage ?? readBlockerMessage(blockers);
+      const message = overrideMessage ?? readBlockerMessage(blockersRef.current);
 
       if (!message) {
         return true;
@@ -91,7 +97,7 @@ export function NavigationGuardProvider({ children }: NavigationGuardProviderPro
 
       return window.confirm(message);
     },
-    [blockers],
+    [],
   );
 
   const value = useMemo(
@@ -107,16 +113,17 @@ export function NavigationGuardProvider({ children }: NavigationGuardProviderPro
 
 export function useConfirmNavigation(): (overrideMessage?: string) => boolean {
   const context = useContext(NavigationGuardContext);
+  const confirmNavigation = context?.confirmNavigation;
 
   return useCallback(
     (overrideMessage?: string) => {
-      if (!context) {
+      if (!confirmNavigation) {
         return true;
       }
 
-      return context.confirmNavigation(overrideMessage);
+      return confirmNavigation(overrideMessage);
     },
-    [context],
+    [confirmNavigation],
   );
 }
 
@@ -126,18 +133,19 @@ export function useNavigationGuard({
 }: UseNavigationGuardOptions): { confirmOwnNavigation: () => boolean } {
   const context = useContext(NavigationGuardContext);
   const blockerId = useId();
+  const setBlocker = context?.setBlocker;
 
   useEffect(() => {
-    if (!context) {
+    if (!setBlocker) {
       return;
     }
 
-    context.setBlocker(blockerId, when ? { message } : null);
+    setBlocker(blockerId, when ? { message } : null);
 
     return () => {
-      context.setBlocker(blockerId, null);
+      setBlocker(blockerId, null);
     };
-  }, [blockerId, context, message, when]);
+  }, [blockerId, message, setBlocker, when]);
 
   useEffect(() => {
     if (!when) {
