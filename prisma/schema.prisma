@@ -18,7 +18,25 @@ model User {
   createdAt    DateTime      @default(now())
   wallet       Wallet?
   companyUsers CompanyUser[]
+  passwordResetCodes PasswordResetCode[]
   savedLots    SavedLot[]
+}
+
+model PasswordResetCode {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  email        String
+  codeHash     String   @map("code_hash")
+  attemptCount Int      @default(0) @map("attempt_count")
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+  consumedAt   DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "password_reset_codes_user_id_idx")
+  @@index([email], map: "password_reset_codes_email_idx")
+  @@index([email, consumedAt, createdAt], map: "password_reset_codes_email_consumed_created_idx")
+  @@map("password_reset_codes")
 }
 
 model Wallet {

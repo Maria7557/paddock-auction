@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
+import bcrypt from "bcryptjs";
 import type { FastifyInstance } from "fastify";
 import { SignJWT } from "jose";
 import supertest from "supertest";
@@ -10,12 +11,19 @@ const { mockPrisma } = vi.hoisted(() => ({
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     company: {
       create: vi.fn(),
     },
     companyUser: {
       create: vi.fn(),
+    },
+    passwordResetCode: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
     $disconnect: vi.fn(),
@@ -25,6 +33,7 @@ const { mockPrisma } = vi.hoisted(() => ({
 const { mockEmail } = vi.hoisted(() => ({
   mockEmail: {
     sendAdminRegistrationEmail: vi.fn(),
+    sendPasswordResetCodeEmail: vi.fn(),
     sendUserRegistrationEmail: vi.fn(),
   },
 }));
@@ -69,6 +78,14 @@ function makeUser(
     role: overrides.role ?? "SELLER",
     companyUsers: overrides.companyUsers ?? [{ companyId: "company-uuid-1", role: "SELLER_MANAGER" }],
   };
+}
+
+function makePasswordResetHash(email: string, code: string): string {
+  const secret = process.env.PASSWORD_RESET_SECRET?.trim() || process.env.JWT_SECRET?.trim() || "";
+
+  return createHash("sha256")
+    .update(`${email.trim().toLowerCase()}:${code}:${secret}`)
+    .digest("hex");
 }
 
 let server: FastifyInstance;
@@ -384,6 +401,145 @@ describe("POST /api/auth/register", () => {
     const res = await request.post("/api/auth/register").send({ email: "x@example.com" });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/auth/password-reset/request", () => {
+  it("returns a generic success response and sends a passcode for a known account", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(
+      makeUser({
+        email: "buyer@example.com",
+        role: "BUYER",
+        companyUsers: [{ companyId: "co-2", role: "BUYER_BIDDER" }],
+      }),
+    );
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue(null);
+    mockPrisma.passwordResetCode.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.passwordResetCode.create.mockResolvedValue({ id: randomUUID() });
+
+    const res = await request
+      .post("/api/auth/password-reset/request")
+      .send({ email: "BUYER@EXAMPLE.COM" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toContain("If an account exists");
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: "buyer@example.com" },
+      }),
+    );
+    expect(mockPrisma.passwordResetCode.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: "buyer@example.com",
+          userId: expect.any(String),
+        }),
+      }),
+    );
+    expect(mockEmail.sendPasswordResetCodeEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "buyer@example.com",
+        expiresInMinutes: 10,
+        code: expect.stringMatching(/^\d{6}$/),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("returns the same success response when the account does not exist", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    const res = await request
+      .post("/api/auth/password-reset/request")
+      .send({ email: "missing@example.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockEmail.sendPasswordResetCodeEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth/password-reset/confirm", () => {
+  it("updates the password, consumes the code, and logs the user in", async () => {
+    const user = makeUser({
+      email: "buyer@example.com",
+      role: "BUYER",
+      companyUsers: [{ companyId: "co-2", role: "BUYER_BIDDER" }],
+    });
+
+    mockPrisma.user.findUnique.mockResolvedValue(user);
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: randomUUID(),
+      userId: user.id,
+      email: user.email,
+      codeHash: makePasswordResetHash(user.email, "123456"),
+      attemptCount: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    mockPrisma.passwordResetCode.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    mockPrisma.user.update.mockResolvedValue({ id: user.id });
+
+    const res = await request.post("/api/auth/password-reset/confirm").send({
+      email: user.email,
+      code: "123456",
+      password: "newpass123",
+      confirmPassword: "newpass123",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe(user.email);
+    expect(res.body.user.role).toBe("BUYER");
+    expect(res.headers["set-cookie"]).toBeDefined();
+    expect(mockPrisma.user.update).toHaveBeenCalledTimes(1);
+
+    const updatePayload = mockPrisma.user.update.mock.calls[0]?.[0];
+    const nextHash = updatePayload?.data?.passwordHash;
+    expect(typeof nextHash).toBe("string");
+    await expect(bcrypt.compare("newpass123", nextHash)).resolves.toBe(true);
+  });
+
+  it("rejects an invalid passcode and increments the attempt counter", async () => {
+    const user = makeUser({
+      email: "buyer@example.com",
+      role: "BUYER",
+      companyUsers: [{ companyId: "co-2", role: "BUYER_BIDDER" }],
+    });
+
+    mockPrisma.user.findUnique.mockResolvedValue(user);
+    mockPrisma.passwordResetCode.findFirst.mockResolvedValue({
+      id: randomUUID(),
+      userId: user.id,
+      email: user.email,
+      codeHash: makePasswordResetHash(user.email, "123456"),
+      attemptCount: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    mockPrisma.passwordResetCode.update.mockResolvedValue({ id: randomUUID() });
+
+    const res = await request.post("/api/auth/password-reset/confirm").send({
+      email: user.email,
+      code: "654321",
+      password: "newpass123",
+      confirmPassword: "newpass123",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_RESET_CODE");
+    expect(mockPrisma.passwordResetCode.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attemptCount: 1,
+        }),
+      }),
+    );
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
   });
 });
 

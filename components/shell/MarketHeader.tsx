@@ -18,7 +18,7 @@ const COPY = {
     invoices: "Invoices",
     how: "How It Works",
     sell: "Sell with Us",
-    signIn: "Sign In",
+    signIn: "Log in",
     logout: "Logout",
     loggingOut: "Logging out...",
     register: "Register Company",

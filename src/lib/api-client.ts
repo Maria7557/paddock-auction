@@ -12,6 +12,18 @@ export type ApiUser = {
   role: string;
 };
 
+export type PasswordResetRequestResponse = {
+  success: boolean;
+  message: string;
+};
+
+export type PasswordResetConfirmInput = {
+  email: string;
+  code: string;
+  password: string;
+  confirmPassword: string;
+};
+
 export class ApiError extends Error {
   statusCode: number;
   payload: unknown;
@@ -265,6 +277,10 @@ export const api = {
   auth: {
     login: async (email: string, password: string): Promise<{ user: ApiUser }> =>
       postJson<{ user: ApiUser }>("/api/auth/login", { email, password }),
+    requestPasswordReset: async (email: string): Promise<PasswordResetRequestResponse> =>
+      postJson<PasswordResetRequestResponse>("/api/auth/password-reset/request", { email }),
+    confirmPasswordReset: async (payload: PasswordResetConfirmInput): Promise<{ user: ApiUser }> =>
+      postJson<{ user: ApiUser }>("/api/auth/password-reset/confirm", payload),
     register: async <T = unknown>(payload: Record<string, unknown>): Promise<T> =>
       postJson<T>("/api/auth/register", payload),
     me: async <T = { user: ApiUser }>(options?: RequestInit): Promise<T> =>

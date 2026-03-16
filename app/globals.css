@@ -1336,6 +1336,33 @@ textarea {
   gap: 12px;
 }
 
+.auth-panel-actions {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.auth-panel-actions .button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.text-muted.auth-forgot-password {
+  margin-top: 10px;
+}
+
+.text-muted.auth-forgot-password a {
+  transition: color 160ms ease;
+}
+
+.text-muted.auth-forgot-password a:hover {
+  color: #000;
+}
+
+.auth-bottom-cta {
+  margin-top: 28px;
+  width: 100%;
+}
+
 .dashboard-grid {
   display: grid;
   gap: 16px;
@@ -4227,6 +4254,26 @@ select:focus-visible {
   background: #fff1f2;
   border: 1px solid #fca5a5;
   color: #7f1d1d;
+}
+
+.damage-item-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.damage-item-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
 }
 
 .damage-item-label {

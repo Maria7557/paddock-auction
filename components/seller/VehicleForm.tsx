@@ -3,6 +3,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  hasVehicleFormUnsavedChanges,
+  type SellerVehicleFormValues,
+  toVehicleFormValues,
+} from "@/components/seller/vehicle-form-state";
+
+import {
   BODY_TYPES,
   COLORS,
   CONDITIONS,
@@ -13,8 +19,7 @@ import {
   UAE_BRANDS,
   YEARS,
 } from "@/src/lib/vehicle_data";
-
-import { type DamageMapValue, DamageDiagram } from "@/components/seller/DamageDiagram";
+import { DamageDiagram } from "@/components/seller/DamageDiagram";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
@@ -40,54 +45,6 @@ type UploadMediaResponse = {
   mulkiyaBackUrl: string;
 };
 
-export type SellerVehicleFormValues = {
-  brand: string;
-  model: string;
-  year: string;
-  vin: string;
-  regionSpec: string;
-  bodyType: string;
-  fuelType: string;
-  transmission: string;
-  airbags: string;
-  color: string;
-  mileageKm: string;
-  condition: string;
-  serviceHistory: string;
-  description: string;
-  damageMap: DamageMapValue;
-  photoUrls: string[];
-  mulkiyaFrontUrl: string;
-  mulkiyaBackUrl: string;
-  startingPriceAed: string;
-  buyNowPriceAed: string;
-  inspectionDropoffDate: string;
-};
-
-export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
-  brand: "",
-  model: "",
-  year: "",
-  vin: "",
-  regionSpec: "",
-  bodyType: "",
-  fuelType: "",
-  transmission: "",
-  airbags: "",
-  color: "",
-  mileageKm: "",
-  condition: "",
-  serviceHistory: "",
-  description: "",
-  damageMap: {},
-  photoUrls: [],
-  mulkiyaFrontUrl: "",
-  mulkiyaBackUrl: "",
-  startingPriceAed: "",
-  buyNowPriceAed: "",
-  inspectionDropoffDate: "",
-};
-
 type VehicleFormProps = {
   initialValues?: Partial<SellerVehicleFormValues>;
   submitLabel: string;
@@ -96,6 +53,8 @@ type VehicleFormProps = {
   onSubmit: (values: SellerVehicleFormValues) => Promise<void>;
   onCancel?: () => void;
 };
+
+export { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues } from "@/components/seller/vehicle-form-state";
 
 function cleanLabel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -168,12 +127,7 @@ export function VehicleForm({
   onSubmit,
   onCancel,
 }: VehicleFormProps) {
-  const [values, setValues] = useState<SellerVehicleFormValues>({
-    ...EMPTY_VEHICLE_FORM,
-    ...initialValues,
-    damageMap: initialValues?.damageMap ?? EMPTY_VEHICLE_FORM.damageMap,
-    photoUrls: initialValues?.photoUrls ?? EMPTY_VEHICLE_FORM.photoUrls,
-  });
+  const [values, setValues] = useState<SellerVehicleFormValues>(() => toVehicleFormValues(initialValues));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -190,6 +144,7 @@ export function VehicleForm({
   const mulkiyaBackRef = useRef<HTMLInputElement | null>(null);
 
   const uaeBrands = useMemo(() => Object.keys(UAE_BRANDS).map((key) => toBrandLabel(key)), []);
+  const startingValues = useMemo(() => toVehicleFormValues(initialValues), [initialValues]);
 
   const matchedUaeBrandKey = useMemo(() => findUaeBrandKey(values.brand), [values.brand]);
 
@@ -238,6 +193,17 @@ export function VehicleForm({
     return URL.createObjectURL(mulkiyaBack);
   }, [mulkiyaBack]);
 
+  const hasUnsavedChanges = useMemo(
+    () =>
+      hasVehicleFormUnsavedChanges(startingValues, {
+        values,
+        hasPendingPhotoUploads: photos.length > 0,
+        hasPendingMulkiyaFrontUpload: Boolean(mulkiyaFront),
+        hasPendingMulkiyaBackUpload: Boolean(mulkiyaBack),
+      }),
+    [mulkiyaBack, mulkiyaFront, photos.length, startingValues, values],
+  );
+
   useEffect(() => {
     photosRef.current = photos;
   }, [photos]);
@@ -265,6 +231,23 @@ export function VehicleForm({
       }
     };
   }, [mulkiyaBackPreview]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
 
   function updateField<K extends keyof SellerVehicleFormValues>(key: K, value: SellerVehicleFormValues[K]): void {
     setValues((previous) => ({
@@ -458,6 +441,18 @@ export function VehicleForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCancel(): void {
+    if (!onCancel) {
+      return;
+    }
+
+    if (hasUnsavedChanges && !window.confirm("You have unsaved changes. Leave this form?")) {
+      return;
+    }
+
+    onCancel();
   }
 
   return (
@@ -943,7 +938,7 @@ export function VehicleForm({
         </button>
 
         {onCancel ? (
-          <button type="button" className="button button-secondary" onClick={onCancel}>
+          <button type="button" className="button button-secondary" onClick={handleCancel}>
             Cancel
           </button>
         ) : null}
