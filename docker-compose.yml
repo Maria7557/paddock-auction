@@ -55,11 +55,14 @@ services:
       - backend
     ports:
       - "3000:3000"
+    volumes:
+      - seller_vehicle_media:/app/.tmp/seller-vehicle-media
     networks:
       - fleetbid-network
 
 volumes:
   postgres_data:
+  seller_vehicle_media:
 
 networks:
   fleetbid-network:

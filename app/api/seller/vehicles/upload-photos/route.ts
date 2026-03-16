@@ -10,7 +10,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MIN_PHOTO_COUNT = 10;
 const PHOTO_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
-const UPLOAD_ROOT = path.join(process.cwd(), ".tmp", "dev-seller-vehicle-media");
+const UPLOAD_ROOT = path.join(process.cwd(), ".tmp", "seller-vehicle-media");
 
 function isFile(value: FormDataEntryValue | null): value is File {
   return value instanceof File;
@@ -34,13 +34,11 @@ function getExtension(file: File): string {
   return ".jpg";
 }
 
-async function persistFile(file: File, batchDir: string, targetName: string): Promise<string> {
+async function persistFile(file: File, batchDir: string, targetName: string): Promise<void> {
   const targetPath = path.join(batchDir, targetName);
   const buffer = Buffer.from(await file.arrayBuffer());
 
   await writeFile(targetPath, buffer);
-
-  return targetPath;
 }
 
 function validateFile(file: File, allowedTypes: Set<string>, fieldName: string): string | null {
@@ -55,12 +53,17 @@ function validateFile(file: File, allowedTypes: Set<string>, fieldName: string):
   return null;
 }
 
-export async function POST(request: Request): Promise<Response> {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+function hasMultipartContentType(request: Request): boolean {
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  return contentType.includes("multipart/form-data");
+}
 
+export async function POST(request: Request): Promise<Response> {
   try {
+    if (!hasMultipartContentType(request)) {
+      return NextResponse.json({ error: "Content-Type must be multipart/form-data." }, { status: 400 });
+    }
+
     const formData = await request.formData();
     const photos = formData.getAll("photos").filter(isFile);
     const mulkiyaFront = formData.get("mulkiyaFront");
@@ -111,7 +114,7 @@ export async function POST(request: Request): Promise<Response> {
       const fileName = `photo-${String(index + 1).padStart(2, "0")}${extension}`;
 
       await persistFile(photo, batchDir, fileName);
-      photoUrls.push(`/dev-api/seller/vehicles/media/${batchId}/${fileName}`);
+      photoUrls.push(`/api/seller/vehicles/media/${batchId}/${fileName}`);
     }
 
     const mulkiyaFrontName = `mulkiya-front${getExtension(mulkiyaFront)}`;
@@ -122,13 +125,13 @@ export async function POST(request: Request): Promise<Response> {
 
     return NextResponse.json({
       photos: photoUrls,
-      mulkiyaFrontUrl: `/dev-api/seller/vehicles/media/${batchId}/${mulkiyaFrontName}`,
-      mulkiyaBackUrl: `/dev-api/seller/vehicles/media/${batchId}/${mulkiyaBackName}`,
+      mulkiyaFrontUrl: `/api/seller/vehicles/media/${batchId}/${mulkiyaFrontName}`,
+      mulkiyaBackUrl: `/api/seller/vehicles/media/${batchId}/${mulkiyaBackName}`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to upload media";
 
-    console.error("Dev media upload failed", error);
+    console.error("Vehicle media upload failed", error);
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

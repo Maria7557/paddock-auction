@@ -38,8 +38,6 @@ yarn-error.log*
 /.turbo
 /.cache
 /.tmp
-.tmp/dev-seller-vehicle-media/
-/public/uploads/dev-seller-vehicle-media/
 
 # misc
 .DS_Store

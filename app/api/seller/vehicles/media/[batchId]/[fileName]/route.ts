@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const UPLOAD_ROOT = path.join(process.cwd(), ".tmp", "dev-seller-vehicle-media");
+const UPLOAD_ROOT = path.join(process.cwd(), ".tmp", "seller-vehicle-media");
 
 function resolveContentType(fileName: string): string {
   const extension = path.extname(fileName).toLowerCase();
@@ -30,10 +30,6 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ batchId: string; fileName: string }> },
 ): Promise<Response> {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const { batchId, fileName } = await context.params;
 
   if (!isSafeSegment(batchId) || !isSafeSegment(fileName)) {

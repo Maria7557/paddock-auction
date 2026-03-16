@@ -27,6 +27,7 @@ const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const SELLER_AUCTION_PRICE_INCREMENT_AED = 500;
 const SELLER_AUCTION_MIN_PRICE_AED = SELLER_AUCTION_PRICE_INCREMENT_AED;
+const VEHICLE_MEDIA_UPLOAD_PATH = "/api/seller/vehicles/upload-photos";
 const AIRBAG_OPTIONS = [
   { value: "NO_AIRBAGS", label: "No airbags" },
   { value: "2", label: "2 — Driver + Passenger" },
@@ -58,58 +59,6 @@ type VehicleFormProps = {
 };
 
 export { EMPTY_VEHICLE_FORM, type SellerVehicleFormValues } from "@/components/seller/vehicle-form-state";
-
-function getVehicleMediaUploadPath(): string {
-  if (process.env.NODE_ENV === "production") {
-    return "/api/seller/vehicles/upload-photos";
-  }
-
-  return "/dev-api/seller/vehicles/upload-photos";
-}
-
-function createDevUploadBatchId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${Date.now()}-${crypto.randomUUID()}`;
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-async function uploadDevFile(
-  file: File,
-  options: {
-    batchId: string;
-    kind: "photo" | "mulkiya-front" | "mulkiya-back";
-    index?: number;
-  },
-): Promise<string> {
-  const params = new URLSearchParams({
-    batchId: options.batchId,
-    kind: options.kind,
-  });
-
-  if (typeof options.index === "number") {
-    params.set("index", String(options.index));
-  }
-
-  const response = await fetch(`/dev-api/seller/vehicles/upload-file?${params.toString()}`, {
-    method: "POST",
-    body: file,
-    headers: {
-      "content-type": file.type,
-    },
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { url?: string; error?: string; message?: string }
-    | null;
-
-  if (!response.ok || !payload?.url) {
-    throw new Error(payload?.message ?? payload?.error ?? "Failed to upload media");
-  }
-
-  return payload.url;
-}
 
 function cleanLabel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -428,37 +377,7 @@ export function VehicleForm({
     setUploadingMedia(true);
 
     try {
-      if (process.env.NODE_ENV !== "production") {
-        const batchId = createDevUploadBatchId();
-        const uploadedPhotos: string[] = [];
-
-        for (const [index, photo] of photos.entries()) {
-          uploadedPhotos.push(
-            await uploadDevFile(photo.file, {
-              batchId,
-              kind: "photo",
-              index: index + 1,
-            }),
-          );
-        }
-
-        const uploadedMulkiyaFront = await uploadDevFile(mulkiyaFront, {
-          batchId,
-          kind: "mulkiya-front",
-        });
-        const uploadedMulkiyaBack = await uploadDevFile(mulkiyaBack, {
-          batchId,
-          kind: "mulkiya-back",
-        });
-
-        return {
-          photos: uploadedPhotos,
-          mulkiyaFrontUrl: uploadedMulkiyaFront,
-          mulkiyaBackUrl: uploadedMulkiyaBack,
-        };
-      }
-
-      const response = await fetch(getVehicleMediaUploadPath(), {
+      const response = await fetch(VEHICLE_MEDIA_UPLOAD_PATH, {
         method: "POST",
         body: formData,
       });
