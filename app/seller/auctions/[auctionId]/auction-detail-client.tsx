@@ -265,7 +265,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Starting Price (AED)
               <input
                 type="number"
-                min={1}
+                min={500}
+                step="500"
                 value={editForm.startingPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, startingPriceAed: event.target.value }))}
               />
@@ -275,7 +276,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               Buy Now Price (AED)
               <input
                 type="number"
-                min={1}
+                min={500}
+                step="500"
                 value={editForm.buyNowPriceAed}
                 onChange={(event) => setEditForm((previous) => ({ ...previous, buyNowPriceAed: event.target.value }))}
               />
@@ -304,10 +306,10 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             <button type="button" className="button button-secondary" onClick={() => void patchAuction("update")} disabled={busy}>
               {busy ? "Saving..." : "Save Draft"}
             </button>
-            <button type="button" className="button button-primary" onClick={() => void patchAuction("publish")} disabled={busy}>
-              Publish
-            </button>
           </div>
+          <p className="text-muted" style={{ marginTop: "12px" }}>
+            FleetBid admin reviews this draft, sets the market price, and assigns the event date before it goes live.
+          </p>
         </section>
       ) : null}
 

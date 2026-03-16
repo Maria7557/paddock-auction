@@ -34,29 +34,33 @@ function resolveStartingPrice(value: { toString(): string } | number | null | un
 }
 
 export default async function SellerDashboardPage() {
-  const session = await requireSellerSession("/seller/dashboard");
+  await requireSellerSession("/seller/dashboard");
   const requestOptions = await withServerCookies({ cache: "no-store" });
-  const [dashboard, recentAuctionsPayload] = await Promise.all([
-    api.seller.dashboard<{
-      metrics?: {
-        totalVehicles?: number;
-        activeLots?: number;
-        completedLots?: number;
-        revenue?: number;
-      };
-    }>(requestOptions),
-    api.seller.auctions.list<{
-      auctions?: Array<{
-        id: string;
-        state: string;
-        vehicleLabel: string;
-        currentPrice: number;
-        startingPrice: number;
-        startsAt: string;
-        endsAt: string;
-      }>;
-    }>({ sort: "newest" }, requestOptions),
-  ]);
+  const dashboard = await api.seller.dashboard<{
+    metrics?: {
+      totalVehicles?: number;
+      activeLots?: number;
+      completedLots?: number;
+      revenue?: number;
+    };
+  }>(requestOptions);
+  const recentAuctionsPayload = await api.seller.auctions.list<{
+    auctions?: Array<{
+      id: string;
+      state: string;
+      vehicleLabel: string;
+      currentPrice: number;
+      startingPrice: number;
+      startsAt: string;
+      endsAt: string;
+    }>;
+  }>({ sort: "newest" }, requestOptions).catch((error) => {
+    console.error("Failed to load seller auctions for dashboard", error);
+
+    return {
+      auctions: [],
+    };
+  });
   const metrics = dashboard.metrics ?? {};
   const allAuctions = recentAuctionsPayload.auctions ?? [];
   const recentAuctions = allAuctions.slice(0, 10);

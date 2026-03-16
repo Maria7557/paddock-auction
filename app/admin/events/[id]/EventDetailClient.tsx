@@ -16,7 +16,7 @@ type EventLot = {
   title: string;
   vin: string;
   imageUrl: string | null;
-  marketPriceAed: number;
+  marketPriceAed: number | null;
   sequence: number;
 };
 
@@ -258,7 +258,7 @@ export function EventDetailClient({
                   </td>
                   <td>{lot.title}</td>
                   <td className={styles.mono}>{lot.vin}</td>
-                  <td>{formatAed(lot.marketPriceAed || 0)}</td>
+                  <td>{lot.marketPriceAed === null ? "-" : formatAed(lot.marketPriceAed)}</td>
                   <td>
                     <button
                       type="button"

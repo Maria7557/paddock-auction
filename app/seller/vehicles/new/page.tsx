@@ -12,7 +12,16 @@ export default function SellerNewVehiclePage() {
 
   async function handleSubmit(values: SellerVehicleFormValues): Promise<void> {
     try {
-      const payload = await api.seller.vehicles.create<{ vehicleId?: string }>({
+      const inspectionDropoffDate = values.inspectionDropoffDate
+        ? new Date(`${values.inspectionDropoffDate}T00:00:00.000Z`).toISOString()
+        : undefined;
+
+      const payload = await api.seller.vehicles.create<{
+        vehicleId?: string;
+        vehicle?: {
+          id?: string;
+        };
+      }>({
         brand: values.brand,
         model: values.model,
         year: Number(values.year),
@@ -22,26 +31,28 @@ export default function SellerNewVehiclePage() {
         fuelType: values.fuelType,
         transmission: values.transmission,
         airbags: values.airbags,
-        color: values.color,
-        mileageKm: Number(values.mileageKm),
+        exteriorColor: values.color,
+        mileage: Number(values.mileageKm),
         condition: values.condition,
         serviceHistory: values.serviceHistory,
         description: values.description,
         damageMap: values.damageMap,
-        photoUrls: values.photoUrls,
+        images: values.photoUrls,
         mulkiyaFrontUrl: values.mulkiyaFrontUrl,
         mulkiyaBackUrl: values.mulkiyaBackUrl,
-        startingPriceAed: Number(values.startingPriceAed),
-        buyNowPriceAed: values.buyNowPriceAed ? Number(values.buyNowPriceAed) : undefined,
-        inspectionDropoffDate: values.inspectionDropoffDate,
+        startingPrice: Number(values.startingPriceAed),
+        buyNowPrice: values.buyNowPriceAed ? Number(values.buyNowPriceAed) : undefined,
+        inspectionDropoffDate,
       });
 
-      if (!payload?.vehicleId) {
+      const vehicleId = payload?.vehicleId ?? payload?.vehicle?.id;
+
+      if (!vehicleId) {
         throw new Error("Failed to create vehicle");
       }
 
       setNotice("Vehicle added and auction draft created");
-      router.push(`/seller/vehicles/${payload.vehicleId}?created=1`);
+      router.push(`/seller/vehicles/${vehicleId}?created=1`);
     } catch (error) {
       throw new Error(getApiErrorMessage(error, "Failed to create vehicle"));
     }

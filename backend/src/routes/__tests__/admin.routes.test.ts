@@ -85,6 +85,9 @@ function buildAdminTx(overrides: Record<string, unknown> = {}) {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    vehicle: {
+      update: vi.fn(),
+    },
     wallet: {
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -334,6 +337,7 @@ describe("POST /api/admin/companies/:id/reject", () => {
 
 describe("GET /api/admin/vehicles", () => {
   it("returns 200 with vehicles list", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([{ id: "c1", name: "Fleet Operator LLC" }]);
     mockPrisma.vehicle.findMany.mockResolvedValue([
       {
         id: "v1",
@@ -344,7 +348,7 @@ describe("GET /api/admin/vehicles", () => {
         marketPrice: 200000,
         media: [{ url: "https://example.com/bmw.jpg" }],
         images: [],
-        auctions: [{ id: "a1", state: "SCHEDULED" }],
+        auctions: [{ id: "a1", state: "SCHEDULED", sellerCompanyId: "c1", transitions: [] }],
       },
     ]);
 
@@ -355,6 +359,7 @@ describe("GET /api/admin/vehicles", () => {
     expect(res.status).toBe(200);
     expect(res.body.vehicles).toHaveLength(1);
     expect(res.body.vehicles[0].status).toBe("APPROVED");
+    expect(res.body.vehicles[0].companyName).toBe("Fleet Operator LLC");
   });
 
   it("falls back to base vehicle query when optional columns are missing", async () => {
@@ -385,6 +390,7 @@ describe("GET /api/admin/vehicles", () => {
   });
 
   it("filters by status=PENDING", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([{ id: "c1", name: "Fleet Operator LLC" }]);
     mockPrisma.vehicle.findMany.mockResolvedValue([
       {
         id: "v1",
@@ -395,7 +401,7 @@ describe("GET /api/admin/vehicles", () => {
         marketPrice: 200000,
         media: [],
         images: [],
-        auctions: [{ id: "a1", state: "SCHEDULED" }],
+        auctions: [{ id: "a1", state: "SCHEDULED", sellerCompanyId: "c1", transitions: [] }],
       },
       {
         id: "v2",
@@ -406,7 +412,7 @@ describe("GET /api/admin/vehicles", () => {
         marketPrice: 250000,
         media: [],
         images: [],
-        auctions: [{ id: "a2", state: "DRAFT" }],
+        auctions: [{ id: "a2", state: "DRAFT", sellerCompanyId: "c1", transitions: [] }],
       },
     ]);
 
@@ -466,6 +472,65 @@ describe("POST /api/admin/vehicles/:id/reject", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+  });
+});
+
+describe("POST /api/admin/vehicles/:id/set-market-price", () => {
+  it("returns 200 when market price is updated", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      marketPrice: null,
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/set-market-price")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        priceAed: 325000,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.marketPriceAed).toBe(325000);
+  });
+});
+
+describe("POST /api/admin/vehicles/:id/assign-event", () => {
+  it("returns 200 when vehicle is assigned to event", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [
+        {
+          id: "a1",
+          state: "SCHEDULED",
+          startsAt: new Date("2026-03-20T08:00:00.000Z"),
+          endsAt: new Date("2026-03-21T08:00:00.000Z"),
+          auctionStartsAt: new Date("2026-03-20T08:00:00.000Z"),
+          auctionEndsAt: new Date("2026-03-21T08:00:00.000Z"),
+        },
+      ],
+    });
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      id: "event-1",
+      state: "DRAFT",
+      startsAt: new Date("2026-03-29T08:00:00.000Z"),
+      endsAt: new Date("2026-03-30T08:00:00.000Z"),
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/assign-event")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        eventId: "event-1",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.eventId).toBe("event-1");
   });
 });
 
@@ -630,43 +695,52 @@ describe("POST /api/admin/events", () => {
 });
 
 describe("GET /api/admin/events", () => {
-  it("returns grouped events with lots count", async () => {
-    mockPrisma.auction.findMany.mockResolvedValue([
-      {
-        id: "a1",
-        state: "SCHEDULED",
-        startsAt: new Date("2026-03-15T14:00:00.000Z"),
-        endsAt: new Date("2026-03-15T16:00:00.000Z"),
-        transitions: [
-          {
-            reason: JSON.stringify({
-              title: "Evening Event",
-            }),
-          },
-        ],
-      },
-      {
-        id: "a2",
-        state: "SCHEDULED",
-        startsAt: new Date("2026-03-15T14:00:00.000Z"),
-        endsAt: new Date("2026-03-15T16:00:00.000Z"),
-        transitions: [],
-      },
-    ]);
+  it("returns filtered real event seeds and counts assigned lots", async () => {
+    mockPrisma.auction.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "ev1",
+          state: "SCHEDULED",
+          startsAt: new Date("2026-03-15T14:00:00.000Z"),
+          endsAt: new Date("2026-03-15T16:00:00.000Z"),
+          transitions: [
+            {
+              trigger: "EVENT_META",
+              reason: JSON.stringify({
+                title: "Evening Event",
+                description: "Prime lots",
+              }),
+            },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          startsAt: new Date("2026-03-15T14:00:00.000Z"),
+          endsAt: new Date("2026-03-15T16:00:00.000Z"),
+        },
+        {
+          startsAt: new Date("2026-03-15T14:00:00.000Z"),
+          endsAt: new Date("2026-03-15T16:00:00.000Z"),
+        },
+      ]);
 
     const res = await request
       .get("/api/admin/events?status=SCHEDULED")
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.events).toHaveLength(1);
-    expect(res.body.events[0]).toEqual(
-      expect.objectContaining({
+    expect(res.body.events).toEqual([
+      {
+        id: "ev1",
         title: "Evening Event",
+        startsAt: "2026-03-15T14:00:00.000Z",
+        endsAt: "2026-03-15T16:00:00.000Z",
         status: "SCHEDULED",
         lotsCount: 2,
-      }),
-    );
+      },
+    ]);
+    expect(mockPrisma.auction.findMany).toHaveBeenCalledTimes(2);
   });
 });
 

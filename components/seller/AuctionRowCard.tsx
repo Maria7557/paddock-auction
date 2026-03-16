@@ -39,14 +39,7 @@ export function AuctionRowCard({ auction, onAction, busyActionId }: AuctionRowCa
               <Link href={`/seller/auctions/${auction.id}`} className="seller-inline-link">
                 Edit
               </Link>
-              <button
-                type="button"
-                className="seller-action-btn"
-                onClick={() => onAction(auction.id, "publish")}
-                disabled={busyActionId === auction.id}
-              >
-                Publish
-              </button>
+              <span className="text-muted">Awaiting admin review</span>
             </>
           ) : null}
 

@@ -18,9 +18,13 @@ const { mockTx, mockPrisma } = vi.hoisted(() => ({
   },
   mockPrisma: {
     auction: {
+      findMany: vi.fn(),
       findUnique: vi.fn(),
     },
     bid: {
+      findMany: vi.fn(),
+    },
+    company: {
       findMany: vi.fn(),
     },
     bidRequest: {
@@ -699,6 +703,64 @@ describe("GET /api/auctions/:id", () => {
     const res = await request.get(`/api/auctions/${auctionId}`);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("GET /api/auctions", () => {
+  it("returns public auction listings", async () => {
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request.get("/api/auctions");
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toHaveLength(1);
+    expect(res.body.auctions[0].id).toBe(auctionId);
+    expect(res.body.auctions[0].sellerName).toBe("Test Fleet");
+    expect(res.body.auctions[0].vehicle.brand).toBe("BMW");
   });
 });
 

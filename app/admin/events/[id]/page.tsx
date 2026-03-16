@@ -28,7 +28,7 @@ export default async function EventDetailPage({
       title: string;
       vin: string;
       imageUrl: string | null;
-      marketPriceAed: number;
+      marketPriceAed: number | null;
     }>;
   }>(id, requestOptions).catch(() => null);
 

@@ -6,7 +6,7 @@ import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
 type VehicleListAuction = {
   id: string;
   state: string;
-  currentBidAed: number;
+  currentPrice: number;
   endsAt: string;
 };
 
@@ -17,7 +17,7 @@ type VehicleListCardProps = {
     model: string;
     year: number;
     vin: string;
-    mileageKm: number;
+    mileage: number;
     images: string[];
     latestAuction: VehicleListAuction | null;
   };
@@ -44,7 +44,7 @@ export function VehicleListCard({ vehicle }: VehicleListCardProps) {
             {vehicle.brand} {vehicle.model}
           </p>
           <p className="seller-vehicle-meta">
-            {vehicle.year} · {formatAed(vehicle.latestAuction?.currentBidAed ?? 0)}
+            {vehicle.year} · {formatAed(vehicle.latestAuction?.currentPrice ?? 0)}
           </p>
           <p className="seller-vehicle-vin">VIN: {maskVin(vehicle.vin)}</p>
         </div>

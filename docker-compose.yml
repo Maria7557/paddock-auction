@@ -55,11 +55,14 @@ services:
       - backend
     ports:
       - "3000:3000"
+    volumes:
+      - frontend_uploads:/app/public/uploads
     networks:
       - fleetbid-network
 
 volumes:
   postgres_data:
+  frontend_uploads:
 
 networks:
   fleetbid-network:

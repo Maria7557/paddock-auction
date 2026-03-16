@@ -15,7 +15,7 @@ type SellerVehiclesResponse = {
     model: string;
     year: number;
     vin: string;
-    mileageKm: number;
+    mileage: number;
     images: string[];
     latestAuction: {
       id: string;
@@ -23,7 +23,7 @@ type SellerVehiclesResponse = {
       createdAt: string;
       startsAt: string;
       endsAt: string;
-      currentBidAed: number;
+      currentPrice: number;
     } | null;
   }>;
 };

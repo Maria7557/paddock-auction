@@ -107,13 +107,59 @@ async function sendUnauthorized(reply: FastifyReply): Promise<void> {
   });
 }
 
-async function setAuthCookie(reply: FastifyReply, token: string): Promise<void> {
+async function isLocalBrowserUrl(value: string | undefined): Promise<boolean> {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.trim().toLowerCase();
+
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+async function shouldUseSecureCookie(request: FastifyRequest): Promise<boolean> {
+  if (process.env.NODE_ENV !== "production") {
+    return false;
+  }
+
+  const originHeader = request.headers.origin;
+  const refererHeader = request.headers.referer;
+  const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+  const referer = Array.isArray(refererHeader) ? refererHeader[0] : refererHeader;
+
+  if ((await isLocalBrowserUrl(origin)) || (await isLocalBrowserUrl(referer))) {
+    return false;
+  }
+
+  const forwardedHost = request.headers["x-forwarded-host"];
+  const hostHeader = Array.isArray(forwardedHost)
+    ? forwardedHost[0]
+    : forwardedHost || request.headers.host || "";
+  const host = hostHeader.trim().toLowerCase();
+
+  if (
+    host.startsWith("localhost") ||
+    host.startsWith("127.0.0.1") ||
+    host.startsWith("[::1]")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+async function setAuthCookie(request: FastifyRequest, reply: FastifyReply, token: string): Promise<void> {
   const maxAge = await getTokenMaxAge();
 
   reply.setCookie("token", token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await shouldUseSecureCookie(request),
     path: "/",
     maxAge,
   });
@@ -184,7 +230,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         email: user.email,
       });
 
-      await setAuthCookie(reply, token);
+      await setAuthCookie(request, reply, token);
       await reply.code(200).send({
         user: {
           id: user.id,

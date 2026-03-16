@@ -317,6 +317,70 @@ async function serializeVehicle(vehicle: {
 }
 
 export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
+  fastify.get(
+    "/auctions",
+    async function listAuctionsHandler(
+      _request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const auctions = await prisma.auction.findMany({
+        where: {
+          state: {
+            in: ["SCHEDULED", "LIVE", "EXTENDED", "PAYMENT_PENDING", "PAID", "DEFAULTED", "ENDED", "CLOSED"],
+          },
+          transitions: {
+            none: {
+              trigger: "EVENT_META",
+            },
+          },
+        },
+        include: {
+          vehicle: true,
+        },
+        orderBy: [{ startsAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+      });
+      const sellerCompanyIds = Array.from(new Set(auctions.map((auction) => auction.sellerCompanyId)));
+      const companies = sellerCompanyIds.length
+        ? await prisma.company.findMany({
+            where: {
+              id: {
+                in: sellerCompanyIds,
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+              country: true,
+            },
+          })
+        : [];
+      const companyById = new Map(companies.map((company) => [company.id, company]));
+
+      await reply.code(200).send({
+        auctions: await Promise.all(
+          auctions.map(async (auction) => {
+            const company = companyById.get(auction.sellerCompanyId) ?? null;
+
+            return {
+              id: auction.id,
+              state: auction.state,
+              currentPrice: await toNumberValue(auction.currentPrice),
+              minIncrement: await toNumberValue(auction.minIncrement),
+              startingPrice: await toNumberValue(auction.startingPrice),
+              buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
+              startsAt: await toIsoString(auction.startsAt),
+              endsAt: await toIsoString(auction.endsAt),
+              createdAt: await toIsoString(auction.createdAt),
+              sellerName: company?.name ?? "Verified Seller",
+              location: company?.country ?? "UAE",
+              vehicle: await serializeVehicle(auction.vehicle),
+            };
+          }),
+        ),
+      });
+    },
+  );
+
   fastify.post(
     "/bids",
     {
