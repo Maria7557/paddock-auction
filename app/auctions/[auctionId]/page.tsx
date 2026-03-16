@@ -6,7 +6,7 @@ import type { DamageMapValue } from "@/components/seller/DamageDiagram";
 import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
-import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
+import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 import { BidHistory } from "./components/BidHistory";
