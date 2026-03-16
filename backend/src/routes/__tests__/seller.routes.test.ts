@@ -280,6 +280,13 @@ describe("POST /api/seller/vehicles", () => {
     expect(res.body.message).toBe("Vehicle added and auction draft created");
     expect(res.body.vehicle.id).toBe("v-new");
     expect(res.body.auctionId).toBe("a-new");
+    expect(tx.auction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          minIncrement: 500,
+        }),
+      }),
+    );
   });
 
   it("returns 400 when brand is missing", async () => {
@@ -559,6 +566,13 @@ describe("POST /api/seller/auctions", () => {
       state: "DRAFT",
       vehicleId: "v1",
     });
+    expect(tx.auction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          minIncrement: 500,
+        }),
+      }),
+    );
   });
 
   it("returns 400 when vehicleId is missing", async () => {
