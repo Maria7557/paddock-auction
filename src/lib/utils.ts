@@ -1,5 +1,5 @@
 export function formatAed(amount: number): string {
-  return 'AED ' + amount.toLocaleString('en-US');
+  return `AED ${amount.toLocaleString("en-AE")}`;
 }
 
 export function savingPct(market: number, current: number): number {

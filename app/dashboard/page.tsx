@@ -1,78 +1,93 @@
-import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
-import { ProfileLogoutButton } from "@/components/shell/ProfileLogoutButton";
-import { readDashboard } from "@/src/modules/ui/domain/marketplace_read_model";
-import { getLocalePreference } from "@/src/lib/display_preferences";
+import { ActivityTimeline } from "@/components/buyer/ActivityTimeline";
+import { DepositCard } from "@/components/buyer/DepositCard";
+import { OnboardingProgress } from "@/components/buyer/OnboardingProgress";
+import { RecommendedLots } from "@/components/buyer/RecommendedLots";
+import { VipPromoBanner } from "@/components/buyer/VipPromoBanner";
+import { MetricTile } from "@/components/seller/MetricTile";
+import { api } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
-import { DashboardCards } from "@/src/modules/ui/transport/components/buyer/dashboard_cards";
-import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
+import { withServerCookies } from "@/src/lib/server-api-options";
+import { formatAed } from "@/src/lib/utils";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
-import { BadgeCheck, CircleAlert, ReceiptText } from "lucide-react";
 
-function resolveActivityIcon(title: string) {
-  const normalizedTitle = title.toLowerCase();
+import styles from "./page.module.css";
 
-  if (normalizedTitle.includes("outbid")) {
-    return CircleAlert;
-  }
+export const dynamic = "force-dynamic";
 
-  if (normalizedTitle.includes("accepted")) {
-    return BadgeCheck;
-  }
-
-  return ReceiptText;
-}
+type BuyerDashboardResponse = {
+  metrics: {
+    activeBids: number;
+    watching: number;
+    invoicesDue: number;
+    depositBalance: number;
+    depositLocked: number;
+  };
+  onboardingStep: 1 | 2 | 3 | 4;
+  recentActivity: Array<{
+    type: "winning" | "outbid" | "watched";
+    lotTitle: string;
+    amount?: number;
+    timeAgo: string;
+  }>;
+  recommendedLots: Array<{
+    id: string;
+    title: string;
+    currentBid: number;
+    status: string;
+    imageUrl?: string;
+  }>;
+  vipStatus: {
+    tier: "STANDARD" | "VIP";
+    upgradeRequest: { status: string; requestedAt: string } | null;
+  };
+};
 
 export default async function DashboardPage() {
-  const session = await requireBuyerSession("/dashboard");
-  const locale = await getLocalePreference();
-  const t = getBuyerPortalCopy(locale);
-  const dashboard = await readDashboard({
-    userId: session.userId,
-    companyId: session.companyId,
-  });
+  await requireBuyerSession("/dashboard");
+
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+  const dashboard = await api.buyer.dashboard<BuyerDashboardResponse>(requestOptions);
+  const upgradeStatus: "NONE" | "PENDING" | "APPROVED" =
+    dashboard.vipStatus.upgradeRequest?.status === "PENDING"
+      ? "PENDING"
+      : dashboard.vipStatus.upgradeRequest?.status === "APPROVED"
+        ? "APPROVED"
+        : "NONE";
 
   return (
     <MarketShell>
-      <section className="section-block compact">
-        <div className="section-heading">
-          <h1>{t.pages.dashboardTitle}</h1>
-          <p>{t.pages.dashboardSubtitle}</p>
-          <div className="inline-actions" style={{ marginTop: "12px" }}>
-            <ProfileLogoutButton className="button button-ghost" />
-          </div>
-        </div>
-        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
-      </section>
+      <div className={styles.page}>
+        {dashboard.onboardingStep < 4 ? (
+          <OnboardingProgress step={dashboard.onboardingStep} />
+        ) : null}
 
-      <DashboardCards dashboard={dashboard} locale={locale} />
+        <section className={styles.metrics}>
+          <MetricTile label="Active bids" value={dashboard.metrics.activeBids} />
+          <MetricTile label="Watching" value={dashboard.metrics.watching} />
+          <MetricTile label="Invoices due" value={dashboard.metrics.invoicesDue} />
+          <MetricTile label="Deposit balance" value={formatAed(dashboard.metrics.depositBalance)} />
+        </section>
 
-      <section className="surface-panel">
-        <div className="section-heading compact">
-          <h2>{t.pages.recentActivity}</h2>
-        </div>
-        {dashboard.recentActivity.length === 0 ? (
-          <p className="text-muted">{t.pages.noActivity}</p>
-        ) : (
-          <ul className="timeline-list-v2">
-            {dashboard.recentActivity.map((item) => {
-              const Icon = resolveActivityIcon(item.title);
+        <section className={styles.split}>
+          <DepositCard
+            available={dashboard.metrics.depositBalance}
+            locked={dashboard.metrics.depositLocked}
+          />
 
-              return (
-                <li key={item.id}>
-                  <p>
-                    <span className="structural-row">
-                      <Icon className="structural-icon" size={18} aria-hidden="true" />
-                      <strong>{item.title}</strong>
-                    </span>
-                  </p>
-                  <p>{item.detail}</p>
-                  <span>{new Date(item.createdAt).toLocaleString(locale === "ru" ? "ru-RU" : "en-AE")}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+          {dashboard.onboardingStep === 4 ? (
+            <ActivityTimeline events={dashboard.recentActivity} />
+          ) : (
+            <RecommendedLots lots={dashboard.recommendedLots} />
+          )}
+        </section>
+
+        {dashboard.vipStatus.tier === "STANDARD" ? (
+          <VipPromoBanner
+            tier={dashboard.vipStatus.tier}
+            upgradeStatus={upgradeStatus}
+          />
+        ) : null}
+      </div>
     </MarketShell>
   );
 }

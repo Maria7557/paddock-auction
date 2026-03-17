@@ -499,13 +499,23 @@ export const api = {
     },
   },
   buyer: {
+    dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/buyer/dashboard", options),
     wishlist: {
-      list: async <T = unknown>(options?: RequestInit): Promise<T> =>
-        getRequest<T>("/api/buyer/wishlist", options),
+      list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
+        getRequest<T>(appendSearchParams("/api/buyer/watchlist", query), options),
+      toggle: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/buyer/watchlist/${auctionId}`, undefined, options),
       add: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/buyer/wishlist/${auctionId}`, undefined, options),
+        postJson<T>(`/api/buyer/watchlist/${auctionId}`, undefined, options),
       remove: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
-        deleteRequest<T>(`/api/buyer/wishlist/${auctionId}`, options),
+        postJson<T>(`/api/buyer/watchlist/${auctionId}`, undefined, options),
+    },
+    vip: {
+      request: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        postJson<T>("/api/buyer/vip-request", undefined, options),
+      status: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/buyer/vip-status", options),
     },
   },
   wallet: {

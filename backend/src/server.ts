@@ -7,6 +7,7 @@ import { setSchedulerLogger, startScheduler, stopScheduler } from "./scheduler";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { bidsRoutes } from "./routes/bids";
+import { buyerRoutes } from "./routes/buyer";
 import { sellerRoutes } from "./routes/seller";
 import { walletRoutes } from "./routes/wallet";
 
@@ -145,6 +146,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       });
 
       await api.register(bidsRoutes);
+      await api.register(buyerRoutes);
       await api.register(sellerRoutes);
       await api.register(adminRoutes);
       await api.register(walletRoutes);

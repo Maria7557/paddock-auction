@@ -1,0 +1,104 @@
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-4);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.stepLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stepCard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.circleWrap {
+  flex-shrink: 0;
+}
+
+.circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid var(--line-strong);
+}
+
+.circleDone {
+  border-color: var(--green-600);
+  background: var(--green-600);
+  color: var(--bg-card);
+}
+
+.circleActive {
+  border-color: var(--green-600);
+  background: var(--bg-card);
+  color: var(--green-600);
+}
+
+.circlePending {
+  border-color: var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+
+.copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.copy strong {
+  font-size: 15px;
+  color: var(--ink-primary);
+}
+
+.copy span {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
+.connector {
+  flex: 1;
+  min-width: 24px;
+  height: 2px;
+  background: var(--line-soft);
+}
+
+@media (max-width: 980px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+
+  .segment {
+    align-items: stretch;
+  }
+
+  .connector {
+    display: none;
+  }
+}
