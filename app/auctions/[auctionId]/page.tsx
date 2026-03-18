@@ -452,16 +452,13 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        <div className={styles.hero}>
+        <div className={styles.contentGrid}>
           <div className={styles.galleryCol}>
             <LotGallery images={lot.images} title={lot.title} />
           </div>
           <aside className={styles.bidCol}>
             <BidPanel lot={lot} totalBids={lot.totalBids} display={display} />
           </aside>
-        </div>
-
-        <div className={styles.body}>
           <div className={styles.main}>
             <VehicleInfo lot={lot} locale={display.locale} />
             <VehicleSpecs lot={lot} locale={display.locale} />

@@ -68,6 +68,7 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
                 totalBids={lot.totalBids}
                 endTime={lot.status === "LIVE" ? lot.endsAt : lot.startsAt}
                 display={display}
+                showWishlistControl
               />
             ))}
           </div>

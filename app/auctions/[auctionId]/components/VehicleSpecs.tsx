@@ -5,6 +5,8 @@ import styles from "./Sections.module.css";
 
 type Props = { lot: LotDetail; locale: SupportedLocale };
 
+const SPEC_COLUMNS = 3;
+
 export function VehicleSpecs({ lot, locale }: Props) {
   const isRu = locale === "ru";
   const EMPTY_VALUES = new Set(["", "—", "Not specified", "N/A"]);
@@ -24,6 +26,7 @@ export function VehicleSpecs({ lot, locale }: Props) {
     { label: isRu ? "Серия" : "Series", value: lot.series },
     { label: isRu ? "Цвет экст./инт." : "Ext / Int Color", value: extIntColor },
   ].filter((spec) => !isEmpty(spec.value));
+  const placeholderCount = specs.length > 0 ? (SPEC_COLUMNS - (specs.length % SPEC_COLUMNS)) % SPEC_COLUMNS : 0;
 
   return (
     <section className={styles.card} aria-labelledby="vs-heading">
@@ -36,6 +39,9 @@ export function VehicleSpecs({ lot, locale }: Props) {
             <div className={styles.specLabel}>{spec.label}</div>
             <div className={styles.specValue}>{spec.value}</div>
           </div>
+        ))}
+        {Array.from({ length: placeholderCount }).map((_, index) => (
+          <div key={`placeholder-${index}`} className={`${styles.specCell} ${styles.specPlaceholder}`} aria-hidden="true" />
         ))}
       </div>
     </section>

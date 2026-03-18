@@ -498,6 +498,7 @@ export function AuctionsClient({
                     : lot.startsAt ?? lot.endsAt ?? new Date().toISOString()
                 }
                 display={display}
+                showWishlistControl
               />
             ))}
           </div>

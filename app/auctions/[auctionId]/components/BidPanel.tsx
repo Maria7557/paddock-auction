@@ -260,8 +260,8 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const buyNowSaving =
     lot.buyNowAed > 0 && marketReference > lot.buyNowAed ? savingPct(marketReference, lot.buyNowAed) : 0;
   const countdownDone = cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
-  const showGuestGuide = viewer.checked && !viewer.authenticated;
   const showActionGate = !isClosed && viewer.checked && !canBid;
+  const showHowToBid = !isClosed && viewer.checked && !canBid;
   const showBuyNow = lot.buyNowAed > 0;
   const gateSecondaryMessage = useMemo(() => {
     if (!viewer.authenticated) {
@@ -531,12 +531,6 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             <div className={styles.priceCell}>
               <div className={styles.priceLabel}>Buy Now</div>
               <div className={styles.buyNowPrice}>{formatMoneyFromAed(lot.buyNowAed, display)}</div>
-              {marketReference > 0 ? (
-                <div className={styles.marketReference}>
-                  <span>{isRu ? "Рыночная цена" : "Market price"}</span>
-                  <strong>{formatMoneyFromAed(marketReference, display)}</strong>
-                </div>
-              ) : null}
               {buyNowSaving > 0 ? (
                 <div className={styles.savingBadge}>
                   {isRu ? `${buyNowSaving}% ниже рынка` : `${buyNowSaving}% below market`}
@@ -677,7 +671,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
         </div>
       ) : null}
 
-      {showGuestGuide ? (
+      {showHowToBid ? (
         <div className={styles.howToBid}>
           <p className={styles.howToBidTitle}>{isRu ? "Как начать bidding" : "How to Start Bidding"}</p>
           <ol className={styles.howToBidList}>
@@ -706,9 +700,11 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
               </span>
             </li>
           </ol>
-          <Link href="/register/buyer" className={styles.registerLink}>
-            {isRu ? "Регистрация buyer-аккаунта" : "Register as a Buyer"}
-          </Link>
+          {!viewer.authenticated ? (
+            <Link href="/register/buyer" className={styles.registerLink}>
+              {isRu ? "Регистрация buyer-аккаунта" : "Register as a Buyer"}
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

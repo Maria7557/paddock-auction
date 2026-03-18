@@ -116,32 +116,44 @@
 }
 
 /* ── Hero layout ──────────────────────────────────────────────────────────── */
-.hero {
+.contentGrid {
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 20px;
   margin-bottom: 28px;
   align-items: start;
 }
-.galleryCol { min-width: 0; }
-.bidCol     { position: sticky; top: 84px; }
-
-/* ── Body layout ──────────────────────────────────────────────────────────── */
-.body {
-  display: block;
+.galleryCol {
+  min-width: 0;
+  grid-column: 1;
+}
+.bidCol {
+  position: sticky;
+  top: 84px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
 }
 .main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 /* ── Breakpoints ──────────────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
-  .hero {
+  .contentGrid {
     grid-template-columns: 1fr;
   }
-  .bidCol { position: static; }
+  .bidCol {
+    position: static;
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .main { grid-row: auto; }
 }
 
 @media (max-width: 740px) {

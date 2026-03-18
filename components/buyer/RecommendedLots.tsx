@@ -68,6 +68,7 @@ export function RecommendedLots({
             status={lot.status}
             endTime={resolveEndTime(lot)}
             marketPrice={lot.marketPrice ?? undefined}
+            showWishlistControl
           />
         ))}
       </div>

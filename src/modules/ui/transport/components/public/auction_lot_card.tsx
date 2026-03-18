@@ -34,6 +34,7 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       status={lot.status}
       endTime={lot.endsAt}
       marketPrice={lot.marketPriceAed ?? undefined}
+      showWishlistControl
     />
   );
 }
