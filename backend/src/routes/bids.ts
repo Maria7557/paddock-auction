@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
 
+import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import {
+  createIssuedInvoice,
+  ensureAuctionDepositLock,
+  releaseAuctionDepositLocks,
+} from "../lib/auction-deposit-locks";
+import { hydrateAuthIfPresent, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -24,10 +30,15 @@ type AuctionLockRow = {
   state: string;
   version: number;
   current_price: DecimalLike;
+  starts_at: Date | string;
   min_increment: DecimalLike;
+  buy_now_price: DecimalLike | null;
+  seller_company_id: string;
   last_bid_sequence: number;
   ends_at: Date | string;
 };
+
+const BUY_NOW_PAYMENT_WINDOW_HOURS = 48;
 
 const placeBidSchema = z.object({
   auctionId: z.string().trim().min(1),
@@ -142,6 +153,14 @@ async function toDateValue(value: Date | string): Promise<Date> {
   return parsed;
 }
 
+async function addHours(base: Date, hours: number): Promise<Date> {
+  const next = new Date(base);
+
+  next.setUTCHours(next.getUTCHours() + hours);
+
+  return next;
+}
+
 async function readStoredResponseBody(value: unknown): Promise<JsonRecord> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as JsonRecord;
@@ -162,8 +181,40 @@ async function readStoredResponseBody(value: unknown): Promise<JsonRecord> {
   return {};
 }
 
-async function toStoredJson(value: unknown): Promise<any> {
-  return JSON.parse(JSON.stringify(value));
+async function toStoredJson(value: unknown): Promise<Prisma.InputJsonValue> {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+async function resolveViewerTier(
+  request: FastifyRequest,
+): Promise<"PUBLIC" | "STANDARD" | "VIP"> {
+  await hydrateAuthIfPresent(request);
+
+  if (request.auth?.role !== "BUYER" || !request.auth.companyId) {
+    return "PUBLIC";
+  }
+
+  const company = await prisma.company.findUnique({
+    where: {
+      id: request.auth.companyId,
+    },
+    select: {
+      buyerTier: true,
+    },
+  });
+
+  return company?.buyerTier === "VIP" ? "VIP" : "STANDARD";
+}
+
+async function serializeBuyNowPrice(
+  value: DecimalLike | null,
+  viewerTier: "PUBLIC" | "STANDARD" | "VIP",
+): Promise<number | null> {
+  if (viewerTier !== "VIP" || value === null) {
+    return null;
+  }
+
+  return toNumberValue(value);
 }
 
 async function sendValidationError(
@@ -173,12 +224,6 @@ async function sendValidationError(
   await reply.code(400).send({
     error: "Invalid request",
     issues,
-  });
-}
-
-async function sendUnauthorized(reply: FastifyReply): Promise<void> {
-  await reply.code(401).send({
-    error: "Unauthorized",
   });
 }
 
@@ -320,9 +365,10 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     "/auctions",
     async function listAuctionsHandler(
-      _request: FastifyRequest,
+      request: FastifyRequest,
       reply: FastifyReply,
     ): Promise<void> {
+      const viewerTier = await resolveViewerTier(request);
       const auctions = await prisma.auction.findMany({
         where: {
           state: {
@@ -336,6 +382,11 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         },
         include: {
           vehicle: true,
+          _count: {
+            select: {
+              bids: true,
+            },
+          },
         },
         orderBy: [{ startsAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
       });
@@ -367,12 +418,13 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               currentPrice: await toNumberValue(auction.currentPrice),
               minIncrement: await toNumberValue(auction.minIncrement),
               startingPrice: await toNumberValue(auction.startingPrice),
-              buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
+              buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice, viewerTier),
               startsAt: await toIsoString(auction.startsAt),
               endsAt: await toIsoString(auction.endsAt),
               createdAt: await toIsoString(auction.createdAt),
               sellerName: company?.name ?? "Verified Seller",
               location: company?.country ?? "UAE",
+              totalBids: auction._count?.bids ?? 0,
               vehicle: await serializeVehicle(auction.vehicle),
             };
           }),
@@ -406,6 +458,14 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       const buyerAccess = await requireActiveBuyerAccount(request, reply);
 
       if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
         return;
       }
 
@@ -536,7 +596,10 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
                 state,
                 version,
                 current_price,
+                starts_at,
                 min_increment,
+                buy_now_price,
+                seller_company_id,
                 last_bid_sequence,
                 ends_at
               FROM auctions
@@ -552,32 +615,48 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             const currentPrice = await toNumberValue(auction.current_price);
             const minIncrement = await toNumberValue(auction.min_increment);
             const endsAt = await toDateValue(auction.ends_at);
+            const isScheduled = auction.state === "SCHEDULED";
+            const isLive = auction.state === "LIVE" || auction.state === "EXTENDED";
 
-            if (auction.state !== "LIVE" && auction.state !== "EXTENDED") {
+            if (!isScheduled && !isLive) {
               throw new Error("AUCTION_NOT_LIVE");
             }
 
-            if (payload.amount <= currentPrice) {
-              throw new Error("BID_TOO_LOW");
-            }
+            if (isScheduled) {
+              const startsAt = await toDateValue(auction.starts_at);
 
-            if (payload.amount < currentPrice + minIncrement) {
-              throw new Error("BID_INCREMENT_VIOLATION");
+              if (new Date() >= startsAt) {
+                throw new Error("AUCTION_NOT_LIVE");
+              }
+
+              if (currentPrice > 0) {
+                const nextScheduledBid = currentPrice + minIncrement;
+
+                if (payload.amount !== nextScheduledBid) {
+                  throw new Error("BID_INCREMENT_VIOLATION");
+                }
+              }
+            } else {
+              if (payload.amount <= currentPrice) {
+                throw new Error("BID_TOO_LOW");
+              }
+
+              if (payload.amount < currentPrice + minIncrement) {
+                throw new Error("BID_INCREMENT_VIOLATION");
+              }
             }
 
             if (new Date() > endsAt) {
               throw new Error("AUCTION_ENDED");
             }
 
-            const depositLock = await tx.depositLock.findFirst({
-              where: {
-                auctionId: payload.auctionId,
-                companyId,
-                status: "ACTIVE",
-              },
+            const depositLockResult = await ensureAuctionDepositLock(tx, {
+              auctionId: payload.auctionId,
+              companyId,
+              userId,
             });
 
-            if (!depositLock) {
+            if (depositLockResult.kind === "deposit_required") {
               throw new Error("NO_DEPOSIT");
             }
 
@@ -606,7 +685,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
             const timeLeft = endsAt.getTime() - Date.now();
 
-            if (timeLeft < 3 * 60 * 1000) {
+            if (isLive && timeLeft < 3 * 60 * 1000) {
               await tx.$executeRaw`
                 UPDATE auctions
                 SET ends_at = NOW() + INTERVAL '3 minutes',
@@ -763,6 +842,217 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.post(
+    "/auctions/:id/buy-now",
+    {
+      preHandler: requireAuth,
+    },
+    async function buyNowAuctionHandler(
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = auctionParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(
+          reply,
+          parsedParams.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        );
+        return;
+      }
+
+      const buyerAccess = await requireActiveBuyerAccount(request, reply);
+
+      if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
+        return;
+      }
+
+      const buyerCompany = await prisma.company.findUnique({
+        where: {
+          id: buyerAccess.companyId,
+        },
+        select: {
+          buyerTier: true,
+        },
+      });
+
+      if (buyerCompany?.buyerTier !== "VIP") {
+        await reply.code(403).send({
+          error: "BUY_NOW_VIP_ONLY",
+          message: "Buy Now is available for VIP buyers only.",
+        });
+        return;
+      }
+
+      try {
+        const result = await prisma.$transaction(
+          async (tx) => {
+            const rows = await tx.$queryRaw<AuctionLockRow[]>`
+              SELECT
+                id,
+                state,
+                version,
+                current_price,
+                starts_at,
+                min_increment,
+                buy_now_price,
+                seller_company_id,
+                last_bid_sequence,
+                ends_at
+              FROM auctions
+              WHERE id = ${parsedParams.data.id}
+              FOR UPDATE
+            `;
+            const auction = rows[0];
+
+            if (!auction) {
+              throw new Error("AUCTION_NOT_FOUND");
+            }
+
+            if (auction.state !== "SCHEDULED") {
+              throw new Error("BUY_NOW_UNAVAILABLE");
+            }
+
+            const startsAt = await toDateValue(auction.starts_at);
+
+            if (new Date() >= startsAt) {
+              throw new Error("BUY_NOW_UNAVAILABLE");
+            }
+
+            if (auction.buy_now_price === null) {
+              throw new Error("BUY_NOW_UNAVAILABLE");
+            }
+
+            const buyNowPrice = await toNumberValue(auction.buy_now_price);
+            const depositLockResult = await ensureAuctionDepositLock(tx, {
+              auctionId: parsedParams.data.id,
+              companyId: buyerAccess.companyId,
+              userId: buyerAccess.userId,
+            });
+
+            if (depositLockResult.kind === "deposit_required") {
+              throw new Error("NO_DEPOSIT");
+            }
+
+            const nextSequenceNo = auction.last_bid_sequence + 1;
+            const bidRecord = await tx.bid.create({
+              data: {
+                auctionId: parsedParams.data.id,
+                companyId: buyerAccess.companyId,
+                userId: buyerAccess.userId,
+                amount: buyNowPrice,
+                sequenceNo: nextSequenceNo,
+              },
+            });
+
+            const updatedRows = await tx.$executeRaw`
+              UPDATE auctions
+              SET state = ${"PAYMENT_PENDING"}::"AuctionState",
+                  current_price = ${buyNowPrice},
+                  last_bid_sequence = ${nextSequenceNo},
+                  highest_bid_id = ${bidRecord.id},
+                  winner_company_id = ${buyerAccess.companyId},
+                  closed_at = NOW(),
+                  version = version + 1,
+                  updated_at = NOW()
+              WHERE id = ${parsedParams.data.id}
+                AND version = ${auction.version}
+            `;
+
+            if (updatedRows !== 1) {
+              throw new Error("AUCTION_VERSION_CONFLICT");
+            }
+
+            await tx.auctionStateTransition.create({
+              data: {
+                auctionId: parsedParams.data.id,
+                fromState: "SCHEDULED",
+                toState: "PAYMENT_PENDING",
+                trigger: "BUY_NOW",
+                actorId: buyerAccess.userId,
+                reason: JSON.stringify({
+                  winnerCompanyId: buyerAccess.companyId,
+                  buyNowPrice,
+                }),
+              },
+            });
+
+            await releaseAuctionDepositLocks(tx, {
+              auctionId: parsedParams.data.id,
+              winnerCompanyId: buyerAccess.companyId,
+              reason: "BUY_NOW_RELEASE",
+            });
+
+            await createIssuedInvoice(tx, {
+              auctionId: parsedParams.data.id,
+              buyerCompanyId: buyerAccess.companyId,
+              sellerCompanyId: auction.seller_company_id,
+              subtotal: buyNowPrice,
+              dueAt: await addHours(new Date(), BUY_NOW_PAYMENT_WINDOW_HOURS),
+            });
+
+            return {
+              price: buyNowPrice,
+            };
+          },
+          {
+            isolationLevel: "Serializable",
+          },
+        );
+
+        await reply.code(200).send({
+          message: `Purchase confirmed for AED ${result.price.toLocaleString("en-AE")}`,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "AUCTION_NOT_FOUND") {
+          await reply.code(404).send({
+            error: "Auction not found",
+          });
+          return;
+        }
+
+        if (error instanceof Error && error.message === "BUY_NOW_UNAVAILABLE") {
+          await reply.code(409).send({
+            error: "Buy Now is unavailable for this lot",
+          });
+          return;
+        }
+
+        if (error instanceof Error && error.message === "NO_DEPOSIT") {
+          await reply.code(403).send({
+            error: "Deposit required to bid",
+          });
+          return;
+        }
+
+        fastify.log.error(
+          {
+            err: error,
+            auctionId: parsedParams.data.id,
+            companyId: buyerAccess.companyId,
+            userId: buyerAccess.userId,
+          },
+          "Buy Now failed",
+        );
+
+        await reply.code(500).send({
+          error: "Internal server error",
+        });
+      }
+    },
+  );
+
   fastify.get(
     "/auctions/:id",
     async function getAuctionHandler(
@@ -781,6 +1071,8 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         );
         return;
       }
+
+      const viewerTier = await resolveViewerTier(request);
 
       const auction = await prisma.auction.findUnique({
         where: {
@@ -810,7 +1102,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           currentPrice: await toNumberValue(auction.currentPrice),
           minIncrement: await toNumberValue(auction.minIncrement),
           startingPrice: await toNumberValue(auction.startingPrice),
-          buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
+          buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice, viewerTier),
           startsAt: await toIsoString(auction.startsAt),
           endsAt: await toIsoString(auction.endsAt),
           extensionCount: auction.extensionCount,

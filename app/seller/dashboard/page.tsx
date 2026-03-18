@@ -3,35 +3,12 @@ import Link from "next/link";
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { MetricTile } from "@/components/seller/MetricTile";
 import { SellerTabs } from "@/components/seller/SellerTabs";
-import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
+import { formatSellerAuctionBid, formatSellerDateTime } from "@/components/seller/utils";
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import { requireSellerSession } from "@/src/lib/seller_session";
 
 export const dynamic = "force-dynamic";
-
-function decimalLikeToNumber(value: { toString(): string } | number | null | undefined): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-
-  if (typeof value === "number") {
-    return value;
-  }
-
-  const parsed = Number(value.toString());
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function resolveStartingPrice(value: { toString(): string } | number | null | undefined, current: { toString(): string } | number | null | undefined): number {
-  const starting = decimalLikeToNumber(value);
-
-  if (starting > 0) {
-    return starting;
-  }
-
-  return decimalLikeToNumber(current);
-}
 
 export default async function SellerDashboardPage() {
   await requireSellerSession("/seller/dashboard");
@@ -45,15 +22,14 @@ export default async function SellerDashboardPage() {
     };
   }>(requestOptions);
   const recentAuctionsPayload = await api.seller.auctions.list<{
-    auctions?: Array<{
-      id: string;
-      state: string;
-      vehicleLabel: string;
-      currentPrice: number;
-      startingPrice: number;
-      startsAt: string;
-      endsAt: string;
-    }>;
+      auctions?: Array<{
+        id: string;
+        state: string;
+        vehicleLabel: string;
+        currentPrice: number;
+        startsAt: string;
+        endsAt: string;
+      }>;
   }>({ sort: "newest" }, requestOptions).catch((error) => {
     console.error("Failed to load seller auctions for dashboard", error);
 
@@ -92,7 +68,7 @@ export default async function SellerDashboardPage() {
               <tr>
                 <th>Vehicle</th>
                 <th>State</th>
-                <th>Starting Price</th>
+                <th>Current Bid</th>
                 <th>Starts At</th>
                 <th>Ends At</th>
               </tr>
@@ -104,7 +80,7 @@ export default async function SellerDashboardPage() {
                   <td>
                     <AuctionStatusBadge state={auction.state} />
                   </td>
-                  <td>{formatAed(resolveStartingPrice(auction.startingPrice, auction.currentPrice))}</td>
+                  <td>{formatSellerAuctionBid(auction.currentPrice)}</td>
                   <td>{formatSellerDateTime(new Date(auction.startsAt))}</td>
                   <td>{formatSellerDateTime(new Date(auction.endsAt))}</td>
                 </tr>

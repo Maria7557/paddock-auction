@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { toIntlLocale } from "@/src/i18n/routing";
 import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
+import {
+  isLiveAuctionState,
+  isScheduledAuctionState,
+  isScheduledWithoutBids,
+} from "@/src/lib/auction-display";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 import { formatCountdown, savingPct, pad } from "@/src/lib/utils";
 
@@ -19,6 +24,53 @@ type Props = {
 };
 
 type Outcome = { type: "success" | "error" | "info"; msg: string } | null;
+
+type BuyerTier = "STANDARD" | "VIP";
+
+type AuthMeResponse = {
+  user?: {
+    role?: string;
+    status?: string;
+    kycVerified?: boolean;
+    companyUsers?: Array<{
+      company?: {
+        buyerTier?: BuyerTier | null;
+        status?: string | null;
+      } | null;
+    }>;
+  };
+};
+
+type BuyerDashboardResponse = {
+  depositStatus?: {
+    hasRequiredDeposit?: boolean;
+  };
+  vipStatus?: {
+    tier?: BuyerTier;
+  };
+};
+
+type ViewerState = {
+  checked: boolean;
+  authenticated: boolean;
+  isBuyer: boolean;
+  userStatus: string | null;
+  companyStatus: string | null;
+  kycVerified: boolean;
+  hasRequiredDeposit: boolean;
+  buyerTier: BuyerTier | null;
+};
+
+const DEFAULT_VIEWER_STATE: ViewerState = {
+  checked: false,
+  authenticated: false,
+  isBuyer: false,
+  userStatus: null,
+  companyStatus: null,
+  kycVerified: false,
+  hasRequiredDeposit: false,
+  buyerTier: null,
+};
 
 function useCountdown(iso: string) {
   const [cd, setCd] = useState(() => formatCountdown(new Date(iso).getTime() - Date.now()));
@@ -34,20 +86,37 @@ function useCountdown(iso: string) {
   return cd;
 }
 
+function isActiveStatus(value: string | null | undefined): boolean {
+  return value?.trim().toUpperCase() === "ACTIVE";
+}
+
 export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-
   const isRu = display.locale === "ru";
 
-  const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
-  const isScheduled = lot.state === "SCHEDULED";
+  const isLive = isLiveAuctionState(lot.state);
+  const isScheduled = isScheduledAuctionState(lot.state);
   const isClosed = !isLive && !isScheduled;
 
   const countdownIso = isLive ? lot.endsAt : lot.startsAt;
   const cd = useCountdown(countdownIso);
 
+  const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
   const [livePrice, setLivePrice] = useState(lot.currentBidAed);
+  const [visibleBidCount, setVisibleBidCount] = useState(totalBids);
+  const [manualBidAed, setManualBidAed] = useState("");
+  const [outcome, setOutcome] = useState<Outcome>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [buyNowSuccess, setBuyNowSuccess] = useState(false);
+  const clearOutcome = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLivePrice(lot.currentBidAed);
+    setVisibleBidCount(totalBids);
+    setManualBidAed("");
+    setBuyNowSuccess(false);
+  }, [lot.auctionId, lot.currentBidAed, totalBids]);
 
   useEffect(() => {
     if (!isLive) {
@@ -71,20 +140,62 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     return () => clearInterval(poll);
   }, [isLive, lot.auctionId, livePrice]);
 
-  const [outcome, setOutcome] = useState<Outcome>(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [buyNowSuccess, setBuyNowSuccess] = useState(false);
-
   useEffect(() => {
     let active = true;
 
-    async function loadSession(): Promise<void> {
+    async function loadViewer(): Promise<void> {
       try {
-        await api.auth.me();
+        const authPayload = await api.auth.me<AuthMeResponse>();
 
-        if (active) {
-          setIsAuthenticated(true);
+        if (!active) {
+          return;
+        }
+
+        const user = authPayload.user;
+        const primaryCompany = user?.companyUsers?.[0]?.company ?? null;
+        const isBuyer = user?.role === "BUYER";
+        const nextViewer: ViewerState = {
+          checked: true,
+          authenticated: true,
+          isBuyer,
+          userStatus: user?.status ?? null,
+          companyStatus: primaryCompany?.status ?? null,
+          kycVerified: user?.kycVerified === true,
+          hasRequiredDeposit: false,
+          buyerTier: primaryCompany?.buyerTier ?? null,
+        };
+
+        if (!isBuyer) {
+          setViewer(nextViewer);
+          return;
+        }
+
+        try {
+          const dashboard = await api.buyer.dashboard<BuyerDashboardResponse>();
+
+          if (!active) {
+            return;
+          }
+
+          setViewer({
+            ...nextViewer,
+            hasRequiredDeposit: dashboard.depositStatus?.hasRequiredDeposit === true,
+            buyerTier: dashboard.vipStatus?.tier ?? nextViewer.buyerTier ?? "STANDARD",
+          });
+        } catch (dashboardError) {
+          if (!active) {
+            return;
+          }
+
+          if (dashboardError instanceof ApiError && dashboardError.statusCode === 401) {
+            setViewer({
+              ...DEFAULT_VIEWER_STATE,
+              checked: true,
+            });
+            return;
+          }
+
+          setViewer(nextViewer);
         }
       } catch (error) {
         if (!active) {
@@ -92,15 +203,22 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
         }
 
         if (error instanceof ApiError && error.statusCode === 401) {
-          setIsAuthenticated(false);
+          setViewer({
+            ...DEFAULT_VIEWER_STATE,
+            checked: true,
+          });
           return;
         }
 
-        setIsAuthenticated(true);
+        setViewer({
+          ...DEFAULT_VIEWER_STATE,
+          checked: true,
+          authenticated: true,
+        });
       }
     }
 
-    void loadSession();
+    void loadViewer();
 
     return () => {
       active = false;
@@ -108,12 +226,14 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   }, []);
 
   useEffect(() => {
-    setBuyNowSuccess(false);
-  }, [lot.auctionId]);
+    return () => {
+      if (clearOutcome.current) {
+        clearTimeout(clearOutcome.current);
+      }
+    };
+  }, []);
 
-  const clearOutcome = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showOutcome = (next: Outcome) => {
+  const showOutcome = useCallback((next: Outcome) => {
     setOutcome(next);
 
     if (clearOutcome.current) {
@@ -121,7 +241,62 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     }
 
     clearOutcome.current = setTimeout(() => setOutcome(null), 5_000);
-  };
+  }, []);
+
+  const hasVisibleScheduledBid = !isScheduledWithoutBids(lot.state, livePrice);
+  const canBid =
+    viewer.authenticated &&
+    viewer.isBuyer &&
+    isActiveStatus(viewer.userStatus) &&
+    isActiveStatus(viewer.companyStatus) &&
+    viewer.kycVerified &&
+    viewer.hasRequiredDeposit;
+  const gateHref = viewer.authenticated ? "/wallet" : "/login";
+  const nextBid = livePrice + lot.minStepAed;
+  const nextScheduledBid = livePrice > 0 ? livePrice + lot.minStepAed : null;
+  const firstManualBidAmount = Number(manualBidAed);
+  const hasValidManualBid = Number.isFinite(firstManualBidAmount) && firstManualBidAmount > 0;
+  const marketReference = lot.actualCashValue > 0 ? lot.actualCashValue : 0;
+  const buyNowSaving =
+    lot.buyNowAed > 0 && marketReference > lot.buyNowAed ? savingPct(marketReference, lot.buyNowAed) : 0;
+  const countdownDone = cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
+  const showGuestGuide = viewer.checked && !viewer.authenticated;
+  const showActionGate = !isClosed && viewer.checked && !canBid;
+  const showBuyNow = lot.buyNowAed > 0;
+  const gateSecondaryMessage = useMemo(() => {
+    if (!viewer.authenticated) {
+      return isRu
+        ? "Войдите или зарегистрируйтесь, затем перейдите к депозиту."
+        : "Sign in or register first, then continue to your deposit.";
+    }
+
+    if (!viewer.isBuyer) {
+      return isRu
+        ? "Только активные buyer-аккаунты с депозитом могут делать ставки."
+        : "Only active buyer accounts with a ready deposit can place bids.";
+    }
+
+    if (!isActiveStatus(viewer.userStatus) || !isActiveStatus(viewer.companyStatus) || !viewer.kycVerified) {
+      return isRu
+        ? "Аккаунт и KYC должны быть одобрены, после чего bidding откроется."
+        : "Your account and KYC must be approved before bidding unlocks.";
+    }
+
+    return isRu
+      ? "Как только депозит будет готов, вы сможете делать pre-bid и live ставки."
+      : "Once your deposit is ready, you can place both pre-bids and live bids.";
+  }, [isRu, viewer]);
+
+  const countdownDate = new Date(countdownIso);
+  const countdownDateLabel = countdownDate.toLocaleDateString(toIntlLocale(display.locale), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const countdownTimeLabel = countdownDate.toLocaleTimeString(toIntlLocale(display.locale), {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const placeBid = useCallback(
     async (amount: number) => {
@@ -138,9 +313,14 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             : `Bid placed: ${formatMoneyFromAed(amount, display)}`,
         });
         setLivePrice(amount);
+        setVisibleBidCount((count) => count + 1);
+        setManualBidAed("");
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 401) {
-          setIsAuthenticated(false);
+          setViewer({
+            ...DEFAULT_VIEWER_STATE,
+            checked: true,
+          });
           router.push("/login");
           return;
         }
@@ -156,10 +336,15 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
         setBusy(false);
       }
     },
-    [display, isRu, lot.auctionId, router],
+    [display, isRu, lot.auctionId, router, showOutcome],
   );
 
   const handleBuyNow = useCallback(async () => {
+    if (!canBid) {
+      router.push(gateHref);
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -172,7 +357,10 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
       });
     } catch (error) {
       if (error instanceof ApiError && error.statusCode === 401) {
-        setIsAuthenticated(false);
+        setViewer({
+          ...DEFAULT_VIEWER_STATE,
+          checked: true,
+        });
         router.push("/login");
         return;
       }
@@ -184,21 +372,19 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [isRu, lot.auctionId, router]);
+  }, [canBid, gateHref, isRu, lot.auctionId, router, showOutcome]);
 
-  const handlePreBid = useCallback(() => {
-    if (isAuthenticated === false) {
-      router.push("/login");
+  const handleFirstPreBid = useCallback(() => {
+    if (!hasValidManualBid) {
+      showOutcome({
+        type: "error",
+        msg: isRu ? "Введите сумму первой pre-bid ставки." : "Enter the first pre-bid amount.",
+      });
       return;
     }
 
-    showOutcome({
-      type: "info",
-      msg: isRu
-        ? "Пред-ставка будет зарегистрирована при старте аукциона."
-        : "Pre-bid will be registered when the auction starts.",
-    });
-  }, [isAuthenticated, isRu, router]);
+    void placeBid(firstManualBidAmount);
+  }, [firstManualBidAmount, hasValidManualBid, isRu, placeBid, showOutcome]);
 
   const toggleWatchlist = useCallback(async () => {
     try {
@@ -211,30 +397,16 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
       setSaved(!saved);
     } catch (error) {
       if (error instanceof ApiError && error.statusCode === 401) {
-        setIsAuthenticated(false);
+        setViewer({
+          ...DEFAULT_VIEWER_STATE,
+          checked: true,
+        });
         router.push("/login");
       }
 
       // Ignore watchlist errors in UI.
     }
   }, [lot.auctionId, router, saved]);
-
-  const nextBid = livePrice + lot.minStepAed;
-  const marketReference = lot.actualCashValue > 0 ? lot.actualCashValue : 0;
-  const buyNowSaving =
-    lot.buyNowAed > 0 && marketReference > lot.buyNowAed ? savingPct(marketReference, lot.buyNowAed) : 0;
-  const countdownDone = cd.days === 0 && cd.hours === 0 && cd.minutes === 0 && cd.seconds === 0;
-
-  const countdownDate = new Date(countdownIso);
-  const countdownDateLabel = countdownDate.toLocaleDateString(toIntlLocale(display.locale), {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-  const countdownTimeLabel = countdownDate.toLocaleTimeString(toIntlLocale(display.locale), {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   return (
     <div id="bid-panel" className={styles.panel}>
@@ -251,7 +423,15 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           </div>
         )}
         {isClosed && (
-          <div className={styles.closedStatus}>{lot.state === "PAYMENT_PENDING" ? (isRu ? "Ожидается оплата" : "Payment Pending") : isRu ? "Аукцион завершён" : "Auction Ended"}</div>
+          <div className={styles.closedStatus}>
+            {lot.state === "PAYMENT_PENDING"
+              ? isRu
+                ? "Ожидается оплата"
+                : "Payment Pending"
+              : isRu
+                ? "Аукцион завершён"
+                : "Auction Ended"}
+          </div>
         )}
       </div>
 
@@ -293,31 +473,61 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           </div>
 
           <div className={styles.bidMeta}>
-            {totalBids > 0 ? (
-              <span>{isRu ? `${formatInteger(totalBids, display.locale)} ставок` : `${formatInteger(totalBids, display.locale)} bid${totalBids !== 1 ? "s" : ""}`}</span>
+            {visibleBidCount > 0 ? (
+              <span>
+                {isRu
+                  ? `${formatInteger(visibleBidCount, display.locale)} ставок`
+                  : `${formatInteger(visibleBidCount, display.locale)} bid${visibleBidCount !== 1 ? "s" : ""}`}
+              </span>
             ) : null}
             <span className={styles.scheduleMeta}>
-              {isLive ? (isRu ? "Конец" : "Ends") : isRu ? "Старт" : "Starts"} {countdownDateLabel}, {countdownTimeLabel} GST
+              {isLive ? (isRu ? "Конец" : "Ends") : isRu ? "Старт" : "Starts"} {countdownDateLabel},{" "}
+              {countdownTimeLabel} GST
             </span>
           </div>
         </div>
       )}
 
-      {!isClosed && countdownDone && <div className={styles.cdEnded}>{isLive ? (isRu ? "Приём ставок завершён" : "Bidding has closed") : isRu ? "Аукцион начинается…" : "Auction is starting…"}</div>}
+      {!isClosed && countdownDone && (
+        <div className={styles.cdEnded}>
+          {isLive ? (isRu ? "Приём ставок завершён" : "Bidding has closed") : isRu ? "Аукцион начинается…" : "Auction is starting…"}
+        </div>
+      )}
 
       <div className={styles.priceBlock}>
         <div className={styles.priceRow}>
           <div className={styles.priceCell}>
-            <div className={styles.priceLabel}>{isRu ? "Текущая ставка" : "Current bid"}</div>
-            <div className={styles.currentPrice}>{formatMoneyFromAed(livePrice, display)}</div>
-            {lot.minStepAed > 0 && (
-              <div className={styles.minIncrement}>
-                {isRu ? "Мин. шаг:" : "Min. increment:"} <strong>{formatMoneyFromAed(lot.minStepAed, display)}</strong>
-              </div>
+            <div className={styles.priceLabel}>
+              {isScheduled && !hasVisibleScheduledBid
+                ? isRu
+                  ? "Pre-Bid статус"
+                  : "Pre-Bid status"
+                : isRu
+                  ? "Текущая ставка"
+                  : "Current bid"}
+            </div>
+            {isScheduled && !hasVisibleScheduledBid ? (
+              <>
+                <div className={styles.currentPrice}>{isRu ? "Pre-Bid" : "Pre-Bid"}</div>
+                <div className={styles.minIncrement}>
+                  {isRu
+                    ? "Пока нет ставок. Первая pre-bid задает публичную стартовую цену."
+                    : "No bids yet. The first pre-bid sets the public opening price."}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles.currentPrice}>{formatMoneyFromAed(livePrice, display)}</div>
+                {lot.minStepAed > 0 ? (
+                  <div className={styles.minIncrement}>
+                    {isRu ? "Мин. шаг:" : "Min. increment:"} <strong>{formatMoneyFromAed(lot.minStepAed, display)}</strong>
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
 
-          {lot.buyNowAed > 0 && (
+          {showBuyNow ? (
             <div className={styles.priceCell}>
               <div className={styles.priceLabel}>Buy Now</div>
               <div className={styles.buyNowPrice}>{formatMoneyFromAed(lot.buyNowAed, display)}</div>
@@ -333,37 +543,92 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
 
-        {isLive && (
+        {isLive ? (
           <div className={styles.nextBid}>
             <span>{isRu ? "Минимальная следующая ставка" : "Minimum next bid"}</span>
             <strong>{formatMoneyFromAed(nextBid, display)}</strong>
           </div>
-        )}
+        ) : null}
+
+        {isScheduled && nextScheduledBid !== null ? (
+          <div className={styles.nextBid}>
+            <span>{isRu ? "Следующая pre-bid ставка" : "Next pre-bid"}</span>
+            <strong>{formatMoneyFromAed(nextScheduledBid, display)}</strong>
+          </div>
+        ) : null}
       </div>
 
       {!isClosed ? (
         <div className={styles.actions}>
-          {isLive ? (
-            <button className={`btn btn-primary ${styles.bidBtn}`} onClick={() => placeBid(nextBid)} disabled={busy} aria-busy={busy}>
-              {busy ? (isRu ? "Отправка ставки…" : "Placing bid…") : isRu ? `Сделать ставку · ${formatMoneyFromAed(nextBid, display)}` : `Place Bid · ${formatMoneyFromAed(nextBid, display)}`}
-            </button>
-          ) : null}
-
-          {isScheduled ? (
+          {isLive && canBid ? (
             <button
               className={`btn btn-primary ${styles.bidBtn}`}
-              onClick={handlePreBid}
+              onClick={() => void placeBid(nextBid)}
               disabled={busy}
+              aria-busy={busy}
             >
-              {isRu ? "Сделать пред-ставку" : "Pre-Bid Now"}
+              {busy
+                ? isRu
+                  ? "Отправка ставки…"
+                  : "Placing bid…"
+                : isRu
+                  ? `Сделать ставку · ${formatMoneyFromAed(nextBid, display)}`
+                  : `Place Bid · ${formatMoneyFromAed(nextBid, display)}`}
             </button>
           ) : null}
 
-          {lot.buyNowAed > 0 ? (
-            <button className={styles.buyNowBtn} onClick={handleBuyNow} disabled={busy || buyNowSuccess}>
+          {isScheduled && canBid && !hasVisibleScheduledBid ? (
+            <>
+              <div className={styles.manualBidGroup}>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  className={styles.manualBidInput}
+                  placeholder={isRu ? "Введите сумму в AED" : "Enter amount in AED"}
+                  value={manualBidAed}
+                  onChange={(event) => setManualBidAed(event.target.value)}
+                />
+                <button
+                  className={`btn btn-primary ${styles.bidBtn}`}
+                  onClick={handleFirstPreBid}
+                  disabled={busy || !hasValidManualBid}
+                  aria-busy={busy}
+                >
+                  {busy ? (isRu ? "Отправка pre-bid…" : "Placing pre-bid…") : isRu ? "Сделать первую pre-bid" : "Place First Pre-Bid"}
+                </button>
+              </div>
+              <div className={styles.helperText}>
+                {isRu
+                  ? "Первая pre-bid ставка задает публичную стартовую цену до аукциона."
+                  : "The first pre-bid sets the public starting price before the auction begins."}
+              </div>
+            </>
+          ) : null}
+
+          {isScheduled && canBid && nextScheduledBid !== null ? (
+            <button
+              className={`btn btn-primary ${styles.bidBtn}`}
+              onClick={() => void placeBid(nextScheduledBid)}
+              disabled={busy}
+              aria-busy={busy}
+            >
+              {busy
+                ? isRu
+                  ? "Отправка pre-bid…"
+                  : "Placing pre-bid…"
+                : isRu
+                  ? `Pre-Bid · ${formatMoneyFromAed(nextScheduledBid, display)}`
+                  : `Pre-Bid · ${formatMoneyFromAed(nextScheduledBid, display)}`}
+            </button>
+          ) : null}
+
+          {showBuyNow ? (
+            <button className={styles.buyNowBtn} onClick={() => void handleBuyNow()} disabled={busy || buyNowSuccess}>
               {buyNowSuccess
                 ? isRu
                   ? "Покупка подтверждена"
@@ -372,70 +637,86 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             </button>
           ) : null}
 
-          <button className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ""}`} onClick={toggleWatchlist} aria-pressed={saved}>
+          <button
+            className={`${styles.watchlistBtn} ${saved ? styles.watchlistActive : ""}`}
+            onClick={() => void toggleWatchlist()}
+            aria-pressed={saved}
+          >
             {saved ? (isRu ? "Сохранено в избранное" : "Saved to Watchlist") : isRu ? "Добавить в избранное" : "Add to Watchlist"}
           </button>
         </div>
       ) : null}
 
-      {outcome && (
+      {outcome ? (
         <div className={`${styles.feedback} ${styles[`fb_${outcome.type}`]}`} role="status" aria-live="polite">
           {outcome.msg}
         </div>
-      )}
+      ) : null}
 
-      {isAuthenticated === false ? (
-        <>
-          <div className={styles.authGate} role="alert">
-            <div className={styles.authText}>
-              <p>{isRu ? "Вы не авторизованы." : "You are not logged in."}</p>
-              <p>
-                <Link href="/login">{isRu ? "Войдите" : "Sign in"}</Link> {isRu ? "или" : "or"} <Link href="/register/buyer">{isRu ? "зарегистрируйтесь" : "register"}</Link> {isRu ? "чтобы сделать ставку." : "to place a bid."}
-              </p>
-            </div>
-            <div className={styles.depositNotice}>
-              {isRu
-                ? "Для участия требуется возвратный депозит 5 000 AED."
-                : "A refundable deposit of 5,000 AED is required to participate in auctions."}
-            </div>
-            <Link href="/login" className={`btn btn-primary btn-full ${styles.signInBtn}`}>
-              {isRu ? "Войти и сделать ставку" : "Sign In to Bid"}
-            </Link>
+      {showActionGate ? (
+        <div className={styles.authGate} role="alert">
+          <div className={styles.authText}>
+            <p>{isRu ? "Добавьте security deposit, чтобы начать bidding." : "Please add a security deposit to start bidding."}</p>
+            <p>{gateSecondaryMessage}</p>
+          </div>
+          <div className={styles.depositNotice}>
+            {isRu
+              ? "Возвратный депозит 5 000 AED обязателен для pre-bid и live bidding."
+              : "A refundable 5,000 AED deposit is required for both pre-bids and live bidding."}
+          </div>
+          <Link href={gateHref} className={`btn btn-primary btn-full ${styles.signInBtn}`}>
+            {isRu ? "Добавить Security Deposit" : "Add Security Deposit"}
+          </Link>
+          {!viewer.authenticated ? (
             <p className={styles.whoCanBid}>
               {isRu
-                ? "Участвовать могут только верифицированные аккаунты с возвратным депозитом 5 000 AED."
-                : "Anyone with a verified account and a refundable 5,000 AED deposit can participate."}
+                ? "Гости видят текущую ставку, но bidding доступен только после регистрации и депозита."
+                : "Guests can view the current bid, but bidding unlocks only after registration and deposit."}
             </p>
-          </div>
+          ) : null}
+        </div>
+      ) : null}
 
-          <div className={styles.howToBid}>
-            <p className={styles.howToBidTitle}>{isRu ? "Как сделать ставку" : "How to Place a Bid?"}</p>
-            <ol className={styles.howToBidList}>
-              <li>
-                <strong>{isRu ? "1. Войдите или зарегистрируйтесь" : "1. Sign In or Register"}</strong>
-                <span>{isRu ? "Создайте аккаунт покупателя за несколько минут." : "Create your buyer account in minutes — it's free."}</span>
-              </li>
-              <li>
-                <strong>{isRu ? "2. Внесите депозит" : "2. Add Security Deposit"}</strong>
-                <span>{isRu ? "Депозит 5 000 AED полностью возвращается, если вы не выиграли." : "Deposit 5,000 AED — fully refunded if you don't win."}</span>
-              </li>
-              <li>
-                <strong>{isRu ? "3. Сделайте ставку" : "3. Place Your Bid"}</strong>
-                <span>{isRu ? "После депозита вы можете участвовать в любом live-лоте." : "Once deposited, you're ready to bid on any live lot."}</span>
-              </li>
-            </ol>
-            <Link href="/register/buyer" className={styles.registerLink}>
-              {isRu ? "Регистрация покупателя" : "Register as a Buyer"}
-            </Link>
-          </div>
-        </>
+      {showGuestGuide ? (
+        <div className={styles.howToBid}>
+          <p className={styles.howToBidTitle}>{isRu ? "Как начать bidding" : "How to Start Bidding"}</p>
+          <ol className={styles.howToBidList}>
+            <li>
+              <strong>{isRu ? "1. Войдите или зарегистрируйтесь" : "1. Sign In or Register"}</strong>
+              <span>
+                {isRu
+                  ? "Создайте buyer-аккаунт, чтобы открыть deposit и bidding."
+                  : "Create your buyer account to unlock deposit and bidding access."}
+              </span>
+            </li>
+            <li>
+              <strong>{isRu ? "2. Добавьте депозит" : "2. Add Security Deposit"}</strong>
+              <span>
+                {isRu
+                  ? "Возвратный депозит 5 000 AED разблокирует pre-bid и live bidding."
+                  : "A refundable 5,000 AED deposit unlocks both pre-bids and live bidding."}
+              </span>
+            </li>
+            <li>
+              <strong>{isRu ? "3. Делайте pre-bid или live ставки" : "3. Place Pre-Bids or Live Bids"}</strong>
+              <span>
+                {isRu
+                  ? "До старта вы можете задать первую pre-bid или поднять цену на +500 AED."
+                  : "Before the auction starts, place the first pre-bid or raise the price by +500 AED."}
+              </span>
+            </li>
+          </ol>
+          <Link href="/register/buyer" className={styles.registerLink}>
+            {isRu ? "Регистрация buyer-аккаунта" : "Register as a Buyer"}
+          </Link>
+        </div>
       ) : null}
 
       <div className={styles.depositInfo}>
         <span className={styles.depositInfoText}>
           {isRu
-            ? "Возвратный депозит 5 000 AED обязателен · возврат в течение 24 часов, если вы не выиграли"
-            : "5,000 AED refundable deposit required · Released within 24h if you don't win"}
+            ? "Возвратный депозит 5 000 AED обязателен · при проигрыше блокировка снимается"
+            : "5,000 AED refundable deposit required · released when you do not win"}
         </span>
       </div>
     </div>

@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 
 import { BidLadder } from "@/components/seller/BidLadder";
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
+import { formatAed, formatSellerAuctionBid, formatSellerDateTime } from "@/components/seller/utils";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
-import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
 
 type BackendAuctionDetailResponse = {
@@ -19,7 +19,6 @@ type BackendAuctionDetailResponse = {
     viewingEndsAt: string | null;
     auctionStartsAt: string | null;
     auctionEndsAt: string | null;
-    startingPrice: number;
     buyNowPrice: number | null;
     currentPrice: number;
     bidsCount: number;
@@ -50,7 +49,6 @@ type AuctionDetailResponse = {
     viewingEndsAt: string | null;
     auctionStartsAt: string | null;
     auctionEndsAt: string | null;
-    startingPriceAed: number;
     buyNowPriceAed: number | null;
     currentBidAed: number;
     totalBids: number;
@@ -93,7 +91,6 @@ function normalizeAuctionDetailResponse(payload: BackendAuctionDetailResponse): 
       viewingEndsAt: payload.auction.viewingEndsAt,
       auctionStartsAt: payload.auction.auctionStartsAt,
       auctionEndsAt: payload.auction.auctionEndsAt,
-      startingPriceAed: payload.auction.startingPrice,
       buyNowPriceAed: payload.auction.buyNowPrice,
       currentBidAed: payload.auction.currentPrice,
       totalBids: payload.auction.bidsCount,
@@ -150,12 +147,10 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
   const [editForm, setEditForm] = useState<{
     startsAt: string;
     endsAt: string;
-    startingPriceAed: string;
     buyNowPriceAed: string;
   }>({
     startsAt: "",
     endsAt: "",
-    startingPriceAed: "",
     buyNowPriceAed: "",
   });
   const created = searchParams.get("created") === "1";
@@ -180,7 +175,6 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
           setEditForm({
             startsAt: parsed.auction.startsAt.slice(0, 16),
             endsAt: parsed.auction.endsAt.slice(0, 16),
-            startingPriceAed: String(parsed.auction.startingPriceAed),
             buyNowPriceAed: parsed.auction.buyNowPriceAed ? String(parsed.auction.buyNowPriceAed) : "",
           });
         }
@@ -247,27 +241,14 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
       const payload: Record<string, unknown> = { action };
 
       if (action === "update") {
-        const startingPrice = Number(editForm.startingPriceAed);
-
-        if (!isValidSellerAuctionPrice(startingPrice)) {
-          setError("Starting Price must be at least AED 500 and in AED 500 increments.");
-          return;
-        }
-
         payload.startsAt = new Date(editForm.startsAt).toISOString();
         payload.endsAt = new Date(editForm.endsAt).toISOString();
-        payload.startingPrice = startingPrice;
 
         if (editForm.buyNowPriceAed.trim()) {
           const buyNowPrice = Number(editForm.buyNowPriceAed);
 
           if (!isValidSellerAuctionPrice(buyNowPrice)) {
             setError("Buy Now Price must be at least AED 500 and in AED 500 increments.");
-            return;
-          }
-
-          if (buyNowPrice <= startingPrice) {
-            setError("Buy Now Price must be greater than Starting Price.");
             return;
           }
 
@@ -339,16 +320,12 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
 
       <section className="seller-kpi-row">
         <article className="surface-panel">
-          <p>Starting Price</p>
-          <strong>{formatAed(data.auction.startingPriceAed)}</strong>
-        </article>
-        <article className="surface-panel">
           <p>Buy Now Price</p>
           <strong>{data.auction.buyNowPriceAed ? formatAed(data.auction.buyNowPriceAed) : "-"}</strong>
         </article>
         <article className="surface-panel">
           <p>Current Bid</p>
-          <strong>{formatAed(data.auction.currentBidAed)}</strong>
+          <strong>{formatSellerAuctionBid(data.auction.currentBidAed)}</strong>
         </article>
         <article className="surface-panel">
           <p>Total Bids</p>
@@ -377,17 +354,6 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
         <section className="surface-panel seller-section-block">
           <h3>Edit Draft</h3>
           <div className="seller-form-grid">
-            <label>
-              Starting Price (AED)
-              <input
-                type="number"
-                min={SELLER_AUCTION_PRICE_INCREMENT_AED}
-                step={SELLER_AUCTION_PRICE_INCREMENT_AED}
-                value={editForm.startingPriceAed}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, startingPriceAed: event.target.value }))}
-              />
-            </label>
-
             <label>
               Buy Now Price (AED)
               <input

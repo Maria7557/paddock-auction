@@ -501,6 +501,8 @@ export const api = {
   buyer: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/dashboard", options),
+    myBids: async <T = unknown>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/buyer/my-bids", options),
     wishlist: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/buyer/watchlist", query), options),
@@ -516,6 +518,12 @@ export const api = {
         postJson<T>("/api/buyer/vip-request", undefined, options),
       status: async <T = unknown>(options?: RequestInit): Promise<T> =>
         getRequest<T>("/api/buyer/vip-status", options),
+    },
+  },
+  finance: {
+    invoices: {
+      list: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/finance/invoices", options),
     },
   },
   wallet: {

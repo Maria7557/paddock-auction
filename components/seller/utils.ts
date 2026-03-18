@@ -6,6 +6,10 @@ export function formatAed(amount: number): string {
   }).format(amount);
 }
 
+export function formatSellerAuctionBid(amount: number): string {
+  return amount > 0 ? formatAed(amount) : "No pre-bids yet";
+}
+
 export function formatSellerDateTime(value: string | Date | null): string {
   if (!value) {
     return "-";

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { type SellerVehicleFormValues, VehicleForm } from "@/components/seller/VehicleForm";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
-import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
+import { formatAed, formatSellerAuctionBid, formatSellerDateTime } from "@/components/seller/utils";
 
 type VehicleDetailResponse = {
   vehicle: {
@@ -35,7 +35,6 @@ type VehicleDetailResponse = {
   latestAuction: {
     id: string;
     state: string;
-    startingPrice: number;
     buyNowPrice: number | null;
     currentPrice: number;
     startsAt: string;
@@ -71,7 +70,6 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     photoUrls: data.vehicle.photoUrls ?? data.vehicle.images ?? [],
     mulkiyaFrontUrl: data.vehicle.mulkiyaFrontUrl ?? "",
     mulkiyaBackUrl: data.vehicle.mulkiyaBackUrl ?? "",
-    startingPriceAed: data.latestAuction ? String(data.latestAuction.startingPrice) : "",
     buyNowPriceAed: data.latestAuction?.buyNowPrice ? String(data.latestAuction.buyNowPrice) : "",
     inspectionDropoffDate: data.latestAuction?.inspectionDropoffDate
       ? data.latestAuction.inspectionDropoffDate.slice(0, 10)
@@ -248,16 +246,12 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
 
         <div className="seller-kpi-row">
           <article>
-            <p>Starting Price</p>
-            <strong>{formatAed(auction.startingPrice)}</strong>
-          </article>
-          <article>
             <p>Buy Now Price</p>
             <strong>{auction.buyNowPrice ? formatAed(auction.buyNowPrice) : "-"}</strong>
           </article>
           <article>
             <p>Current Bid</p>
-            <strong>{formatAed(auction.currentPrice)}</strong>
+            <strong>{formatSellerAuctionBid(auction.currentPrice)}</strong>
           </article>
           <article>
             <p>Inspection Drop-off</p>

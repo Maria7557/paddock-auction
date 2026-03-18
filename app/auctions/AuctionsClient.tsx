@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { LotCard } from "@/components/auction/LotCard";
 import { api } from "@/src/lib/api-client";
+import { isLiveAuctionState } from "@/src/lib/auction-display";
 import type { DisplaySettings } from "@/src/lib/money";
 
 import { ActiveFilters } from "./components/ActiveFilters";
@@ -487,7 +488,11 @@ export function AuctionsClient({
                 currentBid={lot.currentBidAed}
                 marketPrice={lot.marketPriceAed ?? undefined}
                 status={lot.state}
-                endTime={lot.endsAt ?? lot.startsAt ?? new Date().toISOString()}
+                endTime={
+                  isLiveAuctionState(lot.state)
+                    ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()
+                    : lot.startsAt ?? lot.endsAt ?? new Date().toISOString()
+                }
                 display={display}
               />
             ))}

@@ -5,8 +5,10 @@ import type { DamageMapValue } from "@/components/seller/DamageDiagram";
 
 import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
+import { isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
+import { withServerCookies } from "@/src/lib/server-api-options";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 import { BidHistory } from "./components/BidHistory";
@@ -252,7 +254,11 @@ async function getFallbackSimilarLots(currentLot: LotDetail): Promise<SimilarLot
         return right.year - left.year;
       })
       .slice(0, 3)
-      .map(({ score: _score, ...item }) => item);
+      .map((item) => {
+        const { score, ...rest } = item;
+        void score;
+        return rest;
+      });
   } catch {
     return [];
   }
@@ -260,9 +266,9 @@ async function getFallbackSimilarLots(currentLot: LotDetail): Promise<SimilarLot
 
 async function getLot(auctionId: string): Promise<LotDetail | null> {
   try {
-    const data = await api.auctions.get<Record<string, unknown>>(auctionId, {
+    const data = await api.auctions.get<Record<string, unknown>>(auctionId, await withServerCookies({
       cache: "no-store",
-    });
+    }));
     const auction = data.auction ? (data.auction as Record<string, unknown>) : data;
     const vehicle =
       (auction.vehicle as Record<string, unknown> | undefined) ??
@@ -368,9 +374,13 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   return {
     title: lot.title,
     description:
-      display.locale === "ru"
-        ? `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} км, спецификация ${lot.regionSpec}. Текущая ставка ${formatMoneyFromAed(lot.currentBidAed, display)}.`
-        : `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} km, ${lot.regionSpec} spec. Current bid ${formatMoneyFromAed(lot.currentBidAed, display)}.`,
+      isScheduledWithoutBids(lot.state, lot.currentBidAed)
+        ? display.locale === "ru"
+          ? `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} км, спецификация ${lot.regionSpec}. Лот открыт для первой pre-bid ставки до старта аукциона.`
+          : `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} km, ${lot.regionSpec} spec. This lot is open for the first pre-bid before the auction starts.`
+        : display.locale === "ru"
+          ? `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} км, спецификация ${lot.regionSpec}. Текущая ставка ${formatMoneyFromAed(lot.currentBidAed, display)}.`
+          : `${lot.title}, ${formatInteger(lot.mileageKm, display.locale)} km, ${lot.regionSpec} spec. Current bid ${formatMoneyFromAed(lot.currentBidAed, display)}.`,
     openGraph: {
       title: `${lot.title} — Lot #${lot.lotNumber}`,
       images: lot.images[0] ? [lot.images[0]] : [],
@@ -470,7 +480,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
           auctionId={lot.auctionId}
           state={lot.state}
           currentBidAed={lot.currentBidAed}
-          endsAt={lot.endsAt}
+          targetAt={isLive ? lot.endsAt : lot.startsAt}
           display={display}
         />
       ) : null}

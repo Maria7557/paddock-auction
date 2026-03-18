@@ -44,7 +44,6 @@ const sellerVehicleSchema = z.object({
   images: z.array(z.string().trim().min(1)).default([]),
   mulkiyaFrontUrl: z.string().trim().min(1).optional(),
   mulkiyaBackUrl: z.string().trim().min(1).optional(),
-  startingPrice: z.coerce.number().nonnegative().optional(),
   buyNowPrice: z.coerce.number().positive().optional(),
   inspectionDropoffDate: z.string().datetime().optional(),
 });
@@ -65,7 +64,6 @@ const sellerAuctionCreateSchema = z.object({
   viewingEndsAt: z.string().datetime().optional(),
   auctionStartsAt: z.string().datetime().optional(),
   auctionEndsAt: z.string().datetime().optional(),
-  startingPrice: z.coerce.number().nonnegative().default(0),
   buyNowPrice: z.coerce.number().positive().optional(),
   minIncrement: z.coerce.number().positive().default(DEFAULT_SELLER_AUCTION_MIN_INCREMENT),
 });
@@ -78,7 +76,6 @@ const sellerAuctionUpdateSchema = z.object({
   viewingEndsAt: z.string().datetime().optional(),
   auctionStartsAt: z.string().datetime().optional(),
   auctionEndsAt: z.string().datetime().optional(),
-  startingPrice: z.coerce.number().nonnegative().optional(),
   buyNowPrice: z.coerce.number().positive().nullable().optional(),
   minIncrement: z.coerce.number().positive().optional(),
 });
@@ -596,7 +593,6 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         ? await addDays(inspectionDropoffDate, 3)
         : new Date(derivedStartsAt.getTime() + 24 * 60 * 60 * 1000);
       const viewingEndsAt = inspectionDropoffDate ? await addDays(inspectionDropoffDate, 2) : null;
-      const startingPrice = payload.startingPrice ?? payload.marketPrice ?? 0;
       const mediaItems = await toVehicleMediaCreateInput({
         images: payload.images,
         mulkiyaFrontUrl: payload.mulkiyaFrontUrl,
@@ -647,8 +643,8 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             viewingEndsAt,
             auctionStartsAt: derivedStartsAt,
             auctionEndsAt: derivedEndsAt,
-            startingPrice,
-            currentPrice: startingPrice,
+            startingPrice: 0,
+            currentPrice: 0,
             buyNowPrice: payload.buyNowPrice,
             minIncrement: DEFAULT_SELLER_AUCTION_MIN_INCREMENT,
           },
@@ -1174,8 +1170,8 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           viewingEndsAt: payload.viewingEndsAt ? new Date(payload.viewingEndsAt) : null,
           auctionStartsAt: payload.auctionStartsAt ? new Date(payload.auctionStartsAt) : startsAt,
           auctionEndsAt: payload.auctionEndsAt ? new Date(payload.auctionEndsAt) : endsAt,
-          startingPrice: payload.startingPrice,
-          currentPrice: payload.startingPrice,
+          startingPrice: 0,
+          currentPrice: 0,
           buyNowPrice: payload.buyNowPrice,
           minIncrement: payload.minIncrement,
         },
@@ -1205,7 +1201,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: payload.vehicleId,
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
-          startingPrice: payload.startingPrice,
+          startingPrice: 0,
           buyNowPrice: payload.buyNowPrice ?? null,
           minIncrement: payload.minIncrement,
         },
@@ -1469,8 +1465,6 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             viewingEndsAt: payload.viewingEndsAt ? new Date(payload.viewingEndsAt) : undefined,
             auctionStartsAt: payload.auctionStartsAt ? new Date(payload.auctionStartsAt) : startsAt,
             auctionEndsAt: payload.auctionEndsAt ? new Date(payload.auctionEndsAt) : endsAt,
-            startingPrice: payload.startingPrice,
-            currentPrice: payload.startingPrice,
             buyNowPrice: payload.buyNowPrice === undefined ? undefined : payload.buyNowPrice,
             minIncrement: payload.minIncrement,
           },
@@ -1491,7 +1485,6 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               viewingEndsAt: payload.viewingEndsAt ?? null,
               auctionStartsAt: payload.auctionStartsAt ?? startsAt.toISOString(),
               auctionEndsAt: payload.auctionEndsAt ?? endsAt.toISOString(),
-              startingPrice: payload.startingPrice ?? null,
               buyNowPrice: payload.buyNowPrice ?? null,
               minIncrement: payload.minIncrement ?? null,
             },

@@ -6,6 +6,7 @@ import { type MouseEvent, useEffect, useState } from "react";
 
 import { IconArrowRight, IconCalendar, IconClock, IconHeart } from "@/components/ui/icons";
 import { api } from "@/src/lib/api-client";
+import { isLiveAuctionState, isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { toIntlLocale, withLocalePath } from "@/src/i18n/routing";
 import { AED_USD_PEG_RATE, formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 
@@ -102,10 +103,11 @@ export function LotCard({
   marketPrice,
   display = DEFAULT_DISPLAY,
 }: LotCardProps) {
-  const isLive = status === "LIVE";
+  const isLive = isLiveAuctionState(status);
   const isRu = display.locale === "ru";
   const intlLocale = toIntlLocale(display.locale);
   const saving = marketPrice ? savingPct(marketPrice, currentBid) : 0;
+  const hidePrice = isScheduledWithoutBids(status, currentBid);
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [wishlistBusy, setWishlistBusy] = useState(false);
@@ -188,9 +190,13 @@ export function LotCard({
 
           <div className={styles.strip}>
             <div className={`${styles.stripCell} ${styles.ours}`}>
-              <div className={styles.stripLbl}>{isRu ? "Цена FleetBid" : "FleetBid price"}</div>
-              <div className={styles.stripPrice}>{formatMoneyFromAed(currentBid, display)}</div>
-              {saving > 0 && (
+              <div className={styles.stripLbl}>
+                {hidePrice ? (isRu ? "Сделайте первый pre-bid" : "Place the first pre-bid") : isRu ? "Цена FleetBid" : "FleetBid price"}
+              </div>
+              <div className={styles.stripPrice}>
+                {hidePrice ? (isRu ? "Pre-Bid" : "Pre-Bid") : formatMoneyFromAed(currentBid, display)}
+              </div>
+              {!hidePrice && saving > 0 && (
                 <div className={styles.saving}>{isRu ? `На ${saving}% дешевле` : `${saving}% cheaper`}</div>
               )}
             </div>
@@ -224,8 +230,22 @@ export function LotCard({
 
           <div className={styles.buyBtn}>
             <div>
-              <div className={styles.buyLabel}>{isLive ? (isRu ? "Купить сейчас от" : "Buy Now from") : isRu ? "Старт от" : "Starting from"}</div>
-              <div className={styles.buyPrice}>{formatMoneyFromAed(currentBid, display)}</div>
+              <div className={styles.buyLabel}>
+                {hidePrice
+                  ? isRu
+                    ? "Будьте первым в pre-bid"
+                    : "Be the first to pre-bid"
+                  : isLive
+                    ? isRu
+                      ? "Купить сейчас от"
+                      : "Buy Now from"
+                    : isRu
+                      ? "Текущая pre-bid"
+                      : "Current pre-bid"}
+              </div>
+              <div className={styles.buyPrice}>
+                {hidePrice ? (isRu ? "Открыть pre-bid" : "Open pre-bid") : formatMoneyFromAed(currentBid, display)}
+              </div>
             </div>
             <IconArrowRight size={18} color="#fff" />
           </div>

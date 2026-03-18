@@ -47,6 +47,9 @@ describe("scheduler", () => {
         }),
       },
       $executeRaw: vi.fn().mockResolvedValue(1),
+      depositLock: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       auctionStateTransition: {
         create: vi.fn().mockResolvedValue({
           id: "transition-1",

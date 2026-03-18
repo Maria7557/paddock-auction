@@ -1,12 +1,11 @@
 import Link from "next/link";
 
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
-import { formatAed, formatSellerDateTime } from "@/components/seller/utils";
+import { formatSellerAuctionBid, formatSellerDateTime } from "@/components/seller/utils";
 
 type AuctionRow = {
   id: string;
   state: string;
-  startingPriceAed: number;
   currentBidAed: number;
   bidsCount: number;
   endsAt: string;
@@ -28,8 +27,7 @@ export function AuctionRowCard({ auction, onAction, busyActionId }: AuctionRowCa
       <td>
         <AuctionStatusBadge state={normalizedState} />
       </td>
-      <td>{formatAed(auction.startingPriceAed)}</td>
-      <td>{formatAed(auction.currentBidAed)}</td>
+      <td>{formatSellerAuctionBid(auction.currentBidAed)}</td>
       <td>{auction.bidsCount}</td>
       <td>{formatSellerDateTime(auction.endsAt)}</td>
       <td>

@@ -12,7 +12,6 @@ type AuctionsResponse = {
     state: string;
     vehicleId: string;
     vehicleLabel: string;
-    startingPriceAed: number;
     currentBidAed: number;
     bidsCount: number;
     startsAt: string;
@@ -143,7 +142,6 @@ export default function SellerAuctionsPage() {
               <tr>
                 <th>Vehicle</th>
                 <th>State</th>
-                <th>Starting Price</th>
                 <th>Current Bid</th>
                 <th># Bids</th>
                 <th>Ends At</th>
@@ -163,7 +161,7 @@ export default function SellerAuctionsPage() {
               ))}
               {!loading && data.auctions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="seller-empty-cell">
+                  <td colSpan={6} className="seller-empty-cell">
                     No auctions found.
                   </td>
                 </tr>

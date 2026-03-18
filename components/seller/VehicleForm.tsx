@@ -27,7 +27,6 @@ const LARGE_UPLOAD_WARNING_BYTES = 40 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const SELLER_AUCTION_PRICE_INCREMENT_AED = 500;
-const SELLER_AUCTION_MIN_PRICE_AED = SELLER_AUCTION_PRICE_INCREMENT_AED;
 const VEHICLE_MEDIA_UPLOAD_PATH = "/api/seller/vehicles/upload-photos";
 const AIRBAG_OPTIONS = [
   { value: "NO_AIRBAGS", label: "No airbags" },
@@ -113,7 +112,7 @@ function isValidInspectionDate(value: string, tomorrowISO: string, maxDateISO: s
 }
 
 function isValidSellerAuctionPrice(value: number): boolean {
-  return value >= SELLER_AUCTION_MIN_PRICE_AED && value % SELLER_AUCTION_PRICE_INCREMENT_AED === 0;
+  return value >= SELLER_AUCTION_PRICE_INCREMENT_AED && value % SELLER_AUCTION_PRICE_INCREMENT_AED === 0;
 }
 
 function validateUploadFile(file: File, allowedTypes: Set<string>): string | null {
@@ -436,19 +435,10 @@ export function VehicleForm({
           throw new Error("Inspection drop-off date must be between tomorrow and 90 days from today.");
         }
 
-        const startingPrice = Number(values.startingPriceAed);
         const buyNow = values.buyNowPriceAed ? Number(values.buyNowPriceAed) : null;
-
-        if (!isValidSellerAuctionPrice(startingPrice)) {
-          throw new Error("Starting Price must be at least AED 500 and in AED 500 increments.");
-        }
 
         if (buyNow !== null && !isValidSellerAuctionPrice(buyNow)) {
           throw new Error("Buy Now Price must be at least AED 500 and in AED 500 increments.");
-        }
-
-        if (buyNow !== null && buyNow <= startingPrice) {
-          throw new Error("Buy Now Price must be greater than Starting Price.");
         }
       }
 
@@ -883,25 +873,13 @@ export function VehicleForm({
           </section>
 
           <label>
-            Starting Price AED
-            <input
-              type="number"
-              min={SELLER_AUCTION_MIN_PRICE_AED}
-              step={SELLER_AUCTION_PRICE_INCREMENT_AED}
-              value={values.startingPriceAed}
-              onChange={(event) => updateField("startingPriceAed", event.target.value)}
-              required
-            />
-          </label>
-
-          <label>
             Buy Now Price AED
             <p className="field-hint">
               If a buyer pays this price, the auction ends immediately and the vehicle is sold.
             </p>
             <input
               type="number"
-              min={SELLER_AUCTION_MIN_PRICE_AED}
+              min={SELLER_AUCTION_PRICE_INCREMENT_AED}
               step={SELLER_AUCTION_PRICE_INCREMENT_AED}
               value={values.buyNowPriceAed}
               onChange={(event) => updateField("buyNowPriceAed", event.target.value)}
