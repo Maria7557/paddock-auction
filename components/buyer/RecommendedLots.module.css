@@ -8,10 +8,23 @@
   gap: var(--space-4);
 }
 
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .head h2 {
   margin: 0;
   font-size: 20px;
   color: var(--ink-primary);
+}
+
+.browseLink {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-600);
 }
 
 .grid {

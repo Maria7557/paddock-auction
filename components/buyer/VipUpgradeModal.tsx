@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
@@ -17,13 +17,6 @@ type SubmitState = "idle" | "loading" | "success";
 export function VipUpgradeModal({ isOpen, onClose }: VipUpgradeModalProps) {
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    if (isOpen) {
-      setSubmitState("idle");
-      setErrorMessage("");
-    }
-  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -64,7 +57,7 @@ export function VipUpgradeModal({ isOpen, onClose }: VipUpgradeModalProps) {
             <ul>
               <li>Auction participation</li>
               <li>Pre-bids</li>
-              <li>Buy Now prices</li>
+              <li>Buy Now purchase access</li>
               <li>Pre-auction purchase</li>
             </ul>
           </div>

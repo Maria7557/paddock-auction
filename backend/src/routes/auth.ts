@@ -722,6 +722,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           email: user.email,
           role: user.role,
           status: user.status,
+          createdAt: user.createdAt,
           kycVerified: user.kycVerified,
           companyUsers: user.companyUsers.map((companyUser) => ({
             id: companyUser.id,
@@ -731,9 +732,12 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               ? {
                   id: companyUser.company.id,
                   name: companyUser.company.name,
+                  phone: companyUser.company.phone,
                   registrationNumber: companyUser.company.registrationNumber,
                   country: companyUser.company.country,
+                  buyerTier: companyUser.company.buyerTier,
                   status: companyUser.company.status,
+                  createdAt: companyUser.company.createdAt,
                 }
               : null,
           })),

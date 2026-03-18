@@ -37,13 +37,13 @@ export function VipPromoBanner({ tier, upgradeStatus }: VipPromoBannerProps) {
         ) : (
           <div className={styles.content}>
             <div className={styles.copy}>
-              <h2>Want to see Buy Now prices?</h2>
+              <h2>Want to unlock Buy Now purchases?</h2>
               <p>
-                VIP buyers can see Buy Now prices and purchase vehicles before the auction
-                starts. 4% commission instead of 2%.
+                Buy Now prices are visible to all buyers. VIP buyers can complete the
+                purchase before the auction starts. 4% commission instead of 2%.
               </p>
               <div className={styles.chips}>
-                <span>Buy Now prices</span>
+                <span>Buy Now access</span>
                 <span>Pre-auction purchase</span>
                 <span>4% commission</span>
               </div>
@@ -60,7 +60,7 @@ export function VipPromoBanner({ tier, upgradeStatus }: VipPromoBannerProps) {
         )}
       </section>
 
-      <VipUpgradeModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
+      <VipUpgradeModal key={isModalOpen ? "open" : "closed"} isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 }

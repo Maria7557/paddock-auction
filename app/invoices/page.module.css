@@ -1,0 +1,210 @@
+.page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.header {
+  display: grid;
+  gap: 8px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: var(--ink-primary);
+}
+
+.header p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-secondary);
+}
+
+.list {
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  display: grid;
+  gap: 18px;
+  padding: 22px 24px;
+  border: 1px solid var(--line-soft);
+  border-left-width: 3px;
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.cardOverdue {
+  border-left-color: var(--red-600);
+}
+
+.cardPending {
+  border-left-color: var(--amber-600);
+}
+
+.cardPaid {
+  border-left-color: transparent;
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.invoiceMeta {
+  display: grid;
+  gap: 6px;
+}
+
+.invoiceMeta span,
+.invoiceMeta p,
+.amountMeta span {
+  color: var(--ink-secondary);
+}
+
+.invoiceMeta span {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.invoiceMeta h2,
+.invoiceMeta p,
+.amountMeta strong,
+.amountMeta span {
+  margin: 0;
+}
+
+.invoiceMeta h2 {
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.invoiceMeta p,
+.amountMeta span {
+  font-size: 14px;
+}
+
+.amountMeta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.amountMeta strong {
+  font-size: clamp(28px, 4vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tagOverdue {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.tagPending {
+  background: var(--amber-100);
+  color: var(--amber-600);
+}
+
+.tagPaid {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.primaryButton {
+  background: #116a43;
+  color: var(--bg-card);
+}
+
+.secondaryButton {
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1px solid var(--line-strong);
+}
+
+.emptyState {
+  display: grid;
+  gap: 12px;
+  padding: 32px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.emptyState h2,
+.emptyState p {
+  margin: 0;
+}
+
+.emptyState h2 {
+  font-size: 24px;
+  color: var(--ink-primary);
+}
+
+.emptyState p {
+  max-width: 560px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .cardTop,
+  .cardBottom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .amountMeta,
+  .actions {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+}

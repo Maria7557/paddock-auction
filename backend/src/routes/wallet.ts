@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { loadBuyerAccessContext, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -25,6 +25,10 @@ type WalletLockRow = {
   user_id: string;
   balance: DecimalLike;
   locked_balance: DecimalLike;
+};
+
+type PendingWithdrawalRow = {
+  amount: DecimalLike;
 };
 
 const walletQuerySchema = z.object({
@@ -96,6 +100,26 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
 
 async function normalizeMoney(value: number): Promise<number> {
   return Number(value.toFixed(2));
+}
+
+function buildLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  fallbackId: string,
+): string {
+  const parts = [brand?.trim(), model?.trim()].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
+}
+
+function buildLotNumber(lotId: string): string {
+  return `Lot ${lotId.slice(0, 8).toUpperCase()}`;
 }
 
 async function createRequestHash(payload: unknown): Promise<string> {
@@ -486,9 +510,22 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
           },
         });
 
+        const pendingWithdrawalRows = await tx.$queryRaw<PendingWithdrawalRow[]>`
+          SELECT req.amount AS amount
+          FROM "WalletLedger" AS req
+          LEFT JOIN "WalletLedger" AS appr
+            ON appr."walletId" = req."walletId"
+            AND appr.type = 'WITHDRAWAL_APPROVED'
+            AND appr.reference = req.reference
+          WHERE req."walletId" = ${ensuredWallet.id}
+            AND req.type = 'WITHDRAWAL_REQUESTED'
+            AND appr.id IS NULL
+        `;
+
         return {
           wallet: ensuredWallet,
           ledger,
+          pendingWithdrawalRows,
         };
       });
 
@@ -501,6 +538,22 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
 
       const balance = await toNumberValue(wallet.wallet.balance);
       const lockedBalance = await toNumberValue(wallet.wallet.lockedBalance);
+      const transactions = await Promise.all(
+        wallet.ledger.map(async (entry) => ({
+          id: entry.id,
+          type: entry.type,
+          amount: await toNumberValue(entry.amount),
+          reference: entry.reference,
+          createdAt: entry.createdAt.toISOString(),
+        })),
+      );
+      const pendingWithdrawal = await wallet.pendingWithdrawalRows.reduce<Promise<number>>(
+        async (runningTotalPromise, row) => {
+          const runningTotal = await runningTotalPromise;
+          return runningTotal + Math.abs(await toNumberValue(row.amount));
+        },
+        Promise.resolve(0),
+      );
 
       await reply.code(200).send({
         wallet: {
@@ -510,14 +563,81 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
           lockedBalance,
           availableBalance: await normalizeMoney(balance - lockedBalance),
         },
-        ledger: await Promise.all(
-          wallet.ledger.map(async (entry) => ({
-            id: entry.id,
-            type: entry.type,
-            amount: await toNumberValue(entry.amount),
-            reference: entry.reference,
-            createdAt: entry.createdAt.toISOString(),
-          })),
+        ledger: transactions,
+        transactions,
+        pendingWithdrawal: await normalizeMoney(pendingWithdrawal),
+      });
+    },
+  );
+
+  fastify.get(
+    "/finance/invoices",
+    async function listBuyerInvoicesHandler(
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const buyerContext = await loadBuyerAccessContext(request);
+
+      if (!buyerContext) {
+        await reply.code(401).send({
+          error: "Unauthorized",
+        });
+        return;
+      }
+
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          buyerCompanyId: buyerContext.companyId,
+          status: {
+            in: ["ISSUED", "PAID", "DEFAULTED"],
+          },
+        },
+        orderBy: [{ dueAt: "asc" }, { issuedAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          auctionId: true,
+          total: true,
+          status: true,
+          dueAt: true,
+          issuedAt: true,
+          auction: {
+            select: {
+              vehicle: {
+                select: {
+                  brand: true,
+                  model: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      await reply.code(200).send({
+        invoices: await Promise.all(
+          invoices.map(async (invoice) => {
+            const normalizedStatus =
+              invoice.status === "PAID"
+                ? "PAID"
+                : invoice.status === "DEFAULTED" || invoice.dueAt.getTime() < Date.now()
+                  ? "OVERDUE"
+                  : "PENDING";
+
+            return {
+              id: invoice.id,
+              auctionId: invoice.auctionId,
+              lotNumber: buildLotNumber(invoice.auctionId),
+              lotTitle: buildLotTitle(
+                invoice.auction.vehicle?.brand,
+                invoice.auction.vehicle?.model,
+                invoice.auctionId,
+              ),
+              amount: await toNumberValue(invoice.total),
+              dueAt: invoice.dueAt.toISOString(),
+              issuedAt: invoice.issuedAt.toISOString(),
+              status: normalizedStatus,
+            };
+          }),
         ),
       });
     },

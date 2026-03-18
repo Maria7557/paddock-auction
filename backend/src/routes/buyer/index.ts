@@ -408,7 +408,6 @@ async function serializeLotSummary(
   },
   companyById: Map<string, { name: string; country: string }>,
   isWatchlisted: boolean,
-  viewerTier: "STANDARD" | "VIP",
 ): Promise<LotSummary> {
   const company = companyById.get(auction.sellerCompanyId);
 
@@ -418,8 +417,7 @@ async function serializeLotSummary(
     currentPrice: await toNumberValue(auction.currentPrice),
     minIncrement: await toNumberValue(auction.minIncrement),
     startingPrice: await toNumberValue(auction.startingPrice),
-    buyNowPrice:
-      viewerTier === "VIP" && auction.buyNowPrice !== null ? await toNumberValue(auction.buyNowPrice) : null,
+    buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
     startsAt: await toIsoString(auction.startsAt),
     endsAt: await toIsoString(auction.endsAt),
     createdAt: await toIsoString(auction.createdAt),
@@ -767,9 +765,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         );
 
         const serializedLots = await Promise.all(
-          auctions.map((auction) =>
-            serializeLotSummary(auction, companyLookup, savedAuctionIds.has(auction.id), buyerTier),
-          ),
+          auctions.map((auction) => serializeLotSummary(auction, companyLookup, savedAuctionIds.has(auction.id))),
         );
 
         recommendedLots = serializedLots.map((lot) => ({
@@ -1061,18 +1057,8 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       const companyLookup = await loadSellerCompanyLookup(
         Array.from(new Set(savedLots.map((savedLot) => savedLot.auction.sellerCompanyId))),
       );
-      const buyerCompany = await prisma.company.findUnique({
-        where: {
-          id: buyerContext.companyId,
-        },
-        select: {
-          buyerTier: true,
-        },
-      });
-      const buyerTier = buyerCompany?.buyerTier === "VIP" ? "VIP" : "STANDARD";
-
       const lotSummaries = await Promise.all(
-        savedLots.map((savedLot) => serializeLotSummary(savedLot.auction, companyLookup, true, buyerTier)),
+        savedLots.map((savedLot) => serializeLotSummary(savedLot.auction, companyLookup, true)),
       );
       const filteredLots = applyLotFilters(lotSummaries, parsedQuery.data);
       const sortedLots = sortLots(filteredLots, parsedQuery.data.sort);

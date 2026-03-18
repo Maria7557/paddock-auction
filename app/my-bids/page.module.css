@@ -1,0 +1,189 @@
+.page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.header {
+  display: grid;
+  gap: 8px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: var(--ink-primary);
+}
+
+.header p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-secondary);
+}
+
+.list {
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 22px 24px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.cardLeft {
+  display: grid;
+  gap: 10px;
+}
+
+.lotNumber {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.cardLeft h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tagLive,
+.tagWinning {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.tagOutbid {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.meta {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-secondary);
+}
+
+.cardRight {
+  display: grid;
+  gap: 16px;
+  justify-items: end;
+  min-width: 240px;
+}
+
+.amountBlock {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.amountBlock span {
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+
+.amountBlock strong {
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.primaryButton {
+  background: #116a43;
+  color: var(--bg-card);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line-strong);
+  background: var(--bg-card);
+  color: var(--ink-primary);
+}
+
+.emptyState {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 32px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.emptyState h2,
+.emptyState p {
+  margin: 0;
+}
+
+.emptyState h2 {
+  font-size: 24px;
+  color: var(--ink-primary);
+}
+
+.emptyState p {
+  max-width: 540px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .card {
+    grid-template-columns: 1fr;
+  }
+
+  .cardRight,
+  .amountBlock,
+  .actions {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+}
