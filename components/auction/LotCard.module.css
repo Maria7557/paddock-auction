@@ -32,11 +32,16 @@
 .pillTl { position: absolute; top: 10px; left: 10px; }
 .pillTr { position: absolute; top: 10px; right: 10px; }
 
-.wishlistBtn {
+.actionButtons {
   position: absolute;
   top: 12px;
   right: 12px;
   z-index: 3;
+  display: flex;
+  gap: 8px;
+}
+
+.wishlistBtn {
   width: 42px;
   height: 42px;
   border: 1px solid rgba(255,255,255,0.65);
@@ -53,6 +58,11 @@
 .wishlistBtn:hover {
   transform: translateY(-1px);
   color: var(--green-600);
+}
+
+.wishlistBtn:focus-visible {
+  outline: 3px solid rgba(17, 106, 67, 0.24);
+  outline-offset: 2px;
 }
 
 .wishlistBtn:disabled {
@@ -94,6 +104,7 @@
 
 .stripCell { flex: 1; padding: 10px 12px; text-align: center; }
 .ours { background: var(--green-100); }
+.fullWidthCell { background: var(--bg-subtle); }
 
 .stripLbl {
   font-size: 10px;
@@ -113,34 +124,23 @@
   line-height: 1;
 }
 
-.saving {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--green-600);
-  background: rgba(17,106,67,0.08);
-  border-radius: 4px;
-  padding: 2px 7px;
-  margin-top: 4px;
-}
-
 .divider { width: 1px; background: var(--line-soft); }
 
-.marketPrice {
+.marketPrice,
+.buyNowStripPrice {
   font-size: 16px;
   font-weight: 800;
-  color: var(--ink-muted);
-  text-decoration: line-through;
   letter-spacing: -0.01em;
   line-height: 1;
 }
 
-.otherLbl {
-  font-size: 11px;
+.marketPrice {
   color: var(--ink-muted);
-  margin-top: 4px;
+  text-decoration: line-through;
+}
+
+.buyNowStripPrice {
+  color: var(--ink-primary);
 }
 
 .timing {
@@ -166,17 +166,43 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 18px;
   background: var(--green-600);
   color: #fff;
   border: none;
   border-radius: var(--radius-control);
-  padding: 12px 16px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
+  padding: 16px 20px;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.card:hover .buyBtn { background: var(--green-700, #0d5a39); }
+.card:hover .buyBtn {
+  background: var(--green-700);
+  transform: translateY(-1px);
+}
 
-.buyLabel { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.75); }
-.buyPrice { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+.buyLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.75);
+}
+
+.buyPrice {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 640px) {
+  .buyBtn {
+    width: 100%;
+  }
+
+  .actionButtons {
+    gap: 6px;
+  }
+
+  .wishlistBtn {
+    width: 40px;
+    height: 40px;
+  }
+}

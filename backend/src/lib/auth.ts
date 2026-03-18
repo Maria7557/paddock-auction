@@ -133,6 +133,20 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
   }
 }
 
+export async function hydrateAuthIfPresent(request: FastifyRequest): Promise<void> {
+  try {
+    const token = await getTokenFromRequest(request);
+
+    if (!token) {
+      return;
+    }
+
+    request.auth = await verifyToken(token);
+  } catch {
+    // Public routes should continue without auth when the token is missing or invalid.
+  }
+}
+
 export async function requireAdminAuth(
   request: FastifyRequest,
   reply: FastifyReply,

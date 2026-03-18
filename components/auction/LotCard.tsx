@@ -4,8 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 
-import { IconArrowRight, IconCalendar, IconClock, IconHeart } from "@/components/ui/icons";
+import {
+  IconArrowRight,
+  IconCalendar,
+  IconClock,
+  IconHeart,
+} from "@/components/ui/icons";
 import { api } from "@/src/lib/api-client";
+import { isLiveAuctionState, isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { toIntlLocale, withLocalePath } from "@/src/i18n/routing";
 import { AED_USD_PEG_RATE, formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 
@@ -22,6 +28,8 @@ type LotCardProps = {
   status: string;
   endTime: string;
   marketPrice?: number;
+  buyNowPrice?: number | null;
+  totalBids?: number;
   display?: DisplaySettings;
   showWishlistControl?: boolean;
   defaultWatchlisted?: boolean;
@@ -38,12 +46,20 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function savingPct(market: number, current: number): number {
-  if (!market || market <= current) {
-    return 0;
+function trimYearFromTitle(title: string, year: number): string {
+  const normalizedTitle = title.trim();
+
+  if (year <= 0) {
+    return normalizedTitle;
   }
 
-  return Math.round(((market - current) / market) * 100);
+  const suffix = ` ${year}`;
+
+  if (!normalizedTitle.endsWith(suffix)) {
+    return normalizedTitle;
+  }
+
+  return normalizedTitle.slice(0, -suffix.length).trim();
 }
 
 function formatCountdown(ms: number) {
@@ -103,15 +119,19 @@ export function LotCard({
   status,
   endTime,
   marketPrice,
+  buyNowPrice,
   display = DEFAULT_DISPLAY,
   showWishlistControl,
   defaultWatchlisted = false,
   onWatchlistChange,
 }: LotCardProps) {
-  const isLive = status === "LIVE";
+  const isLive = isLiveAuctionState(status);
   const isRu = display.locale === "ru";
   const intlLocale = toIntlLocale(display.locale);
-  const saving = marketPrice ? savingPct(marketPrice, currentBid) : 0;
+  const hidePrice = isScheduledWithoutBids(status, currentBid);
+  const visibleTitle = trimYearFromTitle(title, year);
+  const hasBuyNowPrice = typeof buyNowPrice === "number" && buyNowPrice > 0;
+  const showMarketFallback = typeof marketPrice === "number" && marketPrice > 0;
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [saved, setSaved] = useState(defaultWatchlisted);
   const [wishlistBusy, setWishlistBusy] = useState(false);
@@ -169,16 +189,18 @@ export function LotCard({
   return (
     <article className={styles.card}>
       {shouldShowWishlistControl ? (
-        <button
-          type="button"
-          className={`${styles.wishlistBtn} ${saved ? styles.wishlistActive : ""}`}
-          onClick={(event) => void toggleWishlist(event)}
-          disabled={wishlistBusy}
-          aria-label={saved ? (isRu ? "Убрать из избранного" : "Remove from watchlist") : isRu ? "Добавить в избранное" : "Add to watchlist"}
-          aria-pressed={saved}
-        >
-          <IconHeart size={18} />
-        </button>
+        <div className={styles.actionButtons}>
+          <button
+            type="button"
+            className={`${styles.wishlistBtn} ${saved ? styles.wishlistActive : ""}`}
+            onClick={(event) => void toggleWishlist(event)}
+            disabled={wishlistBusy}
+            aria-label={saved ? (isRu ? "Убрать из избранного" : "Remove from watchlist") : isRu ? "Добавить в избранное" : "Add to watchlist"}
+            aria-pressed={saved}
+          >
+            <IconHeart size={18} />
+          </button>
+        </div>
       ) : null}
 
       <Link href={withLocalePath(`/auctions/${lotId}`, display.locale)} className={styles.cardLink}>
@@ -203,30 +225,49 @@ export function LotCard({
         </div>
 
         <div className={styles.body}>
-          <div className={styles.title}>{title}</div>
+          <div className={styles.title}>{visibleTitle}</div>
           <div className={styles.meta}>
             {year > 0 ? String(year) : "—"} · {formatInteger(mileage, display.locale)} {isRu ? "км" : "KM"}
             {regionSpec ? ` · ${regionSpec}` : ""}
           </div>
 
           <div className={styles.strip}>
-            <div className={`${styles.stripCell} ${styles.ours}`}>
-              <div className={styles.stripLbl}>{isRu ? "Цена FleetBid" : "FleetBid price"}</div>
-              <div className={styles.stripPrice}>{formatMoneyFromAed(currentBid, display)}</div>
-              {saving > 0 && (
-                <div className={styles.saving}>{isRu ? `На ${saving}% дешевле` : `${saving}% cheaper`}</div>
-              )}
-            </div>
-            {marketPrice ? (
-              <>
-                <div className={styles.divider} />
-                <div className={styles.stripCell}>
-                  <div className={styles.stripLbl}>{isRu ? "Рыночная цена" : "Market price"}</div>
-                  <div className={styles.marketPrice}>{formatMoneyFromAed(marketPrice, display)}</div>
-                  <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
+            {hidePrice && (hasBuyNowPrice || showMarketFallback) ? (
+              <div className={`${styles.stripCell} ${styles.fullWidthCell}`}>
+                <div className={styles.stripLbl}>
+                  {hasBuyNowPrice ? (isRu ? "Цена Buy Now" : "Buy Now price") : isRu ? "Рыночная цена" : "Market price"}
                 </div>
+                <div className={hasBuyNowPrice ? styles.buyNowStripPrice : styles.marketPrice}>
+                  {formatMoneyFromAed(hasBuyNowPrice ? buyNowPrice : marketPrice!, display)}
+                </div>
+                {!hasBuyNowPrice && showMarketFallback ? (
+                  <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div className={`${styles.stripCell} ${styles.ours}`}>
+                  <div className={styles.stripLbl}>{isRu ? "Текущий pre-bid" : "Current pre-bid"}</div>
+                  <div className={styles.stripPrice}>{hidePrice ? (isRu ? "Pre-Bid" : "Pre-Bid") : formatMoneyFromAed(currentBid, display)}</div>
+                </div>
+                {hasBuyNowPrice || showMarketFallback ? (
+                  <>
+                    <div className={styles.divider} />
+                    <div className={styles.stripCell}>
+                      <div className={styles.stripLbl}>
+                        {hasBuyNowPrice ? (isRu ? "Цена Buy Now" : "Buy Now price") : isRu ? "Рыночная цена" : "Market price"}
+                      </div>
+                      <div className={hasBuyNowPrice ? styles.buyNowStripPrice : styles.marketPrice}>
+                        {formatMoneyFromAed(hasBuyNowPrice ? buyNowPrice : marketPrice!, display)}
+                      </div>
+                      {!hasBuyNowPrice && showMarketFallback ? (
+                        <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
           </div>
 
           <div className={styles.timing}>
@@ -247,10 +288,26 @@ export function LotCard({
 
           <div className={styles.buyBtn}>
             <div>
-              <div className={styles.buyLabel}>{isLive ? (isRu ? "Купить сейчас от" : "Buy Now from") : isRu ? "Старт от" : "Starting from"}</div>
-              <div className={styles.buyPrice}>{formatMoneyFromAed(currentBid, display)}</div>
+              <div className={styles.buyLabel}>
+                {hidePrice
+                  ? isRu
+                    ? "Будьте первым в pre-bid"
+                    : "Be the first to pre-bid"
+                  : isLive
+                    ? isRu
+                      ? "Купить сейчас от"
+                      : "Buy Now from"
+                    : isRu
+                      ? "Текущая pre-bid"
+                      : "Current pre-bid"}
+              </div>
+              <div className={styles.buyPrice}>
+                {hidePrice ? (isRu ? "Открыть pre-bid" : "Open pre-bid") : formatMoneyFromAed(currentBid, display)}
+              </div>
             </div>
-            <IconArrowRight size={18} color="#fff" />
+            <div aria-hidden="true">
+              <IconArrowRight size={18} color="#fff" />
+            </div>
           </div>
         </div>
       </Link>

@@ -92,6 +92,7 @@ function makeLiveAuctionRow(
     state: string;
     current_price: number;
     min_increment: number;
+    starts_at: Date;
     ends_at: Date;
     last_bid_sequence: number;
     version: number;
@@ -102,6 +103,7 @@ function makeLiveAuctionRow(
     state: overrides.state ?? "LIVE",
     current_price: overrides.current_price ?? 50_000,
     min_increment: overrides.min_increment ?? 500,
+    starts_at: overrides.starts_at ?? new Date(Date.now() + 30 * 60 * 1000),
     ends_at: overrides.ends_at ?? new Date(Date.now() + 30 * 60 * 1000),
     last_bid_sequence: overrides.last_bid_sequence ?? 5,
     version: overrides.version ?? 3,
@@ -567,7 +569,7 @@ describe("POST /api/bids", () => {
     mockPrisma.bidRequest.update.mockResolvedValue({});
 
     setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
+    mockTx.$queryRaw.mockResolvedValueOnce([makeLiveAuctionRow()]).mockResolvedValueOnce([]);
     mockTx.depositLock.findFirst.mockResolvedValue(null);
 
     const res = await request
@@ -577,6 +579,62 @@ describe("POST /api/bids", () => {
 
     expect(res.status).toBe(403);
     expect(res.body.error).toBe("Deposit required to bid");
+  });
+
+  it("accepts the first manual pre-bid for a scheduled auction", async () => {
+    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
+    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-1" });
+    mockPrisma.bidRequest.update.mockResolvedValue({});
+
+    setupTransactionSuccess();
+    mockTx.$queryRaw.mockResolvedValue([
+      makeLiveAuctionRow({
+        state: "SCHEDULED",
+        current_price: 0,
+        starts_at: new Date(Date.now() + 60 * 60 * 1000),
+        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      }),
+    ]);
+    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
+    mockTx.bid.create.mockResolvedValue(
+      makeBidRecord({
+        amount: 3_000,
+        sequenceNo: 6,
+      }),
+    );
+    mockTx.$executeRaw.mockResolvedValueOnce(1);
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({ ...validBody, amount: 3_000, idempotencyKey: "idem-scheduled-1" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.bid.amount).toBe(3_000);
+  });
+
+  it("rejects a scheduled pre-bid that skips the exact AED 500 increment", async () => {
+    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
+    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-2" });
+    mockPrisma.bidRequest.update.mockResolvedValue({});
+
+    setupTransactionSuccess();
+    mockTx.$queryRaw.mockResolvedValue([
+      makeLiveAuctionRow({
+        state: "SCHEDULED",
+        current_price: 3_000,
+        starts_at: new Date(Date.now() + 60 * 60 * 1000),
+        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      }),
+    ]);
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({ ...validBody, amount: 3_600, idempotencyKey: "idem-scheduled-2" });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("Bid must meet the minimum increment");
   });
 
   it("returns 409 when locked auction row is missing", async () => {
@@ -711,6 +769,18 @@ describe("GET /api/auctions/:id", () => {
     expect(res.body.auction.vehicle.brand).toBe("Toyota");
   });
 
+  it("returns buy now price in public auction details", async () => {
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      buyNowPrice: 72_500,
+    });
+
+    const res = await request.get(`/api/auctions/${auctionId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auction.buyNowPrice).toBe(72_500);
+  });
+
   it("returns recent bids nested under auction", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue(makeAuctionDetails());
 
@@ -803,6 +873,60 @@ describe("GET /api/auctions", () => {
     expect(res.body.auctions[0].id).toBe(auctionId);
     expect(res.body.auctions[0].sellerName).toBe("Test Fleet");
     expect(res.body.auctions[0].vehicle.brand).toBe("BMW");
+  });
+
+  it("returns buy now price in public auction listings", async () => {
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: 140000,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request.get("/api/auctions");
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toHaveLength(1);
+    expect(res.body.auctions[0].buyNowPrice).toBe(140000);
   });
 });
 

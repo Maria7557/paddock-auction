@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { withLocalePath } from "@/src/i18n/routing";
+import { isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 
 import styles from "./SimilarVehicles.module.css";
@@ -34,6 +35,7 @@ export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display
       <div className={styles.grid}>
         {lots.map((lot) => {
           const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
+          const hidePrice = isScheduledWithoutBids(lot.state, lot.currentBidAed);
 
           return (
             <Link key={lot.id} href={withLocalePath(`/auctions/${lot.id}`, display.locale)} className={styles.card}>
@@ -62,7 +64,9 @@ export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display
                 <div className={styles.lotMeta}>
                   {String(lot.year)} · {formatInteger(lot.mileageKm, display.locale)} {isRu ? "км" : "km"}
                 </div>
-                <div className={styles.lotPrice}>{formatMoneyFromAed(lot.currentBidAed, display)}</div>
+                <div className={styles.lotPrice}>
+                  {hidePrice ? (isRu ? "Pre-Bid" : "Pre-Bid") : formatMoneyFromAed(lot.currentBidAed, display)}
+                </div>
               </div>
             </Link>
           );

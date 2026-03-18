@@ -19,7 +19,6 @@ export type SellerVehicleFormValues = {
   photoUrls: string[];
   mulkiyaFrontUrl: string;
   mulkiyaBackUrl: string;
-  startingPriceAed: string;
   buyNowPriceAed: string;
   inspectionDropoffDate: string;
 };
@@ -43,7 +42,6 @@ export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
   photoUrls: [],
   mulkiyaFrontUrl: "",
   mulkiyaBackUrl: "",
-  startingPriceAed: "",
   buyNowPriceAed: "",
   inspectionDropoffDate: "",
 };

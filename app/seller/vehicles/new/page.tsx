@@ -41,7 +41,6 @@ export default function SellerNewVehiclePage() {
         images: values.photoUrls,
         mulkiyaFrontUrl: values.mulkiyaFrontUrl || undefined,
         mulkiyaBackUrl: values.mulkiyaBackUrl || undefined,
-        startingPrice: Number(values.startingPriceAed),
         buyNowPrice: values.buyNowPriceAed.trim() ? Number(values.buyNowPriceAed) : undefined,
         inspectionDropoffDate: values.inspectionDropoffDate
           ? toStartOfDayIso(values.inspectionDropoffDate)

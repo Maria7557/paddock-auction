@@ -4,6 +4,7 @@ import type { ScheduledTask } from "node-cron";
 import cron from "node-cron";
 
 import { prisma } from "./db";
+import { createIssuedInvoice, releaseAuctionDepositLocks } from "./lib/auction-deposit-locks";
 
 type DecimalLike =
   | number
@@ -210,53 +211,25 @@ async function processExpiredAuctionsBatch(): Promise<number> {
         });
 
         if (winner) {
-          const dueAt = await addHours(new Date(), 48);
           const subtotal = await toNumberValue(winner.amount);
-          const existingInvoice = await tx.invoice.findUnique({
-            where: {
-              auctionId: auction.id,
-            },
-            select: {
-              id: true,
-            },
+          await releaseAuctionDepositLocks(tx, {
+            auctionId: auction.id,
+            winnerCompanyId: winner.companyId,
+            reason: "AUCTION_LOST_RELEASE",
           });
 
-          if (!existingInvoice) {
-            await tx.invoice.create({
-              data: {
-                auctionId: auction.id,
-                buyerCompanyId: winner.companyId,
-                sellerCompanyId: auction.seller_company_id,
-                subtotal,
-                commission: 0,
-                vat: 0,
-                total: subtotal,
-                currency: "AED",
-                dueAt,
-              },
-            });
-          }
-
-          const existingDeadline = await tx.paymentDeadline.findFirst({
-            where: {
-              auctionId: auction.id,
-              buyerCompanyId: winner.companyId,
-              status: "ACTIVE",
-            },
-            select: {
-              id: true,
-            },
+          await createIssuedInvoice(tx, {
+            auctionId: auction.id,
+            buyerCompanyId: winner.companyId,
+            sellerCompanyId: auction.seller_company_id,
+            subtotal,
+            dueAt: await addHours(new Date(), 48),
           });
-
-          if (!existingDeadline) {
-            await tx.paymentDeadline.create({
-              data: {
-                auctionId: auction.id,
-                buyerCompanyId: winner.companyId,
-                dueAt,
-              },
-            });
-          }
+        } else {
+          await releaseAuctionDepositLocks(tx, {
+            auctionId: auction.id,
+            reason: "AUCTION_ENDED_NO_WINNER",
+          });
         }
 
         processed += 1;

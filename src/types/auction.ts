@@ -19,6 +19,7 @@ export interface Lot {
   currentBidAed: number;
   startingBidAed: number;
   marketPriceAed: number | null;
+  buyNowPriceAed?: number | null;
   minStepAed: number;
   startsAt: string;
   endsAt: string;

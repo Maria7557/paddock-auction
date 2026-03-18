@@ -27,6 +27,10 @@ type WalletLockRow = {
   locked_balance: DecimalLike;
 };
 
+type PendingWithdrawalRow = {
+  amount: DecimalLike;
+};
+
 const walletQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
@@ -96,6 +100,26 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
 
 async function normalizeMoney(value: number): Promise<number> {
   return Number(value.toFixed(2));
+}
+
+function buildLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  fallbackId: string,
+): string {
+  const parts = [brand?.trim(), model?.trim()].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
+}
+
+function buildLotNumber(lotId: string): string {
+  return `Lot ${lotId.slice(0, 8).toUpperCase()}`;
 }
 
 async function createRequestHash(payload: unknown): Promise<string> {
@@ -651,9 +675,22 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
           },
         });
 
+        const pendingWithdrawalRows = await tx.$queryRaw<PendingWithdrawalRow[]>`
+          SELECT req.amount AS amount
+          FROM "WalletLedger" AS req
+          LEFT JOIN "WalletLedger" AS appr
+            ON appr."walletId" = req."walletId"
+            AND appr.type = 'WITHDRAWAL_APPROVED'
+            AND appr.reference = req.reference
+          WHERE req."walletId" = ${ensuredWallet.id}
+            AND req.type = 'WITHDRAWAL_REQUESTED'
+            AND appr.id IS NULL
+        `;
+
         return {
           wallet: ensuredWallet,
           ledger,
+          pendingWithdrawalRows,
         };
       });
 
@@ -666,6 +703,22 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
 
       const balance = await toNumberValue(wallet.wallet.balance);
       const lockedBalance = await toNumberValue(wallet.wallet.lockedBalance);
+      const transactions = await Promise.all(
+        wallet.ledger.map(async (entry) => ({
+          id: entry.id,
+          type: entry.type,
+          amount: await toNumberValue(entry.amount),
+          reference: entry.reference,
+          createdAt: entry.createdAt.toISOString(),
+        })),
+      );
+      const pendingWithdrawal = await wallet.pendingWithdrawalRows.reduce<Promise<number>>(
+        async (runningTotalPromise, row) => {
+          const runningTotal = await runningTotalPromise;
+          return runningTotal + Math.abs(await toNumberValue(row.amount));
+        },
+        Promise.resolve(0),
+      );
       const outstandingInvoices =
         buyerContext?.companyId
           ? await prisma.invoice.count({
@@ -693,25 +746,10 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
           lockedBalance,
           availableBalance: await normalizeMoney(balance - lockedBalance),
         },
-        ledger: await Promise.all(
-          wallet.ledger.map(async (entry) => ({
-            id: entry.id,
-            type: entry.type,
-            amount: await toNumberValue(entry.amount),
-            reference: entry.reference,
-            createdAt: entry.createdAt.toISOString(),
-          })),
-        ),
-        transactions: await Promise.all(
-          wallet.ledger.map(async (entry) => ({
-            id: entry.id,
-            type: entry.type,
-            amount: await toNumberValue(entry.amount),
-            reference: entry.reference,
-            createdAt: entry.createdAt.toISOString(),
-          })),
-        ),
-        pendingWithdrawalAmount: 0,
+        ledger: transactions,
+        transactions,
+        pendingWithdrawal: await normalizeMoney(pendingWithdrawal),
+        pendingWithdrawalAmount: await normalizeMoney(pendingWithdrawal),
         withdrawalEligibility: {
           noActiveAuctionLocks,
           noOutstandingInvoices,

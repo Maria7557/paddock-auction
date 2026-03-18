@@ -222,7 +222,13 @@ describe("GET /api/buyer/dashboard", () => {
       title: "BMW M4",
       currentBid: 210000,
       status: "LIVE",
+      year: 2024,
+      mileage: 46000,
+      regionSpec: "USA",
+      marketPrice: 420000,
       imageUrl: "/uploads/bmw.jpg",
+      startsAt: "2026-03-17T08:00:00.000Z",
+      endsAt: "2026-03-18T08:00:00.000Z",
     });
     expect(res.body.vipStatus).toEqual({
       tier: "STANDARD",

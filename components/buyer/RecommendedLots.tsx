@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { LotCard } from "@/components/auction/LotCard";
 
 import styles from "./RecommendedLots.module.css";
@@ -16,6 +18,9 @@ type RecommendedLotsProps = {
     startsAt: string | null;
     endsAt: string | null;
   }>;
+  heading?: string;
+  browseHref?: string;
+  browseLabel?: string;
 };
 
 function resolveEndTime(lot: RecommendedLotsProps["lots"][number]): string {
@@ -28,7 +33,12 @@ function resolveEndTime(lot: RecommendedLotsProps["lots"][number]): string {
   return lot.startsAt ?? lot.endsAt ?? new Date().toISOString();
 }
 
-export function RecommendedLots({ lots }: RecommendedLotsProps) {
+export function RecommendedLots({
+  lots,
+  heading = "Start here — active auctions",
+  browseHref,
+  browseLabel,
+}: RecommendedLotsProps) {
   if (lots.length === 0) {
     return null;
   }
@@ -36,7 +46,12 @@ export function RecommendedLots({ lots }: RecommendedLotsProps) {
   return (
     <section className={styles.section}>
       <div className={styles.head}>
-        <h2>Start here — active auctions</h2>
+        <h2>{heading}</h2>
+        {browseHref && browseLabel ? (
+          <Link href={browseHref} className={styles.browseLink}>
+            {browseLabel}
+          </Link>
+        ) : null}
       </div>
 
       <div className={styles.grid}>

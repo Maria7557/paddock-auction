@@ -1,0 +1,60 @@
+.wrap {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--amber-600);
+  border-radius: var(--radius-card);
+  background: var(--amber-100);
+}
+
+.copy {
+  display: grid;
+  gap: 8px;
+}
+
+.copy h2 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--ink-primary);
+}
+
+.copy p {
+  margin: 0;
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: #116a43;
+  color: var(--bg-card);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .button {
+    width: 100%;
+  }
+}

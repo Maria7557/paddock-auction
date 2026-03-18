@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { withLocalePath } from "@/src/i18n/routing";
+import { isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 import { formatCountdown, pad } from "@/src/lib/utils";
 
@@ -13,28 +14,31 @@ type Props = {
   auctionId: string;
   state: string;
   currentBidAed: number;
-  endsAt: string;
+  targetAt: string;
   display: DisplaySettings;
 };
 
-export function MobileBidBar({ auctionId, state, currentBidAed, endsAt, display }: Props) {
+export function MobileBidBar({ auctionId, state, currentBidAed, targetAt, display }: Props) {
   const isLive = state === "LIVE" || state === "EXTENDED";
   const isRu = display.locale === "ru";
+  const hidePrice = isScheduledWithoutBids(state, currentBidAed);
 
-  const [cd, setCd] = useState(() => formatCountdown(new Date(endsAt).getTime() - Date.now()));
+  const [cd, setCd] = useState(() => formatCountdown(new Date(targetAt).getTime() - Date.now()));
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCd(formatCountdown(new Date(endsAt).getTime() - Date.now()));
+      setCd(formatCountdown(new Date(targetAt).getTime() - Date.now()));
     }, 1_000);
 
     return () => clearInterval(timer);
-  }, [endsAt]);
+  }, [targetAt]);
 
   return (
     <div className={styles.bar} role="complementary" aria-label={isRu ? "Быстрая ставка" : "Quick bid"}>
       <div className={styles.info}>
-        <div className={styles.price}>{formatMoneyFromAed(currentBidAed, display)}</div>
+        <div className={styles.price}>
+          {hidePrice ? (isRu ? "Pre-Bid" : "Pre-Bid") : formatMoneyFromAed(currentBidAed, display)}
+        </div>
         <div className={styles.cd}>
           {isLive ? (isRu ? "Конец через" : "Ends") : isRu ? "Старт через" : "Starts"}&nbsp;
           {cd.days > 0 ? `${cd.days}d ` : ""}
