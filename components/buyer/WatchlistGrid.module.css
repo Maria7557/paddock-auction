@@ -1,0 +1,190 @@
+.wrap {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filterChip {
+  appearance: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filterChip:hover {
+  color: var(--ink-primary);
+  background: var(--bg-subtle);
+}
+
+.filterChipActive {
+  color: #116a43;
+  border-color: #116a43;
+  background: var(--green-100);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+.cardLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.imageWrap {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--bg-subtle);
+}
+
+.image {
+  object-fit: cover;
+}
+
+.statusBadge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statusLive {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.statusScheduled {
+  background: var(--blue-100);
+  color: var(--blue-600);
+}
+
+.heartButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  background: var(--green-100);
+  color: var(--green-600);
+  cursor: pointer;
+}
+
+.heartButtonBusy {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.cardBody {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.cardBody h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--ink-primary);
+}
+
+.price {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--ink-primary);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.metaDivider {
+  color: var(--ink-muted);
+}
+
+.metaTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.emptyState {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 56px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.emptyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+}
+
+.emptyState h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--ink-primary);
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-secondary);
+}
+
+@media (max-width: 980px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

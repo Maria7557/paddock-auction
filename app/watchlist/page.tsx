@@ -1,30 +1,83 @@
-import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
-import { readWatchlist } from "@/src/modules/ui/domain/marketplace_read_model";
-import { getLocalePreference } from "@/src/lib/display_preferences";
+import Link from "next/link";
+
+import { BuyerShell } from "@/components/buyer/BuyerShell";
+import { WatchlistGrid } from "@/components/buyer/WatchlistGrid";
+import { api } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
-import { BidWatchCards } from "@/src/modules/ui/transport/components/buyer/bid_watch_cards";
-import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
-import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
+import { withServerCookies } from "@/src/lib/server-api-options";
+
+import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
+
+type BuyerWatchlistResponse = {
+  lots: Array<{
+    id: string;
+    state: string;
+    currentPrice: number;
+    startsAt: string | null;
+    endsAt: string | null;
+    location: string;
+    isWatchlisted: boolean;
+    vehicle: {
+      brand: string;
+      model: string;
+      year: number;
+      images: string[];
+    };
+  }>;
+  nextCursor: string | null;
+};
+
+type BuyerDashboardResponse = {
+  metrics: {
+    invoicesDue: number;
+  };
+  vipStatus: {
+    tier: "STANDARD" | "VIP";
+  };
+};
+
+type BuyerAuthResponse = {
+  user?: {
+    email?: string;
+  };
+};
 
 export default async function WatchlistPage() {
   const session = await requireBuyerSession("/watchlist");
-  const locale = await getLocalePreference();
-  const t = getBuyerPortalCopy(locale);
-  const items = await readWatchlist({
-    userId: session.userId,
-  });
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+
+  const [watchlistResponse, dashboard, authResponse] = await Promise.all([
+    api.buyer.wishlist.list<BuyerWatchlistResponse>(undefined, requestOptions),
+    api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
+    api.auth.me<BuyerAuthResponse>(requestOptions),
+  ]);
+
+  const companyName = session.companyName?.trim() || "Buyer company";
+  const companyEmail = authResponse.user?.email?.trim() || "buyer@fleetbid.ae";
 
   return (
-    <MarketShell>
-      <section className="section-block compact">
-        <div className="section-heading">
-          <h1>{t.pages.watchlistTitle}</h1>
-          <p>{t.pages.watchlistSubtitle}</p>
-        </div>
-        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
-      </section>
+    <BuyerShell
+      activePage="watchlist"
+      invoicesDue={dashboard.metrics.invoicesDue}
+      companyName={companyName}
+      companyEmail={companyEmail}
+      tier={dashboard.vipStatus.tier}
+    >
+      <div className={styles.page}>
+        <header className={styles.header}>
+          <div className={styles.copy}>
+            <h1>Watchlist</h1>
+            <p>Vehicles you saved — {watchlistResponse.lots.length} lots</p>
+          </div>
+          <Link href="/auctions" className={styles.browseLink}>
+            Browse auctions →
+          </Link>
+        </header>
 
-      <BidWatchCards items={items} mode="WATCHLIST" locale={locale} />
-    </MarketShell>
+        <WatchlistGrid initialLots={watchlistResponse.lots} />
+      </div>
+    </BuyerShell>
   );
 }

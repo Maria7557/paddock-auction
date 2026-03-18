@@ -1,0 +1,112 @@
+.overlay {
+  min-height: 400px;
+  padding-top: var(--space-3);
+}
+
+.modal {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--ink-primary);
+}
+
+.checks {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+}
+
+.loading {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-primary);
+}
+
+.checkIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.checkIconPass {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.checkIconFail {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.field {
+  display: grid;
+  gap: 10px;
+}
+
+.field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.input {
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 16px;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.warningBox {
+  padding: 14px 16px;
+  background: var(--amber-100);
+  border: 1px solid var(--amber-600);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--amber-600);
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--red-600);
+}

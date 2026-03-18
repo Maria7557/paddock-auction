@@ -1,0 +1,20 @@
+.wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.primaryAction {
+  width: 100%;
+}
+
+.feedback {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}

@@ -1,0 +1,156 @@
+.workspace {
+  --profile-vip-bg: #fef9ec;
+  --profile-vip-border: #f5c842;
+  --profile-vip-text: #854f0b;
+
+  display: grid;
+  gap: var(--space-4);
+}
+
+.vipBanner,
+.detailsCard {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.vipBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 20px 22px;
+  background: var(--profile-vip-bg);
+  border-color: var(--profile-vip-border);
+}
+
+.vipCopy {
+  display: grid;
+  gap: 8px;
+}
+
+.vipCopy h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.15;
+  color: var(--ink-primary);
+}
+
+.vipCopy p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--profile-vip-text);
+}
+
+.detailsCard {
+  overflow: hidden;
+}
+
+.cardHead {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--green-600);
+  color: var(--bg-card);
+  font-size: 16px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.identityCopy {
+  display: grid;
+  gap: 6px;
+}
+
+.identityCopy strong {
+  font-size: 18px;
+  color: var(--ink-primary);
+}
+
+.identityCopy span {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.field:nth-child(odd) {
+  border-right: 1px solid var(--line-soft);
+}
+
+.field dt {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.field dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink-primary);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statusBadgeActive {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.statusBadgeNeutral {
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+}
+
+@media (max-width: 900px) {
+  .vipBanner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fields {
+    grid-template-columns: 1fr;
+  }
+
+  .field:nth-child(odd) {
+    border-right: 0;
+  }
+}

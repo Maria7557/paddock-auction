@@ -107,6 +107,25 @@ type BuyerWatchlistResponse = {
   nextCursor: string | null;
 };
 
+type BuyerBidItemStatus = "WINNING" | "OUTBID" | "WON_PAYMENT_DUE" | "PAID";
+
+type BuyerBidItem = {
+  auctionId: string;
+  lotNumber: string;
+  lotTitle: string;
+  city: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  currentBid: number;
+  myBid: number;
+  status: BuyerBidItemStatus;
+  invoiceId: string | null;
+};
+
+type BuyerMyBidsResponse = {
+  items: BuyerBidItem[];
+};
+
 const watchlistQuerySchema = z
   .object({
     status: z.string().trim().min(1).optional(),
@@ -276,8 +295,17 @@ function buildLotTitle(brand: string | null | undefined, model: string | null | 
   return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
 }
 
+function buildLotNumber(lotId: string): string {
+  return `Lot ${lotId.slice(0, 8).toUpperCase()}`;
+}
+
 function normalizeStatusValue(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
+}
+
+function isLiveAuctionState(value: string): boolean {
+  const normalized = normalizeStatusValue(value);
+  return normalized === "LIVE" || normalized === "EXTENDED";
 }
 
 function applyLotFilters(
@@ -786,6 +814,203 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.get(
+    "/buyer/my-bids",
+    async function buyerMyBidsHandler(
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      if (reply.sent) {
+        return;
+      }
+
+      const buyerContext = await requireBuyerContext(request, reply);
+
+      if (!buyerContext) {
+        return;
+      }
+
+      const bids = await prisma.bid.findMany({
+        where: {
+          userId: buyerContext.userId,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          auctionId: true,
+          amount: true,
+          createdAt: true,
+          auction: {
+            select: {
+              id: true,
+              state: true,
+              highestBidId: true,
+              currentPrice: true,
+              sellerCompanyId: true,
+              startsAt: true,
+              endsAt: true,
+              vehicle: {
+                select: {
+                  brand: true,
+                  model: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (bids.length === 0) {
+        const emptyResponse: BuyerMyBidsResponse = {
+          items: [],
+        };
+
+        await reply.code(200).send(emptyResponse);
+        return;
+      }
+
+      const groupedBids = new Map<
+        string,
+        {
+          auctionId: string;
+          lotTitle: string;
+          state: string;
+          highestBidId: string | null;
+          currentBid: number;
+          myBid: number;
+          sellerCompanyId: string;
+          startsAt: Date;
+          endsAt: Date;
+          bidIds: Set<string>;
+        }
+      >();
+
+      for (const bid of bids) {
+        const bidAmount = await toNumberValue(bid.amount);
+        const currentBid = await toNumberValue(bid.auction.currentPrice);
+        const lotTitle = buildLotTitle(
+          bid.auction.vehicle?.brand,
+          bid.auction.vehicle?.model,
+          bid.auction.id,
+        );
+        const existing = groupedBids.get(bid.auctionId);
+
+        if (!existing) {
+          groupedBids.set(bid.auctionId, {
+            auctionId: bid.auctionId,
+            lotTitle,
+            state: bid.auction.state,
+            highestBidId: bid.auction.highestBidId,
+            currentBid,
+            myBid: bidAmount,
+            sellerCompanyId: bid.auction.sellerCompanyId,
+            startsAt: bid.auction.startsAt,
+            endsAt: bid.auction.endsAt,
+            bidIds: new Set([bid.id]),
+          });
+          continue;
+        }
+
+        existing.myBid = Math.max(existing.myBid, bidAmount);
+        existing.currentBid = currentBid;
+        existing.state = bid.auction.state;
+        existing.highestBidId = bid.auction.highestBidId;
+        existing.bidIds.add(bid.id);
+      }
+
+      const auctionIds = Array.from(groupedBids.keys());
+      const companyLookup = await loadSellerCompanyLookup(
+        Array.from(new Set(Array.from(groupedBids.values()).map((entry) => entry.sellerCompanyId))),
+      );
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          buyerCompanyId: buyerContext.companyId,
+          auctionId: {
+            in: auctionIds,
+          },
+          status: {
+            in: ["ISSUED", "PAID", "DEFAULTED"],
+          },
+        },
+        select: {
+          id: true,
+          auctionId: true,
+          status: true,
+          dueAt: true,
+        },
+      });
+      const invoiceByAuctionId = new Map(invoices.map((invoice) => [invoice.auctionId, invoice]));
+
+      const items = Array.from(groupedBids.values())
+        .map<BuyerBidItem | null>((entry) => {
+          const invoice = invoiceByAuctionId.get(entry.auctionId);
+          const isWinning = entry.highestBidId ? entry.bidIds.has(entry.highestBidId) : false;
+          const city = companyLookup.get(entry.sellerCompanyId)?.country ?? "UAE";
+          let status: BuyerBidItemStatus | null = null;
+
+          if (invoice?.status === "PAID") {
+            status = "PAID";
+          } else if (invoice && (invoice.status === "ISSUED" || invoice.status === "DEFAULTED")) {
+            status = "WON_PAYMENT_DUE";
+          } else if (isLiveAuctionState(entry.state)) {
+            status = isWinning ? "WINNING" : "OUTBID";
+          }
+
+          if (!status) {
+            return null;
+          }
+
+          return {
+            auctionId: entry.auctionId,
+            lotNumber: buildLotNumber(entry.auctionId),
+            lotTitle: entry.lotTitle,
+            city,
+            startsAt: entry.startsAt.toISOString(),
+            endsAt: entry.endsAt.toISOString(),
+            currentBid: entry.currentBid,
+            myBid: entry.myBid,
+            status,
+            invoiceId: invoice?.id ?? null,
+          };
+        })
+        .filter((item): item is BuyerBidItem => item !== null)
+        .sort((left, right) => {
+          const priority = (value: BuyerBidItemStatus): number => {
+            if (value === "WON_PAYMENT_DUE") {
+              return 0;
+            }
+
+            if (value === "OUTBID") {
+              return 1;
+            }
+
+            if (value === "WINNING") {
+              return 2;
+            }
+
+            return 3;
+          };
+
+          const priorityDelta = priority(left.status) - priority(right.status);
+
+          if (priorityDelta !== 0) {
+            return priorityDelta;
+          }
+
+          return (
+            new Date(left.endsAt ?? left.startsAt ?? 0).getTime() -
+            new Date(right.endsAt ?? right.startsAt ?? 0).getTime()
+          );
+        });
+
+      const responseBody: BuyerMyBidsResponse = {
+        items,
+      };
+
+      await reply.code(200).send(responseBody);
+    },
+  );
+
   fastify.get<{ Querystring: unknown }>(
     "/buyer/watchlist",
     async function buyerWatchlistHandler(
@@ -936,6 +1161,96 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       await reply.code(200).send({
         watchlisted: true,
+      });
+    },
+  );
+
+  fastify.post(
+    "/buyer/upgrade-to-vip",
+    async function buyerUpgradeToVipHandler(
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      if (reply.sent) {
+        return;
+      }
+
+      const buyerContext = await requireBuyerContext(request, reply);
+
+      if (!buyerContext) {
+        return;
+      }
+
+      const now = new Date();
+      const company = await prisma.company.findUnique({
+        where: {
+          id: buyerContext.companyId,
+        },
+        select: {
+          id: true,
+          buyerTier: true,
+        },
+      });
+
+      if (!company) {
+        await sendUnauthorized(reply);
+        return;
+      }
+
+      const latestApprovedRequest = await prisma.vipUpgradeRequest.findFirst({
+        where: {
+          companyId: buyerContext.companyId,
+          status: "APPROVED",
+        },
+        orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+        select: {
+          requestedAt: true,
+        },
+      });
+
+      if (company.buyerTier === "VIP") {
+        const activatedAt = latestApprovedRequest?.requestedAt ?? now;
+        const expiresAt = new Date(activatedAt);
+        expiresAt.setDate(expiresAt.getDate() + 30);
+
+        await reply.code(200).send({
+          status: "APPROVED" as const,
+          activatedAt: activatedAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+        });
+        return;
+      }
+
+      const createdRequest = await prisma.$transaction(async (tx) => {
+        await tx.company.update({
+          where: {
+            id: buyerContext.companyId,
+          },
+          data: {
+            buyerTier: "VIP",
+          },
+        });
+
+        return tx.vipUpgradeRequest.create({
+          data: {
+            id: randomUUID(),
+            companyId: buyerContext.companyId,
+            status: "APPROVED",
+            requestedAt: now,
+          },
+          select: {
+            requestedAt: true,
+          },
+        });
+      });
+
+      const expiresAt = new Date(createdRequest.requestedAt);
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      await reply.code(200).send({
+        status: "APPROVED" as const,
+        activatedAt: createdRequest.requestedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       });
     },
   );

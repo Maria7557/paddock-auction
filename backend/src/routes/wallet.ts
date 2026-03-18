@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { loadBuyerAccessContext, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -231,6 +231,168 @@ async function readStoredIdempotencyBody(value: string | null): Promise<Idempote
     return null;
   } catch {
     return null;
+  }
+}
+
+async function processWalletDeposit(
+  request: FastifyRequest<{ Body: unknown }>,
+  reply: FastifyReply,
+  endpoint: "/wallet/deposit" | "/wallet/topup",
+): Promise<void> {
+  await requireAuth(request, reply);
+
+  if (reply.sent) {
+    return;
+  }
+
+  const buyerAccess = await requireActiveBuyerAccount(request, reply);
+
+  if (!buyerAccess) {
+    return;
+  }
+
+  if (buyerAccess.kycVerified !== true) {
+    await reply.code(403).send({
+      error: "KYC_PENDING",
+      message: "Your account is under review.",
+    });
+    return;
+  }
+
+  const { userId } = buyerAccess;
+  const parsedBody = depositSchema.safeParse(request.body);
+
+  if (!parsedBody.success) {
+    await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+    return;
+  }
+
+  const normalizedAmount = await normalizeMoney(parsedBody.data.amount);
+  const requestHash = await createRequestHash({
+    amount: normalizedAmount,
+  });
+
+  try {
+    const replay = await resolveExistingIdempotentResponse({
+      actorId: userId,
+      endpoint,
+      idempotencyKey: parsedBody.data.idempotencyKey,
+      requestHash,
+    });
+
+    if (replay) {
+      await reply.code(replay.statusCode).send(replay.body);
+      return;
+    }
+
+    await createPendingIdempotencyKey({
+      actorId: userId,
+      endpoint,
+      idempotencyKey: parsedBody.data.idempotencyKey,
+      requestHash,
+    });
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const wallet = await ensureWalletForUser(tx, userId);
+
+        if (!wallet) {
+          return null;
+        }
+
+        const updatedWallet = await tx.wallet.update({
+          where: {
+            id: wallet.id,
+          },
+          data: {
+            balance: {
+              increment: normalizedAmount,
+            },
+          },
+          select: {
+            id: true,
+            userId: true,
+            balance: true,
+            lockedBalance: true,
+          },
+        });
+
+        const ledger = await tx.walletLedger.create({
+          data: {
+            walletId: wallet.id,
+            type: "DEPOSIT_TOPUP",
+            amount: normalizedAmount,
+            reference: parsedBody.data.idempotencyKey,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        return {
+          wallet: updatedWallet,
+          ledgerId: ledger.id,
+        };
+      },
+      {
+        isolationLevel: "Serializable",
+      },
+    );
+
+    if (!result) {
+      const body = {
+        error: "WALLET_USER_NOT_FOUND",
+      };
+
+      await failIdempotencyKey({
+        actorId: userId,
+        endpoint,
+        idempotencyKey: parsedBody.data.idempotencyKey,
+        responseStatus: 404,
+        responseBody: body,
+      });
+
+      await reply.code(404).send(body);
+      return;
+    }
+
+    const balance = await toNumberValue(result.wallet.balance);
+    const lockedBalance = await toNumberValue(result.wallet.lockedBalance);
+    const responseBody = {
+      result: "accepted",
+      wallet_id: result.wallet.id,
+      user_id: result.wallet.userId,
+      amount: normalizedAmount,
+      balance,
+      available_balance: await normalizeMoney(balance - lockedBalance),
+      ledger_id: result.ledgerId,
+    };
+
+    await completeIdempotencyKey({
+      actorId: userId,
+      endpoint,
+      idempotencyKey: parsedBody.data.idempotencyKey,
+      responseStatus: 200,
+      responseBody,
+    });
+
+    await reply.code(200).send(responseBody);
+  } catch (error) {
+    if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_IN_PROGRESS") {
+      await reply.code(409).send({
+        error: "REQUEST_IN_PROGRESS",
+      });
+      return;
+    }
+
+    if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD") {
+      await reply.code(409).send({
+        error: "IDEMPOTENCY_CONFLICT",
+      });
+      return;
+    }
+
+    throw error;
   }
 }
 
@@ -464,6 +626,9 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      const buyerContext =
+        request.auth?.role === "BUYER" ? await loadBuyerAccessContext(request) : null;
+
       const wallet = await prisma.$transaction(async (tx) => {
         const ensuredWallet = await ensureWalletForUser(tx, userId);
 
@@ -501,6 +666,24 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
 
       const balance = await toNumberValue(wallet.wallet.balance);
       const lockedBalance = await toNumberValue(wallet.wallet.lockedBalance);
+      const outstandingInvoices =
+        buyerContext?.companyId
+          ? await prisma.invoice.count({
+              where: {
+                buyerCompanyId: buyerContext.companyId,
+                status: {
+                  in: ["ISSUED", "DEFAULTED"],
+                },
+              },
+            })
+          : 0;
+      const noActiveAuctionLocks = lockedBalance <= 0;
+      const noOutstandingInvoices = outstandingInvoices === 0;
+      const noComplianceHolds = buyerContext
+        ? buyerContext.kycVerified === true &&
+          buyerContext.userStatus.toUpperCase() === "ACTIVE" &&
+          buyerContext.companyStatus.toUpperCase() === "ACTIVE"
+        : true;
 
       await reply.code(200).send({
         wallet: {
@@ -519,6 +702,22 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
             createdAt: entry.createdAt.toISOString(),
           })),
         ),
+        transactions: await Promise.all(
+          wallet.ledger.map(async (entry) => ({
+            id: entry.id,
+            type: entry.type,
+            amount: await toNumberValue(entry.amount),
+            reference: entry.reference,
+            createdAt: entry.createdAt.toISOString(),
+          })),
+        ),
+        pendingWithdrawalAmount: 0,
+        withdrawalEligibility: {
+          noActiveAuctionLocks,
+          noOutstandingInvoices,
+          noComplianceHolds,
+          canWithdraw: noActiveAuctionLocks && noOutstandingInvoices && noComplianceHolds,
+        },
       });
     },
   );
@@ -529,163 +728,17 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       request: FastifyRequest<{ Body: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      await requireAuth(request, reply);
+      await processWalletDeposit(request, reply, "/wallet/deposit");
+    },
+  );
 
-      if (reply.sent) {
-        return;
-      }
-
-      const buyerAccess = await requireActiveBuyerAccount(request, reply);
-
-      if (!buyerAccess) {
-        return;
-      }
-
-      if (buyerAccess.kycVerified !== true) {
-        await reply.code(403).send({
-          error: "KYC_PENDING",
-          message: "Your account is under review.",
-        });
-        return;
-      }
-
-      const { userId } = buyerAccess;
-
-      const parsedBody = depositSchema.safeParse(request.body);
-
-      if (!parsedBody.success) {
-        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
-        return;
-      }
-
-      const normalizedAmount = await normalizeMoney(parsedBody.data.amount);
-      const endpoint = "/wallet/deposit";
-      const requestHash = await createRequestHash({
-        amount: normalizedAmount,
-      });
-
-      try {
-        const replay = await resolveExistingIdempotentResponse({
-          actorId: userId,
-          endpoint,
-          idempotencyKey: parsedBody.data.idempotencyKey,
-          requestHash,
-        });
-
-        if (replay) {
-          await reply.code(replay.statusCode).send(replay.body);
-          return;
-        }
-
-        await createPendingIdempotencyKey({
-          actorId: userId,
-          endpoint,
-          idempotencyKey: parsedBody.data.idempotencyKey,
-          requestHash,
-        });
-
-        const result = await prisma.$transaction(
-          async (tx) => {
-            const wallet = await ensureWalletForUser(tx, userId);
-
-            if (!wallet) {
-              return null;
-            }
-
-            const updatedWallet = await tx.wallet.update({
-              where: {
-                id: wallet.id,
-              },
-              data: {
-                balance: {
-                  increment: normalizedAmount,
-                },
-              },
-              select: {
-                id: true,
-                userId: true,
-                balance: true,
-                lockedBalance: true,
-              },
-            });
-
-            const ledger = await tx.walletLedger.create({
-              data: {
-                walletId: wallet.id,
-                type: "DEPOSIT_TOPUP",
-                amount: normalizedAmount,
-                reference: parsedBody.data.idempotencyKey,
-              },
-              select: {
-                id: true,
-              },
-            });
-
-            return {
-              wallet: updatedWallet,
-              ledgerId: ledger.id,
-            };
-          },
-          {
-            isolationLevel: "Serializable",
-          },
-        );
-
-        if (!result) {
-          const body = {
-            error: "WALLET_USER_NOT_FOUND",
-          };
-
-          await failIdempotencyKey({
-            actorId: userId,
-            endpoint,
-            idempotencyKey: parsedBody.data.idempotencyKey,
-            responseStatus: 404,
-            responseBody: body,
-          });
-
-          await reply.code(404).send(body);
-          return;
-        }
-
-        const balance = await toNumberValue(result.wallet.balance);
-        const lockedBalance = await toNumberValue(result.wallet.lockedBalance);
-        const responseBody = {
-          result: "accepted",
-          wallet_id: result.wallet.id,
-          user_id: result.wallet.userId,
-          amount: normalizedAmount,
-          balance,
-          available_balance: await normalizeMoney(balance - lockedBalance),
-          ledger_id: result.ledgerId,
-        };
-
-        await completeIdempotencyKey({
-          actorId: userId,
-          endpoint,
-          idempotencyKey: parsedBody.data.idempotencyKey,
-          responseStatus: 200,
-          responseBody,
-        });
-
-        await reply.code(200).send(responseBody);
-      } catch (error) {
-        if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_IN_PROGRESS") {
-          await reply.code(409).send({
-            error: "REQUEST_IN_PROGRESS",
-          });
-          return;
-        }
-
-        if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD") {
-          await reply.code(409).send({
-            error: "IDEMPOTENCY_CONFLICT",
-          });
-          return;
-        }
-
-        throw error;
-      }
+  fastify.post<{ Body: unknown }>(
+    "/wallet/topup",
+    async function topupWalletHandler(
+      request: FastifyRequest<{ Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      await processWalletDeposit(request, reply, "/wallet/topup");
     },
   );
 

@@ -273,6 +273,14 @@ async function postForm<T>(path: string, body: FormData, options?: RequestInit):
   });
 }
 
+function createIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export const api = {
   auth: {
     login: async (email: string, password: string): Promise<{ user: ApiUser }> =>
@@ -501,6 +509,10 @@ export const api = {
   buyer: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/dashboard", options),
+    myBids: async <T = unknown>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/buyer/my-bids", options),
+    upgradeToVip: async <T = unknown>(options?: RequestInit): Promise<T> =>
+      postJson<T>("/api/buyer/upgrade-to-vip", undefined, options),
     wishlist: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/buyer/watchlist", query), options),
@@ -521,10 +533,38 @@ export const api = {
   wallet: {
     get: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/wallet", options),
+    topup: async <T = unknown>(
+      amount: number,
+      options?: RequestInit,
+    ): Promise<T> =>
+      postJson<T>("/api/wallet/topup", {
+        amount,
+        idempotencyKey: createIdempotencyKey(),
+      }, options),
     deposit: async <T = unknown>(amount: number, idempotencyKey: string, options?: RequestInit): Promise<T> =>
       postJson<T>("/api/wallet/deposit", { amount, idempotencyKey }, options),
     withdraw: async <T = unknown>(amount: number, options?: RequestInit): Promise<T> =>
       postJson<T>("/api/wallet/withdraw", { amount }, options),
+  },
+  finance: {
+    invoices: {
+      list: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/finance/invoices", options),
+      get: async <T = unknown>(invoiceId: string, options?: RequestInit): Promise<T> =>
+        getRequest<T>(`/api/finance/invoices/${invoiceId}`, options),
+      pay: async <T = unknown>(invoiceId: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(
+          `/api/finance/invoices/${invoiceId}/pay`,
+          undefined,
+          {
+            ...options,
+            headers: {
+              ...Object.fromEntries(new Headers(options?.headers).entries()),
+              "idempotency-key": createIdempotencyKey(),
+            },
+          },
+        ),
+    },
   },
   payments: {
     invoice: {

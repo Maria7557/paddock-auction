@@ -1,0 +1,124 @@
+.overlay {
+  min-height: 400px;
+  padding-top: var(--space-3);
+}
+
+.modal {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--ink-primary);
+}
+
+.field {
+  display: grid;
+  gap: 10px;
+}
+
+.field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.input {
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 16px;
+}
+
+.quickRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.quickButton {
+  appearance: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quickButtonActive {
+  background: var(--green-100);
+  border-color: #116a43;
+  color: #116a43;
+}
+
+.breakdown {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+}
+
+.breakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+
+.breakdownRow strong {
+  color: var(--ink-primary);
+}
+
+.breakdownTotal strong {
+  color: var(--green-600);
+}
+
+.refundPill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--green-100);
+  color: var(--green-600);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--red-600);
+}
+
+.footerNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}

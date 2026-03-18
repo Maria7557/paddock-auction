@@ -1,0 +1,47 @@
+.page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.copy h1 {
+  margin: 0;
+  font-size: 36px;
+  line-height: 1;
+  color: var(--ink-primary);
+}
+
+.copy p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-secondary);
+}
+
+.browseLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green-600);
+  text-decoration: none;
+}
+
+.browseLink:hover {
+  color: var(--green-700);
+}
+
+@media (max-width: 720px) {
+  .header {
+    align-items: start;
+    flex-direction: column;
+  }
+}

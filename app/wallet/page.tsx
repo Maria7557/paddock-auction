@@ -1,30 +1,78 @@
-import { BuyerAccountBanner } from "@/components/buyer/BuyerAccountBanner";
-import { readWallet } from "@/src/modules/ui/domain/marketplace_read_model";
-import { getLocalePreference } from "@/src/lib/display_preferences";
+import { BuyerShell } from "@/components/buyer/BuyerShell";
+import { WalletWorkspace } from "@/components/buyer/WalletWorkspace";
+import { api } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
-import { WalletOverview } from "@/src/modules/ui/transport/components/buyer/wallet_overview";
-import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
-import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
+import { withServerCookies } from "@/src/lib/server-api-options";
+
+import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
+
+type BuyerDashboardResponse = {
+  metrics: {
+    invoicesDue: number;
+  };
+  vipStatus: {
+    tier: "STANDARD" | "VIP";
+  };
+};
+
+type BuyerAuthResponse = {
+  user?: {
+    email?: string;
+  };
+};
+
+type WalletResponse = {
+  wallet: {
+    balance: number;
+    lockedBalance: number;
+    availableBalance: number;
+  };
+  transactions?: Array<{
+    id: string;
+    type: string;
+    amount: number;
+    reference: string | null;
+    createdAt: string;
+  }>;
+  pendingWithdrawalAmount?: number;
+};
 
 export default async function WalletPage() {
   const session = await requireBuyerSession("/wallet");
-  const locale = await getLocalePreference();
-  const t = getBuyerPortalCopy(locale);
-  const wallet = await readWallet({
-    userId: session.userId,
-  });
+  const requestOptions = await withServerCookies({ cache: "no-store" });
+
+  const [walletResponse, dashboard, authResponse] = await Promise.all([
+    api.wallet.get<WalletResponse>(requestOptions),
+    api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
+    api.auth.me<BuyerAuthResponse>(requestOptions),
+  ]);
+
+  const companyName = session.companyName?.trim() || "Buyer company";
+  const companyEmail = authResponse.user?.email?.trim() || "buyer@fleetbid.ae";
 
   return (
-    <MarketShell>
-      <section className="section-block compact">
-        <div className="section-heading">
-          <h1>{t.pages.walletTitle}</h1>
-          <p>{t.pages.walletSubtitle}</p>
-        </div>
-        <BuyerAccountBanner userStatus={session.userStatus} companyStatus={session.companyStatus} />
-      </section>
+    <BuyerShell
+      activePage="wallet"
+      invoicesDue={dashboard.metrics.invoicesDue}
+      companyName={companyName}
+      companyEmail={companyEmail}
+      tier={dashboard.vipStatus.tier}
+    >
+      <div className={styles.page}>
+        <header className={styles.header}>
+          <h1>Wallet</h1>
+          <p>Manage your deposit, locks, and withdrawals</p>
+        </header>
 
-      <WalletOverview wallet={wallet} locale={locale} />
-    </MarketShell>
+        <WalletWorkspace
+          availableBalance={walletResponse.wallet.availableBalance}
+          lockedBalance={walletResponse.wallet.lockedBalance}
+          pendingWithdrawalAmount={walletResponse.pendingWithdrawalAmount ?? 0}
+          transactions={walletResponse.transactions ?? []}
+        />
+      </div>
+    </BuyerShell>
   );
 }
