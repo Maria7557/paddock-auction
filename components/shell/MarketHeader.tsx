@@ -12,10 +12,6 @@ import styles from "./MarketHeader.module.css";
 const COPY = {
   en: {
     auctions: "Auctions",
-    myBids: "My bids",
-    watchlist: "Watchlist",
-    wallet: "Wallet",
-    invoices: "Invoices",
     how: "How It Works",
     sell: "Sell with Us",
     signIn: "Log in",
@@ -30,10 +26,6 @@ const COPY = {
   },
   ru: {
     auctions: "Аукционы",
-    myBids: "Мои ставки",
-    watchlist: "Избранное",
-    wallet: "Кошелек",
-    invoices: "Счета",
     how: "Как это работает",
     sell: "Продать с нами",
     signIn: "Войти",
@@ -57,7 +49,6 @@ export default async function MarketHeader() {
   const auth = token ? await verifyJwt(token) : null;
 
   const t = COPY[locale];
-  const isBuyer = auth?.role === "BUYER";
   const accountHref =
     auth?.role === "ADMIN" ? "/admin" : auth?.role === "SELLER" ? "/seller/dashboard" : "/dashboard";
 
@@ -73,22 +64,6 @@ export default async function MarketHeader() {
           <Link href={withLocalePath("/auctions", locale)} className={styles.navLink}>
             {t.auctions}
           </Link>
-          {isBuyer ? (
-            <>
-              <Link href="/my-bids" className={styles.navLink}>
-                {t.myBids}
-              </Link>
-              <Link href="/watchlist" className={styles.navLink}>
-                {t.watchlist}
-              </Link>
-              <Link href="/wallet" className={styles.navLink}>
-                {t.wallet}
-              </Link>
-              <Link href="/invoices" className={styles.navLink}>
-                {t.invoices}
-              </Link>
-            </>
-          ) : null}
           <Link href={`${withLocalePath("/", locale)}#how-it-works`} className={styles.navLink}>
             {t.how}
           </Link>

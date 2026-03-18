@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { RecommendedLots } from "@/components/buyer/RecommendedLots";
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { TierStatusCard } from "@/components/buyer/TierStatusCard";
 import { IconCheck } from "@/components/ui/icons";
@@ -75,13 +76,6 @@ type CapabilitiesRow = {
   vip: "yes" | "no";
 };
 
-type ActionCard = {
-  title: string;
-  body: string;
-  href: string;
-  tone?: "default" | "danger";
-};
-
 const CAPABILITIES: CapabilitiesRow[] = [
   { feature: "Join auctions", standard: "yes", vip: "yes" },
   { feature: "Pre-bids", standard: "yes", vip: "yes" },
@@ -127,69 +121,6 @@ function countAuctionState(
   );
 }
 
-function buildActions(input: {
-  tier: "STANDARD" | "VIP";
-  liveAuctions: number;
-  activeBids: number;
-  invoicesDue: number;
-  hasRequiredDeposit: boolean;
-}): ActionCard[] {
-  if (input.tier === "VIP") {
-    return [
-      {
-        title: "View early access deals — available now",
-        body: "See scheduled vehicles before the auction starts.",
-        href: "/auctions?status=SCHEDULED",
-      },
-      {
-        title: "Monitor your active bids",
-        body: `Track ${input.activeBids} live bid positions in one place.`,
-        href: "/my-bids",
-      },
-      input.invoicesDue > 0
-        ? {
-            title: "Complete pending payment",
-            body: `${input.invoicesDue} invoice${input.invoicesDue === 1 ? "" : "s"} need attention.`,
-            href: "/invoices",
-            tone: "danger",
-          }
-        : {
-            title: "Review your wallet balance",
-            body: "See available funds, locks, and withdrawals.",
-            href: "/wallet",
-          },
-    ];
-  }
-
-  const actions: ActionCard[] = [
-    {
-      title: "Get early access — buy before auction starts",
-      body: "Upgrade to VIP to unlock early purchase access.",
-      href: "#tier-upgrade",
-    },
-    {
-      title: `Browse ${input.liveAuctions} live auctions`,
-      body: "Explore active lots that are bidding right now.",
-      href: "/auctions",
-    },
-  ];
-
-  if (!input.hasRequiredDeposit) {
-    actions.push({
-      title: "Add deposit to start bidding",
-      body: `Your refundable ${formatAed(5000)} deposit unlocks all auctions.`,
-      href: "/wallet",
-    });
-  } else {
-    actions.push({
-      title: "Monitor your active bids",
-      body: `Keep track of ${input.activeBids} live bidding positions.`,
-      href: "/my-bids",
-    });
-  }
-
-  return actions;
-}
 
 export default async function DashboardPage() {
   const session = await requireBuyerSession("/dashboard");
@@ -207,13 +138,6 @@ export default async function DashboardPage() {
   const auctionCounts = countAuctionState(allAuctions);
   const hasRequiredDeposit = dashboard.depositStatus.hasRequiredDeposit;
   const tier = dashboard.vipStatus.tier;
-  const actions = buildActions({
-    tier,
-    liveAuctions: auctionCounts.live,
-    activeBids: dashboard.metrics.activeBids,
-    invoicesDue: dashboard.metrics.invoicesDue,
-    hasRequiredDeposit,
-  });
 
   return (
     <BuyerShell
@@ -279,49 +203,6 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
-        <TierStatusCard
-          id="tier-upgrade"
-          tier={tier}
-          requestedAt={dashboard.vipStatus.upgradeRequest?.requestedAt ?? null}
-        />
-
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>Capabilities</div>
-          <div className={styles.capabilitiesTable}>
-            <div className={styles.capabilitiesHead}>Feature</div>
-            <div className={styles.capabilitiesHead}>Standard</div>
-            <div className={styles.capabilitiesHead}>
-              VIP{tier === "VIP" ? " (you)" : ""}
-            </div>
-
-            {CAPABILITIES.map((row) => (
-              <div key={row.feature} className={styles.capabilityRow}>
-                <span className={styles.featureLabel}>{row.feature}</span>
-                <span className={styles.capabilityCell}>
-                  {row.standard === "yes" ? (
-                    <IconCheck size={16} strokeWidth={2.4} />
-                  ) : (
-                    <span className={styles.capabilityDash}>—</span>
-                  )}
-                </span>
-                <span
-                  className={`${styles.capabilityCell} ${
-                    row.vip === "yes" && (row.feature === "Buy before auction" || row.feature === "24h early lot access")
-                      ? styles.capabilityVip
-                      : ""
-                  }`}
-                >
-                  {row.vip === "yes" ? (
-                    <IconCheck size={16} strokeWidth={2.4} />
-                  ) : (
-                    <span className={styles.capabilityDash}>—</span>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section className={styles.section}>
           <div className={styles.sectionTitle}>Available right now</div>
           <div className={styles.availabilityGrid}>
@@ -350,64 +231,79 @@ export default async function DashboardPage() {
         </section>
 
         <section className={styles.section}>
-          <div className={styles.sectionTitle}>Wallet summary</div>
-          <div className={styles.walletSection}>
-            {!hasRequiredDeposit ? (
-              <div className={styles.walletWarning}>
-                <div>
-                  <strong>Deposit required to participate</strong>
-                  <p>Add {formatAed(5000)} to unlock bidding and Buy Now actions.</p>
-                </div>
-                <Link href="/wallet" className="btn btn-primary">
-                  Add deposit
-                </Link>
-              </div>
-            ) : (
-              <>
-                <div className={styles.walletGrid}>
-                  <article className={styles.walletTile}>
-                    <span>Available</span>
-                    <strong className={styles.metricGreen}>
-                      {formatAed(dashboard.depositStatus.balanceAed)}
-                    </strong>
-                  </article>
-                  <article className={styles.walletTile}>
-                    <span>Locked</span>
-                    <strong className={styles.metricAmber}>
-                      {formatAed(dashboard.depositStatus.lockedBalanceAed)}
-                    </strong>
-                  </article>
-                  <article className={styles.walletTile}>
-                    <span>Free to use</span>
-                    <strong className={styles.metricGreen}>
-                      {formatAed(dashboard.depositStatus.availableBalanceAed)}
-                    </strong>
-                  </article>
-                </div>
-                <span className={styles.refundPill}>Fully refundable within 48 hours</span>
-              </>
-            )}
-          </div>
-        </section>
+          <div className={styles.sectionTitle}>Access & capabilities</div>
+          <TierStatusCard
+            id="tier-upgrade"
+            tier={tier}
+            requestedAt={dashboard.vipStatus.upgradeRequest?.requestedAt ?? null}
+            embedded
+          />
+          <div className={styles.capabilitiesTable}>
+            <div className={styles.capabilitiesHead}>Feature</div>
+            <div className={styles.capabilitiesHead}>Standard</div>
+            <div className={styles.capabilitiesHead}>
+              VIP{tier === "VIP" ? " (you)" : ""}
+            </div>
 
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>Recommended actions</div>
-          <div className={styles.actionGrid}>
-            {actions.map((action) => (
-              <Link
-                key={action.title}
-                href={action.href}
-                className={`${styles.actionCard} ${
-                  action.tone === "danger" ? styles.actionCardDanger : ""
-                }`}
-              >
-                <strong>{action.title}</strong>
-                <p>{action.body}</p>
-                <span>Open</span>
-              </Link>
+            {CAPABILITIES.map((row) => (
+              <div key={row.feature} className={styles.capabilityRow}>
+                <span className={styles.featureLabel}>{row.feature}</span>
+                <span className={styles.capabilityCell}>
+                  {row.standard === "yes" ? (
+                    <IconCheck size={16} strokeWidth={2.4} />
+                  ) : (
+                    <span className={styles.capabilityDash}>—</span>
+                  )}
+                </span>
+                <span
+                  className={`${styles.capabilityCell} ${
+                    row.vip === "yes" &&
+                    (row.feature === "Buy before auction" || row.feature === "24h early lot access")
+                      ? styles.capabilityVip
+                      : ""
+                  }`}
+                >
+                  {row.vip === "yes" ? (
+                    <IconCheck size={16} strokeWidth={2.4} />
+                  ) : (
+                    <span className={styles.capabilityDash}>—</span>
+                  )}
+                </span>
+              </div>
             ))}
           </div>
         </section>
+
+        {hasRequiredDeposit ? (
+          <section className={styles.section}>
+            <div className={styles.sectionTitle}>Wallet summary</div>
+            <div className={styles.walletSection}>
+              <div className={styles.walletGrid}>
+                <article className={styles.walletTile}>
+                  <span>Available</span>
+                  <strong className={styles.metricGreen}>
+                    {formatAed(dashboard.depositStatus.balanceAed)}
+                  </strong>
+                </article>
+                <article className={styles.walletTile}>
+                  <span>Locked</span>
+                  <strong className={styles.metricAmber}>
+                    {formatAed(dashboard.depositStatus.lockedBalanceAed)}
+                  </strong>
+                </article>
+                <article className={styles.walletTile}>
+                  <span>Free to use</span>
+                  <strong className={styles.metricGreen}>
+                    {formatAed(dashboard.depositStatus.availableBalanceAed)}
+                  </strong>
+                </article>
+              </div>
+              <span className={styles.refundPill}>Fully refundable within 48 hours</span>
+            </div>
+          </section>
+        ) : null}
+
+        <RecommendedLots lots={dashboard.recommendedLots} />
       </div>
     </BuyerShell>
   );

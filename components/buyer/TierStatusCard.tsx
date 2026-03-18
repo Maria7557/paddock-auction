@@ -10,6 +10,7 @@ type TierStatusCardProps = {
   id?: string;
   tier: "STANDARD" | "VIP";
   requestedAt: string | null;
+  embedded?: boolean;
 };
 
 const VIP_VALIDITY_DAYS = 30;
@@ -81,14 +82,16 @@ function PerkRow({
   );
 }
 
-export function TierStatusCard({ id, tier, requestedAt }: TierStatusCardProps) {
+export function TierStatusCard({ id, tier, requestedAt, embedded = false }: TierStatusCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const vipDates = useMemo(() => buildVipDates(requestedAt), [requestedAt]);
+  const wrapClassName = embedded ? styles.wrapEmbedded : styles.wrap;
+  const baseCardClassName = `${styles.card} ${embedded ? styles.cardEmbedded : ""}`;
 
   if (tier === "VIP" && vipDates.isExpired) {
     return (
-      <div className={styles.wrap} id={id}>
-        <section className={`${styles.card} ${styles.cardExpired}`}>
+      <div className={wrapClassName} id={id}>
+        <section className={`${baseCardClassName} ${styles.cardExpired}`}>
           <div className={styles.header}>
             <span className={`${styles.badge} ${styles.badgeExpired}`}>VIP expired</span>
           </div>
@@ -122,8 +125,8 @@ export function TierStatusCard({ id, tier, requestedAt }: TierStatusCardProps) {
 
   if (tier === "VIP") {
     return (
-      <div className={styles.wrap} id={id}>
-        <section className={`${styles.card} ${styles.cardVip}`}>
+      <div className={wrapClassName} id={id}>
+        <section className={`${baseCardClassName} ${styles.cardVip}`}>
           <div className={styles.header}>
             <span className={`${styles.badge} ${styles.badgeVip}`}>VIP buyer</span>
             {vipDates.expiresAt ? (
@@ -156,8 +159,8 @@ export function TierStatusCard({ id, tier, requestedAt }: TierStatusCardProps) {
   }
 
   return (
-    <div className={styles.wrap} id={id}>
-      <section className={styles.card}>
+    <div className={wrapClassName} id={id}>
+      <section className={baseCardClassName}>
         <div className={styles.header}>
           <span className={`${styles.badge} ${styles.badgeStandard}`}>Standard buyer</span>
         </div>

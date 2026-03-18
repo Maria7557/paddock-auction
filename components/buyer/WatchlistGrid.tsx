@@ -1,12 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { IconCalendar, IconClock, IconHeart } from "@/components/ui/icons";
-import { api } from "@/src/lib/api-client";
-import { formatAed } from "@/src/lib/utils";
+import { LotCard } from "@/components/auction/LotCard";
+import { IconHeart } from "@/components/ui/icons";
 
 import styles from "./WatchlistGrid.module.css";
 
@@ -22,6 +20,9 @@ type WatchlistLot = {
     brand: string;
     model: string;
     year: number;
+    mileage: number;
+    marketPrice: number | null;
+    regionSpec: string | null;
     images: string[];
   };
 };
@@ -43,36 +44,6 @@ function normalizeStatus(value: string): string {
   return value.trim().toUpperCase();
 }
 
-function formatTimingLabel(lot: WatchlistLot): string {
-  const normalizedStatus = normalizeStatus(lot.state);
-  const target = normalizedStatus === "LIVE" || normalizedStatus === "EXTENDED" ? lot.endsAt : lot.startsAt;
-
-  if (!target) {
-    return "Time unavailable";
-  }
-
-  const timeValue = new Date(target).getTime();
-  const diffMs = timeValue - Date.now();
-
-  if (diffMs <= 0) {
-    return normalizedStatus === "LIVE" || normalizedStatus === "EXTENDED" ? "Closing soon" : "Opening soon";
-  }
-
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-
-  if (days > 0) {
-    return `${days}d ${hours}h`;
-  }
-
-  if (hours > 0) {
-    return `${hours}h left`;
-  }
-
-  return `${Math.max(totalMinutes, 1)}m left`;
-}
-
 function formatTitle(lot: WatchlistLot): string {
   return `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`;
 }
@@ -80,7 +51,6 @@ function formatTitle(lot: WatchlistLot): string {
 export function WatchlistGrid({ initialLots }: WatchlistGridProps) {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("ALL");
   const [lots, setLots] = useState(initialLots);
-  const [busyLotId, setBusyLotId] = useState<string | null>(null);
 
   const filteredLots = useMemo(() => {
     if (activeFilter === "ALL") {
@@ -107,20 +77,22 @@ export function WatchlistGrid({ initialLots }: WatchlistGridProps) {
     });
   }, [activeFilter, lots]);
 
-  async function handleToggle(lotId: string): Promise<void> {
-    const nextLots = lots.filter((lot) => lot.id !== lotId);
-    const previousLots = lots;
+  function handleWatchlistChange(lot: WatchlistLot, watchlisted: boolean): void {
+    setLots((currentLots) => {
+      const hasLot = currentLots.some((currentLot) => currentLot.id === lot.id);
 
-    setLots(nextLots);
-    setBusyLotId(lotId);
+      if (!watchlisted) {
+        return currentLots.filter((currentLot) => currentLot.id !== lot.id);
+      }
 
-    try {
-      await api.buyer.wishlist.toggle<{ watchlisted: boolean }>(lotId);
-    } catch {
-      setLots(previousLots);
-    } finally {
-      setBusyLotId(null);
-    }
+      if (hasLot) {
+        return currentLots.map((currentLot) =>
+          currentLot.id === lot.id ? { ...currentLot, isWatchlisted: true } : currentLot,
+        );
+      }
+
+      return [lot, ...currentLots];
+    });
   }
 
   if (lots.length === 0) {
@@ -167,53 +139,30 @@ export function WatchlistGrid({ initialLots }: WatchlistGridProps) {
       ) : (
         <div className={styles.grid}>
           {filteredLots.map((lot) => {
-            const status = normalizeStatus(lot.state);
-            const imageUrl = lot.vehicle.images[0] || "/vehicle-photo.svg";
-            const title = formatTitle(lot);
+            const normalizedStatus = normalizeStatus(lot.state);
+            const endTime =
+              normalizedStatus === "LIVE" || normalizedStatus === "EXTENDED"
+                ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()
+                : lot.startsAt ?? lot.endsAt ?? new Date().toISOString();
 
             return (
-              <article key={lot.id} className={styles.card}>
-                <button
-                  type="button"
-                  className={`${styles.heartButton} ${busyLotId === lot.id ? styles.heartButtonBusy : ""}`}
-                  onClick={() => void handleToggle(lot.id)}
-                  disabled={busyLotId === lot.id}
-                  aria-label="Remove from watchlist"
-                >
-                  <IconHeart size={18} strokeWidth={2} />
-                </button>
-
-                <Link href={`/auctions/${lot.id}`} className={styles.cardLink}>
-                  <div className={styles.imageWrap}>
-                    <Image src={imageUrl} alt={title} fill sizes="(max-width: 980px) 100vw, 50vw" className={styles.image} />
-                    <span
-                      className={`${styles.statusBadge} ${
-                        status === "LIVE" || status === "EXTENDED" ? styles.statusLive : styles.statusScheduled
-                      }`}
-                    >
-                      {status === "LIVE" || status === "EXTENDED" ? "LIVE" : "Scheduled"}
-                    </span>
-                  </div>
-
-                  <div className={styles.cardBody}>
-                    <h3>{title}</h3>
-                    <strong className={styles.price}>{formatAed(lot.currentPrice)}</strong>
-
-                    <div className={styles.meta}>
-                      <span>{lot.location}</span>
-                      <span className={styles.metaDivider}>·</span>
-                      <span className={styles.metaTime}>
-                        {status === "LIVE" || status === "EXTENDED" ? (
-                          <IconClock size={14} strokeWidth={2} />
-                        ) : (
-                          <IconCalendar size={14} strokeWidth={2} />
-                        )}
-                        {formatTimingLabel(lot)}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              </article>
+              <div key={lot.id}>
+                <LotCard
+                  lotId={lot.id}
+                  title={formatTitle(lot)}
+                  year={lot.vehicle.year}
+                  mileage={lot.vehicle.mileage}
+                  regionSpec={lot.vehicle.regionSpec ?? undefined}
+                  imageUrl={lot.vehicle.images[0] || "/vehicle-photo.svg"}
+                  currentBid={lot.currentPrice}
+                  status={lot.state}
+                  endTime={endTime}
+                  marketPrice={lot.vehicle.marketPrice ?? undefined}
+                  showWishlistControl
+                  defaultWatchlisted={lot.isWatchlisted}
+                  onWatchlistChange={(watchlisted) => handleWatchlistChange(lot, watchlisted)}
+                />
+              </div>
             );
           })}
         </div>

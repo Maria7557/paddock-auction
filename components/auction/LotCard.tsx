@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { type MouseEvent, useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 import { IconArrowRight, IconCalendar, IconClock, IconHeart } from "@/components/ui/icons";
 import { api } from "@/src/lib/api-client";
@@ -23,6 +23,9 @@ type LotCardProps = {
   endTime: string;
   marketPrice?: number;
   display?: DisplaySettings;
+  showWishlistControl?: boolean;
+  defaultWatchlisted?: boolean;
+  onWatchlistChange?: (watchlisted: boolean) => void;
 };
 
 const DEFAULT_DISPLAY: DisplaySettings = {
@@ -101,14 +104,18 @@ export function LotCard({
   endTime,
   marketPrice,
   display = DEFAULT_DISPLAY,
+  showWishlistControl,
+  defaultWatchlisted = false,
+  onWatchlistChange,
 }: LotCardProps) {
   const isLive = status === "LIVE";
   const isRu = display.locale === "ru";
   const intlLocale = toIntlLocale(display.locale);
   const saving = marketPrice ? savingPct(marketPrice, currentBid) : 0;
   const [viewerRole, setViewerRole] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(defaultWatchlisted);
   const [wishlistBusy, setWishlistBusy] = useState(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -118,34 +125,50 @@ export function LotCard({
     setViewerRole(window.localStorage.getItem("fleetbid_role"));
   }, []);
 
+  useEffect(() => {
+    setSaved(defaultWatchlisted);
+  }, [defaultWatchlisted]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   async function toggleWishlist(event: MouseEvent<HTMLButtonElement>): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
 
-    if (viewerRole !== "BUYER" || wishlistBusy) {
+    const canToggleWishlist = showWishlistControl ?? viewerRole === "BUYER";
+
+    if (!canToggleWishlist || wishlistBusy) {
       return;
     }
 
     const nextSaved = !saved;
     setSaved(nextSaved);
+    onWatchlistChange?.(nextSaved);
     setWishlistBusy(true);
 
     try {
-      if (nextSaved) {
-        await api.buyer.wishlist.add(lotId);
-      } else {
-        await api.buyer.wishlist.remove(lotId);
-      }
+      await api.buyer.wishlist.toggle(lotId);
     } catch {
-      setSaved(!nextSaved);
+      if (isMountedRef.current) {
+        setSaved(!nextSaved);
+      }
+      onWatchlistChange?.(!nextSaved);
     } finally {
-      setWishlistBusy(false);
+      if (isMountedRef.current) {
+        setWishlistBusy(false);
+      }
     }
   }
 
+  const shouldShowWishlistControl = showWishlistControl ?? viewerRole === "BUYER";
+
   return (
     <article className={styles.card}>
-      {viewerRole === "BUYER" ? (
+      {shouldShowWishlistControl ? (
         <button
           type="button"
           className={`${styles.wishlistBtn} ${saved ? styles.wishlistActive : ""}`}

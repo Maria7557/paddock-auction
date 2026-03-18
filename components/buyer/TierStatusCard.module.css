@@ -3,6 +3,10 @@
   gap: var(--space-3);
 }
 
+.wrapEmbedded {
+  display: block;
+}
+
 .card {
   --tier-standard-bg: #e8f5ee;
   --tier-standard-text: #0f6e56;
@@ -17,6 +21,12 @@
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-soft);
   overflow: hidden;
+}
+
+.cardEmbedded {
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
 }
 
 .cardVip {
