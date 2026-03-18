@@ -82,7 +82,13 @@ type RecommendedLot = {
   title: string;
   currentBid: number;
   status: string;
+  year: number;
+  mileage: number;
+  regionSpec: string | null;
+  marketPrice: number | null;
   imageUrl?: string;
+  startsAt: string | null;
+  endsAt: string | null;
 };
 
 type VipStatusResponse = {
@@ -754,7 +760,13 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           title: buildLotTitle(lot.vehicle.brand, lot.vehicle.model, lot.id),
           currentBid: lot.currentPrice,
           status: lot.state,
+          year: lot.vehicle.year,
+          mileage: lot.vehicle.mileage,
+          regionSpec: lot.vehicle.regionSpec,
+          marketPrice: lot.vehicle.marketPrice,
           imageUrl: lot.vehicle.images[0],
+          startsAt: lot.startsAt,
+          endsAt: lot.endsAt,
         }));
       }
 

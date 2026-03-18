@@ -1,8 +1,4 @@
-import Image from "next/image";
-import Link from "next/link";
-
-import { IconCar } from "@/components/ui/icons";
-import { formatAed } from "@/src/lib/utils";
+import { LotCard } from "@/components/auction/LotCard";
 
 import styles from "./RecommendedLots.module.css";
 
@@ -12,18 +8,24 @@ type RecommendedLotsProps = {
     title: string;
     currentBid: number;
     status: string;
+    year: number;
+    mileage: number;
+    regionSpec: string | null;
+    marketPrice: number | null;
     imageUrl?: string;
+    startsAt: string | null;
+    endsAt: string | null;
   }>;
 };
 
-function resolveStatusClass(status: string): string {
-  const normalizedStatus = status.trim().toUpperCase();
+function resolveEndTime(lot: RecommendedLotsProps["lots"][number]): string {
+  const normalizedStatus = lot.status.trim().toUpperCase();
 
-  if (normalizedStatus === "LIVE") {
-    return styles.badgeLive;
+  if (normalizedStatus === "LIVE" || normalizedStatus === "EXTENDED") {
+    return lot.endsAt ?? lot.startsAt ?? new Date().toISOString();
   }
 
-  return styles.badgeScheduled;
+  return lot.startsAt ?? lot.endsAt ?? new Date().toISOString();
 }
 
 export function RecommendedLots({ lots }: RecommendedLotsProps) {
@@ -39,31 +41,19 @@ export function RecommendedLots({ lots }: RecommendedLotsProps) {
 
       <div className={styles.grid}>
         {lots.map((lot) => (
-          <Link key={lot.id} href={`/auctions/${lot.id}`} className={styles.card}>
-            <div className={styles.imageWrap}>
-              {lot.imageUrl ? (
-                <Image
-                  src={lot.imageUrl}
-                  alt={lot.title}
-                  fill
-                  sizes="(max-width: 980px) 100vw, 280px"
-                  className={styles.image}
-                />
-              ) : (
-                <div className={styles.placeholder}>
-                  <IconCar size={26} aria-hidden="true" />
-                </div>
-              )}
-              <span className={`${styles.badge} ${resolveStatusClass(lot.status)}`}>
-                {lot.status.trim().toUpperCase() === "LIVE" ? "LIVE" : "Scheduled"}
-              </span>
-            </div>
-
-            <div className={styles.body}>
-              <strong>{lot.title}</strong>
-              <span>{formatAed(lot.currentBid)}</span>
-            </div>
-          </Link>
+          <LotCard
+            key={lot.id}
+            lotId={lot.id}
+            title={lot.title}
+            year={lot.year}
+            mileage={lot.mileage}
+            regionSpec={lot.regionSpec ?? undefined}
+            imageUrl={lot.imageUrl || "/vehicle-photo.svg"}
+            currentBid={lot.currentBid}
+            status={lot.status}
+            endTime={resolveEndTime(lot)}
+            marketPrice={lot.marketPrice ?? undefined}
+          />
         ))}
       </div>
     </section>

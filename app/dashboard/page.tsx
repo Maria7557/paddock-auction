@@ -41,7 +41,13 @@ type BuyerDashboardResponse = {
     title: string;
     currentBid: number;
     status: string;
+    year: number;
+    mileage: number;
+    regionSpec: string | null;
+    marketPrice: number | null;
     imageUrl?: string;
+    startsAt: string | null;
+    endsAt: string | null;
   }>;
   vipStatus: {
     tier: "STANDARD" | "VIP";
