@@ -14,6 +14,7 @@ type RecommendedLotsProps = {
     mileage: number;
     regionSpec: string | null;
     marketPrice: number | null;
+    buyNowPrice: number | null;
     imageUrl?: string;
     startsAt: string | null;
     endsAt: string | null;
@@ -68,6 +69,7 @@ export function RecommendedLots({
             status={lot.status}
             endTime={resolveEndTime(lot)}
             marketPrice={lot.marketPrice ?? undefined}
+            buyNowPrice={lot.buyNowPrice ?? undefined}
             showWishlistControl
           />
         ))}

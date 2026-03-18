@@ -226,6 +226,7 @@ describe("GET /api/buyer/dashboard", () => {
       mileage: 46000,
       regionSpec: "USA",
       marketPrice: 420000,
+      buyNowPrice: 240000,
       imageUrl: "/uploads/bmw.jpg",
       startsAt: "2026-03-17T08:00:00.000Z",
       endsAt: "2026-03-18T08:00:00.000Z",

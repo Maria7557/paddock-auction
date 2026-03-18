@@ -86,6 +86,7 @@ type RecommendedLot = {
   mileage: number;
   regionSpec: string | null;
   marketPrice: number | null;
+  buyNowPrice: number | null;
   imageUrl?: string;
   startsAt: string | null;
   endsAt: string | null;
@@ -764,6 +765,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           mileage: lot.vehicle.mileage,
           regionSpec: lot.vehicle.regionSpec,
           marketPrice: lot.vehicle.marketPrice,
+          buyNowPrice: lot.buyNowPrice,
           imageUrl: lot.vehicle.images[0],
           startsAt: lot.startsAt,
           endsAt: lot.endsAt,

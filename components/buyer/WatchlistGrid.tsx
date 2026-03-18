@@ -12,6 +12,7 @@ type WatchlistLot = {
   id: string;
   state: string;
   currentPrice: number;
+  buyNowPrice: number | null;
   startsAt: string | null;
   endsAt: string | null;
   location: string;
@@ -158,6 +159,7 @@ export function WatchlistGrid({ initialLots }: WatchlistGridProps) {
                   status={lot.state}
                   endTime={endTime}
                   marketPrice={lot.vehicle.marketPrice ?? undefined}
+                  buyNowPrice={lot.buyNowPrice ?? undefined}
                   showWishlistControl
                   defaultWatchlisted={lot.isWatchlisted}
                   onWatchlistChange={(watchlisted) => handleWatchlistChange(lot, watchlisted)}

@@ -15,6 +15,7 @@ type BuyerWatchlistResponse = {
     id: string;
     state: string;
     currentPrice: number;
+    buyNowPrice: number | null;
     startsAt: string | null;
     endsAt: string | null;
     location: string;
