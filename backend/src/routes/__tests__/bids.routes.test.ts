@@ -769,6 +769,18 @@ describe("GET /api/auctions/:id", () => {
     expect(res.body.auction.vehicle.brand).toBe("Toyota");
   });
 
+  it("returns buy now price in public auction details", async () => {
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      buyNowPrice: 72_500,
+    });
+
+    const res = await request.get(`/api/auctions/${auctionId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auction.buyNowPrice).toBe(72_500);
+  });
+
   it("returns recent bids nested under auction", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue(makeAuctionDetails());
 
@@ -861,6 +873,60 @@ describe("GET /api/auctions", () => {
     expect(res.body.auctions[0].id).toBe(auctionId);
     expect(res.body.auctions[0].sellerName).toBe("Test Fleet");
     expect(res.body.auctions[0].vehicle.brand).toBe("BMW");
+  });
+
+  it("returns buy now price in public auction listings", async () => {
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: 140000,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request.get("/api/auctions");
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toHaveLength(1);
+    expect(res.body.auctions[0].buyNowPrice).toBe(140000);
   });
 });
 

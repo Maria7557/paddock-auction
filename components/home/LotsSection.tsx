@@ -62,8 +62,10 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
                 regionSpec={lot.regionSpec || undefined}
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
+                buyNowPrice={lot.buyNowPriceAed ?? undefined}
                 marketPrice={lot.marketPriceAed ?? undefined}
                 status={lot.status}
+                totalBids={lot.totalBids}
                 endTime={lot.status === "LIVE" ? lot.endsAt : lot.startsAt}
                 display={display}
               />

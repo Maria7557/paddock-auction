@@ -33,6 +33,7 @@ interface Lot {
   imageUrl: string;
   currentBidAed: number;
   marketPriceAed?: number | null;
+  buyNowPrice?: number | null;
   endsAt: string | null;
   startsAt: string | null;
   totalBids: number;
@@ -184,6 +185,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot {
     currentBidAed: Number(auction.currentPrice ?? auction.startingPrice ?? 0),
     marketPriceAed:
       vehicle.marketPrice === null || vehicle.marketPrice === undefined ? null : Number(vehicle.marketPrice),
+    buyNowPrice: auction.buyNowPrice === null || auction.buyNowPrice === undefined ? null : Number(auction.buyNowPrice),
     endsAt: auction.endsAt ?? null,
     startsAt: auction.startsAt ?? null,
     totalBids: Number(auction.totalBids ?? 0),
@@ -487,7 +489,9 @@ export function AuctionsClient({
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
                 marketPrice={lot.marketPriceAed ?? undefined}
+                buyNowPrice={lot.buyNowPrice ?? undefined}
                 status={lot.state}
+                totalBids={lot.totalBids}
                 endTime={
                   isLiveAuctionState(lot.state)
                     ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()

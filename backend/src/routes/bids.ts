@@ -10,7 +10,7 @@ import {
   ensureAuctionDepositLock,
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
-import { hydrateAuthIfPresent, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -185,32 +185,10 @@ async function toStoredJson(value: unknown): Promise<Prisma.InputJsonValue> {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-async function resolveViewerTier(
-  request: FastifyRequest,
-): Promise<"PUBLIC" | "STANDARD" | "VIP"> {
-  await hydrateAuthIfPresent(request);
-
-  if (request.auth?.role !== "BUYER" || !request.auth.companyId) {
-    return "PUBLIC";
-  }
-
-  const company = await prisma.company.findUnique({
-    where: {
-      id: request.auth.companyId,
-    },
-    select: {
-      buyerTier: true,
-    },
-  });
-
-  return company?.buyerTier === "VIP" ? "VIP" : "STANDARD";
-}
-
 async function serializeBuyNowPrice(
   value: DecimalLike | null,
-  viewerTier: "PUBLIC" | "STANDARD" | "VIP",
 ): Promise<number | null> {
-  if (viewerTier !== "VIP" || value === null) {
+  if (value === null) {
     return null;
   }
 
@@ -365,10 +343,9 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     "/auctions",
     async function listAuctionsHandler(
-      request: FastifyRequest,
+      _request: FastifyRequest,
       reply: FastifyReply,
     ): Promise<void> {
-      const viewerTier = await resolveViewerTier(request);
       const auctions = await prisma.auction.findMany({
         where: {
           state: {
@@ -418,7 +395,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               currentPrice: await toNumberValue(auction.currentPrice),
               minIncrement: await toNumberValue(auction.minIncrement),
               startingPrice: await toNumberValue(auction.startingPrice),
-              buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice, viewerTier),
+              buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
               startsAt: await toIsoString(auction.startsAt),
               endsAt: await toIsoString(auction.endsAt),
               createdAt: await toIsoString(auction.createdAt),
@@ -1072,8 +1049,6 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const viewerTier = await resolveViewerTier(request);
-
       const auction = await prisma.auction.findUnique({
         where: {
           id: parsedParams.data.id,
@@ -1102,7 +1077,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           currentPrice: await toNumberValue(auction.currentPrice),
           minIncrement: await toNumberValue(auction.minIncrement),
           startingPrice: await toNumberValue(auction.startingPrice),
-          buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice, viewerTier),
+          buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
           startsAt: await toIsoString(auction.startsAt),
           endsAt: await toIsoString(auction.endsAt),
           extensionCount: auction.extensionCount,
