@@ -55,7 +55,7 @@ model WalletLedger {
   id        String     @id @default(uuid())
   walletId  String
   type      LedgerType
-  amount    Decimal    @db.Decimal(18, 2)
+  amount    Int
   reference String?
   createdAt DateTime   @default(now())
   wallet    Wallet     @relation(fields: [walletId], references: [id])
