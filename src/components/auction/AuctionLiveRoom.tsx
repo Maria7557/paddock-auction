@@ -105,6 +105,8 @@ type WinnerOverlayProps = {
   winner: WinnerData;
 };
 
+const API_MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? "";
+
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -198,6 +200,32 @@ function createFeedEntry(
   };
 }
 
+function normalizeGalleryUrl(url: string): string {
+  const trimmedUrl = url.trim();
+
+  if (!trimmedUrl) {
+    return trimmedUrl;
+  }
+
+  if (/^https?:\/\//i.test(trimmedUrl)) {
+    return trimmedUrl;
+  }
+
+  if (trimmedUrl.startsWith("/uploads/") && API_MEDIA_BASE_URL) {
+    return `${API_MEDIA_BASE_URL}${trimmedUrl}`;
+  }
+
+  if (trimmedUrl.startsWith("/")) {
+    return trimmedUrl;
+  }
+
+  if (trimmedUrl.startsWith("uploads/") && API_MEDIA_BASE_URL) {
+    return `${API_MEDIA_BASE_URL}/${trimmedUrl}`;
+  }
+
+  return `/${trimmedUrl}`;
+}
+
 function buildGalleryPhotos(lot: LotDetail): GalleryPhoto[] {
   const lotWithMedia = lot as LotDetail & {
     media?: Array<{
@@ -212,7 +240,7 @@ function buildGalleryPhotos(lot: LotDetail): GalleryPhoto[] {
       .map((item, index) => ({
         id: `media-${index + 1}`,
         label: item.label?.trim() || `Photo ${index + 1}`,
-        url: item.url!.trim(),
+        url: normalizeGalleryUrl(item.url!),
         bg: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].bg,
       }));
   }
@@ -223,7 +251,7 @@ function buildGalleryPhotos(lot: LotDetail): GalleryPhoto[] {
       .map((item, index) => ({
         id: `image-${index + 1}`,
         label: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].label,
-        url: item,
+        url: normalizeGalleryUrl(item),
         bg: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].bg,
       }));
   }
@@ -262,12 +290,15 @@ function buildUpcomingLots(lot: LotDetail): UpcomingLot[] {
 
 function Gallery({ lotKey, photos, title }: GalleryProps) {
   const [active, setActive] = useState(0);
+  const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
 
   useEffect(() => {
     setActive(0);
+    setFailedPhotoIds([]);
   }, [lotKey]);
 
   const activePhoto = photos[active] ?? photos[0];
+  const isPhotoBroken = (photo: GalleryPhoto): boolean => failedPhotoIds.includes(photo.id);
 
   if (!activePhoto) {
     return null;
@@ -276,11 +307,14 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
   return (
     <div className={styles.gallery}>
       <div className={styles.galleryFrame}>
-        {activePhoto.url ? (
+        {activePhoto.url && !isPhotoBroken(activePhoto) ? (
           <img
             src={activePhoto.url}
             alt={`${title} — ${activePhoto.label}`}
             className={styles.galleryImage}
+            onError={() => {
+              setFailedPhotoIds((current) => (current.includes(activePhoto.id) ? current : [...current, activePhoto.id]));
+            }}
           />
         ) : (
           <div className={styles.galleryPlaceholder} style={{ background: activePhoto.bg }}>
@@ -328,10 +362,17 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
             className={`${styles.thumbnailButton} ${index === active ? styles.thumbnailActive : ""}`}
             onClick={() => setActive(index)}
             aria-label={`View ${photo.label}`}
-            style={!photo.url ? { background: photo.bg } : undefined}
+            style={!photo.url || isPhotoBroken(photo) ? { background: photo.bg } : undefined}
           >
-            {photo.url ? (
-              <img src={photo.url} alt={photo.label} className={styles.thumbnailImage} />
+            {photo.url && !isPhotoBroken(photo) ? (
+              <img
+                src={photo.url}
+                alt={photo.label}
+                className={styles.thumbnailImage}
+                onError={() => {
+                  setFailedPhotoIds((current) => (current.includes(photo.id) ? current : [...current, photo.id]));
+                }}
+              />
             ) : (
               <span className={styles.thumbnailPlaceholder}>🚙</span>
             )}
