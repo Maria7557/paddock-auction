@@ -128,7 +128,10 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   const isLive = snapshot.state === "LIVE" || snapshot.state === "EXTENDED";
   const hasMultipleImages = lot.images.length > 1;
-  const bidAmount = snapshot.currentPrice + snapshot.minIncrement;
+  const nextBidAmount = useMemo(
+    () => snapshot.currentPrice + snapshot.minIncrement,
+    [snapshot.currentPrice, snapshot.minIncrement],
+  );
   const specRows = useMemo(() => buildSpecRows(lot), [lot]);
   const fuseProgress = Math.max(0, Math.min(100, (remainingMs / Math.max(fuseWindowMs, 1)) * 100));
 
@@ -209,13 +212,19 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   const handleBid = async () => {
     const idempotencyKey = createIdempotencyKey();
-    const optimisticEntry = createFeedEntry(bidAmount, Date.now(), `optimistic-${idempotencyKey}`, "optimistic", true);
+    const optimisticEntry = createFeedEntry(
+      nextBidAmount,
+      Date.now(),
+      `optimistic-${idempotencyKey}`,
+      "optimistic",
+      true,
+    );
 
     setIsSubmittingBid(true);
     setInlineError(null);
 
     try {
-      await api.bids.placeBid<{ id?: string }>(auctionId, bidAmount, idempotencyKey, {
+      await api.bids.placeBid<{ id?: string }>(auctionId, nextBidAmount, idempotencyKey, {
         cache: "no-store",
       });
 
@@ -349,9 +358,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
               >
                 <span className={styles.bidButtonMain}>
                   <IconZap size={16} strokeWidth={2.2} />
-                  {isSubmittingBid ? "Placing bid..." : `Bid ${formatAed(bidAmount)}`}
+                  {isSubmittingBid ? "Placing bid..." : `Bid ${formatAed(nextBidAmount)}`}
                 </span>
-                <span className={styles.bidButtonSub}>Source of truth: backend snapshot + WS</span>
               </button>
             </div>
 

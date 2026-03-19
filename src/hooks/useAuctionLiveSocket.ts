@@ -12,21 +12,28 @@ type AuctionLiveMessage = {
   data: AuctionLiveSnapshot;
 };
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") {
+type AuthTokenResponse = {
+  token?: string | null;
+};
+
+async function loadSocketToken(): Promise<string | null> {
+  const response = await fetch("/api/auth/token", {
+    method: "GET",
+    cache: "no-store",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to load auth token");
+  }
+
+  const payload = (await response.json()) as AuthTokenResponse;
+
+  if (typeof payload.token !== "string" || payload.token.trim().length === 0) {
     return null;
   }
 
-  const cookie = document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`));
-
-  if (!cookie) {
-    return null;
-  }
-
-  return decodeURIComponent(cookie.slice(name.length + 1));
+  return payload.token;
 }
 
 function buildWebSocketUrl(auctionId: string, token: string | null): string {
@@ -97,21 +104,31 @@ export function useAuctionLiveSocket(auctionId: string): {
       reconnectAttempts += 1;
       setConnectionState("connecting");
       reconnectTimer = window.setTimeout(() => {
-        connect();
+        void connect();
       }, delay);
     };
 
-    const connect = () => {
+    const connect = async () => {
       if (!active) {
         return;
       }
 
       clearReconnectTimer();
+      setConnectionState("connecting");
 
       try {
-        const token = readCookie("token");
+        const token = await loadSocketToken();
+
+        if (!active) {
+          return;
+        }
+
+        if (!token) {
+          setConnectionState("disconnected");
+          return;
+        }
+
         socket = new WebSocket(buildWebSocketUrl(auctionId, token));
-        setConnectionState("connecting");
 
         socket.onopen = () => {
           if (!active) {
@@ -175,7 +192,7 @@ export function useAuctionLiveSocket(auctionId: string): {
           setConnectionState("error");
         }
       } finally {
-        connect();
+        void connect();
       }
     };
 
