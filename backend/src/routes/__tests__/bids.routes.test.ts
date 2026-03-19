@@ -29,6 +29,7 @@ const { mockTx, mockPrisma } = vi.hoisted(() => ({
     },
     user: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
     bidRequest: {
       findUnique: vi.fn(),
@@ -251,6 +252,8 @@ beforeEach(() => {
       },
     ],
   });
+  mockPrisma.user.findMany.mockResolvedValue([]);
+  mockPrisma.company.findMany.mockResolvedValue([]);
 });
 
 describe("POST /api/bids", () => {

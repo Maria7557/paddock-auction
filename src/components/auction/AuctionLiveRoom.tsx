@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useAuctionLiveSocket } from "@/src/hooks/useAuctionLiveSocket";
+import type { UiAuctionBidHistoryEntry } from "@/src/lib/api-client";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 import type { AuctionLiveSnapshot } from "@/src/types/auction";
@@ -29,10 +30,14 @@ type BidFeedEntry = {
   id: string;
   amount: number;
   timestamp: number;
+  sequenceNo: number;
   isLeader: boolean;
   isMine: boolean;
   isNew: boolean;
   source: "snapshot" | "optimistic";
+  initials: string;
+  locationLabel: string;
+  flag: string;
 };
 
 type GalleryPhoto = {
@@ -103,6 +108,12 @@ type BidFeedItemProps = {
 type WinnerOverlayProps = {
   lot: LotDetail;
   winner: WinnerData;
+};
+
+type AuctionPlanItem = {
+  index: number;
+  lotNumber: string;
+  title: string;
 };
 
 const API_MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? "";
@@ -188,15 +199,36 @@ function createFeedEntry(
   source: "snapshot" | "optimistic",
   isMine = false,
   isNew = true,
+  sequenceNo = 0,
 ): BidFeedEntry {
   return {
     id,
     amount,
     timestamp,
+    sequenceNo,
     isLeader: true,
     isMine,
     isNew,
     source,
+    initials: isMine ? "YO" : "MK",
+    locationLabel: isMine ? "Your company" : "Market",
+    flag: "",
+  };
+}
+
+function normalizeBidFeedEntry(entry: UiAuctionBidHistoryEntry, isNew: boolean): BidFeedEntry {
+  return {
+    id: entry.id,
+    amount: entry.amount_aed,
+    timestamp: Date.parse(entry.placed_at),
+    sequenceNo: entry.sequence_no,
+    isLeader: false,
+    isMine: entry.is_mine,
+    isNew,
+    source: "snapshot",
+    initials: entry.company_initials?.trim() || "MK",
+    locationLabel: entry.location_label?.trim() || entry.company_name?.trim() || "Market",
+    flag: entry.flag?.trim() || "",
   };
 }
 
@@ -266,12 +298,19 @@ function buildSpecRows(lot: LotDetail): SpecRow[] {
   return [
     { label: "Year", value: String(lot.year || "—") },
     { label: "Mileage", value: lot.mileageKm > 0 ? `${lot.mileageKm.toLocaleString("en-AE")} km` : "—" },
-    { label: "Color", value: lot.color || "—" },
-    { label: "Fuel", value: lot.fuelType || "—" },
-    { label: "Gearbox", value: lot.transmission || "—" },
-    { label: "Body", value: lot.bodyStyle || "—" },
+    { label: "Region Spec", value: lot.regionSpec || "—" },
     { label: "Condition", value: lot.condition || "—", green: true },
-    { label: "Region", value: lot.regionSpec || "—" },
+    { label: "Transmission", value: lot.transmission || "—" },
+    { label: "Fuel", value: lot.fuelType || "—" },
+    { label: "Body", value: lot.bodyStyle || "—" },
+    { label: "Drive", value: lot.driveType || "—" },
+    { label: "Exterior", value: lot.color || "—" },
+    { label: "Interior", value: lot.colorInterior || "—" },
+    { label: "Engine", value: lot.engine || "—" },
+    { label: "Airbags", value: lot.airbags || "—" },
+    { label: "Damage", value: lot.damage || "—" },
+    { label: "Seller", value: lot.sellerName || "—" },
+    { label: "Location", value: lot.location || "—" },
     { label: "VIN", value: lot.vin ? lot.vin.slice(-8) : "—", mono: true },
   ];
 }
@@ -285,6 +324,14 @@ function buildUpcomingLots(lot: LotDetail): UpcomingLot[] {
     make: item.title.split(" ").at(1) ?? "",
     model: item.title.split(" ").slice(2).join(" ") || "",
     startingBid: item.currentBidAed,
+  }));
+}
+
+function buildAuctionPlan(lot: LotDetail, upcomingLots: UpcomingLot[]): AuctionPlanItem[] {
+  return upcomingLots.slice(0, 5).map((item, index) => ({
+    index: index + 1,
+    lotNumber: formatLotNumber(item.lotNumber),
+    title: item.title || `${item.make} ${item.model}`.trim() || "Upcoming lot",
   }));
 }
 
@@ -418,20 +465,31 @@ function BidFeedItem({ entry, isNew }: BidFeedItemProps) {
 
   return (
     <div className={`${styles.feedItem} ${visible ? styles.feedItemVisible : ""}`}>
-      <div
-        className={`${styles.feedAvatar} ${entry.isLeader ? styles.feedAvatarLeader : ""} ${entry.isMine ? styles.feedAvatarMine : ""}`}
-      >
-        {entry.isMine ? "YOU" : "MKT"}
+      <div className={styles.feedAvatarWrap}>
+        <div
+          className={`${styles.feedAvatar} ${entry.isLeader ? styles.feedAvatarLeader : entry.isMine ? styles.feedAvatarMine : ""}`}
+        >
+          {entry.initials}
+        </div>
+        {entry.flag ? <div className={styles.feedFlag}>{entry.flag}</div> : null}
       </div>
 
       <div className={styles.feedText}>
-        <div className={`${styles.feedPrimary} ${entry.isLeader ? styles.feedPrimaryLeader : ""}`}>
-          {entry.isMine ? "YOU" : "MARKET"}
+        <div
+          className={`${styles.feedPrimary} ${
+            entry.isLeader ? styles.feedPrimaryLeader : entry.isMine ? styles.feedPrimaryMine : ""
+          }`}
+        >
+          {entry.locationLabel}
         </div>
         <div className={styles.feedSecondary}>{timeAgo(entry.timestamp)}</div>
       </div>
 
-      <div className={`${styles.feedAmount} ${entry.isLeader ? styles.feedAmountLeader : ""}`}>
+      <div
+        className={`${styles.feedAmount} ${
+          entry.isLeader ? styles.feedAmountLeader : entry.isMine ? styles.feedAmountMine : ""
+        }`}
+      >
         {formatAed(entry.amount)}
       </div>
     </div>
@@ -588,28 +646,49 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const photos = useMemo(() => buildGalleryPhotos(lot), [lot]);
   const specs = useMemo(() => buildSpecRows(lot), [lot]);
   const upcomingLots = useMemo(() => buildUpcomingLots(lot), [lot]);
+  const auctionPlan = useMemo(() => buildAuctionPlan(lot, upcomingLots), [lot, upcomingLots]);
   const hasBids = snapshot.totalBids > 0;
   const isFuseExpired = hasBids && fuseProgress <= 0 && fuseSeconds <= 0;
   const isLeading = bidFeed[0]?.isMine === true;
   const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
   const lotProgressLabel = `1 / ${Math.max(1, upcomingLots.length + 1)}`;
   const viewerCountLabel = "--";
+  const summaryFacts = useMemo(
+    () =>
+      [
+        lot.year > 0 ? String(lot.year) : null,
+        lot.mileageKm > 0 ? `${lot.mileageKm.toLocaleString("en-AE")} km` : null,
+      ].filter((fact): fact is string => fact !== null),
+    [lot.mileageKm, lot.year],
+  );
+  const hasDamage = useMemo(
+    () => lot.damageItems.length > 0 || (lot.damage.trim().length > 0 && lot.damage !== "None" && lot.damage !== "Not specified"),
+    [lot.damage, lot.damageItems.length],
+  );
+  const damageSummary = useMemo(
+    () => (lot.damageItems.length > 0 ? "Damage reported" : lot.damage),
+    [lot.damage, lot.damageItems.length],
+  );
+  const specPills = useMemo(
+    () =>
+      [
+        lot.regionSpec && lot.regionSpec !== "Not specified" ? `${lot.regionSpec} spec` : null,
+        lot.fuelType && lot.fuelType !== "Not specified" ? lot.fuelType : null,
+      ].filter((pill): pill is string => Boolean(pill && pill.trim())),
+    [lot.fuelType, lot.regionSpec],
+  );
 
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
-    const previousHtmlOverflow = html.style.overflow;
     const previousHtmlBackground = html.style.background;
-    const previousBodyOverflow = body.style.overflow;
     const previousBodyBackground = body.style.background;
     const chromeElements = Array.from(document.querySelectorAll("body > header, body > footer")).map((element) => ({
       element,
       display: element instanceof HTMLElement ? element.style.display : "",
     }));
 
-    html.style.overflow = "hidden";
     html.style.background = "#f7f9fb";
-    body.style.overflow = "hidden";
     body.style.background = "#f7f9fb";
 
     chromeElements.forEach(({ element }) => {
@@ -619,9 +698,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     });
 
     return () => {
-      html.style.overflow = previousHtmlOverflow;
       html.style.background = previousHtmlBackground;
-      body.style.overflow = previousBodyOverflow;
       body.style.background = previousBodyBackground;
 
       chromeElements.forEach(({ element, display }) => {
@@ -694,6 +771,45 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, [inlineError]);
 
   useEffect(() => {
+    let active = true;
+
+    const loadBidFeed = async () => {
+      try {
+        const payload = await api.ui.auctions.bids(auctionId, { limit: 40 }, { cache: "no-store" });
+
+        if (!active || !Array.isArray(payload.bids)) {
+          return;
+        }
+
+        setBidFeed((currentFeed) => {
+          const currentTopId = currentFeed[0]?.id ?? null;
+          const nextFeed = payload.bids
+            .slice()
+            .sort((left, right) => right.sequence_no - left.sequence_no)
+            .map((entry, index) => {
+              const normalized = normalizeBidFeedEntry(entry, index === 0 && entry.id !== currentTopId);
+
+              return {
+                ...normalized,
+                isLeader: index === 0,
+              };
+            });
+
+          return nextFeed.slice(0, 40);
+        });
+      } catch {
+        // Keep the current live feed if history metadata cannot be loaded.
+      }
+    };
+
+    void loadBidFeed();
+
+    return () => {
+      active = false;
+    };
+  }, [auctionId, snapshot.totalBids]);
+
+  useEffect(() => {
     if (!snapshot.lastBid || snapshot.lastBid.id === lastProcessedBidId) {
       return;
     }
@@ -705,6 +821,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
       "snapshot",
       false,
       true,
+      snapshot.lastBid.sequenceNo,
     );
 
     setBidFeed((currentFeed) => {
@@ -793,6 +910,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
       "optimistic",
       true,
       true,
+      snapshot.totalBids + 1,
     );
 
     setIsSubmittingBid(true);
@@ -845,20 +963,72 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
         <div className={styles.bodyGrid}>
           <div className={styles.leftPane}>
-            <div className={styles.lotHeader}>
-              <div className={styles.lotHeaderRow}>
-                <div className={styles.lotBadge}>LOT {formatLotNumber(lot.lotNumber)}</div>
-                <div className={styles.lotVin}>{lot.vin || "—"}</div>
-              </div>
-
-              <h1 className={styles.lotTitle}>
-                {lot.year} {lot.make} {lot.model}
-              </h1>
-              <div className={styles.lotTrim}>{lot.series || lot.title}</div>
-            </div>
-
             <div className={styles.heroRow}>
-              <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+              <div className={styles.leftColumn}>
+                <div className={styles.lotHeader}>
+                  <div className={styles.lotHeaderRow}>
+                    <div className={styles.lotBadge}>LOT {formatLotNumber(lot.lotNumber)}</div>
+                  </div>
+
+                  <div className={styles.titleBar}>
+                    <div className={styles.titleLeft}>
+                      <h1 className={styles.lotTitle}>{lot.title}</h1>
+
+                      <div className={styles.quickMeta}>
+                        <div className={styles.quickMetaFacts}>
+                          {summaryFacts.map((fact, index) => (
+                            <span key={`${fact}-${index}`}>
+                              {index > 0 ? <span className={styles.metaDot}>·</span> : null}
+                              <span>{fact}</span>
+                            </span>
+                          ))}
+                          {hasDamage ? (
+                            <span>
+                              {summaryFacts.length > 0 ? <span className={styles.metaDot}>·</span> : null}
+                              <span className={styles.damage}>{damageSummary}</span>
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {specPills.length > 0 ? (
+                        <div className={styles.specPills}>
+                          {specPills.map((pill) => (
+                            <span key={pill} className={styles.specPill}>
+                              {pill}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+
+                <div className={styles.block}>
+                  <div className={styles.blockLabel}>Vehicle Details</div>
+                  <SpecGrid specs={specs} />
+                </div>
+
+                {upcomingLots.length > 0 ? (
+                  <div className={styles.block}>
+                    <div className={styles.blockLabel}>Next Lots</div>
+                    <div className={styles.upcomingGrid}>
+                      {upcomingLots.map((item) => (
+                        <div key={item.id} className={styles.upcomingCard}>
+                          <div className={styles.upcomingLotLabel}>LOT {item.lotNumber}</div>
+                          <div className={styles.upcomingTitle}>
+                            {item.year > 0 ? `${item.year} ` : ""}
+                            {item.title || `${item.make} ${item.model}`.trim()}
+                          </div>
+                          <div className={styles.upcomingPrice}>from {formatAed(item.startingBid)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <div className={styles.rightPane}>
                 <div className={styles.currentBidSection}>
@@ -938,31 +1108,27 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                     <span>WS {connectionState}</span>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div className={styles.block}>
-              <div className={styles.blockLabel}>Specifications</div>
-              <SpecGrid specs={specs} />
-            </div>
-
-            {upcomingLots.length > 0 ? (
-              <div className={styles.block}>
-                <div className={styles.blockLabel}>Coming Up</div>
-                <div className={styles.upcomingGrid}>
-                  {upcomingLots.map((item) => (
-                    <div key={item.id} className={styles.upcomingCard}>
-                      <div className={styles.upcomingLotLabel}>LOT {item.lotNumber}</div>
-                      <div className={styles.upcomingTitle}>
-                        {item.year > 0 ? `${item.year} ` : ""}
-                        {item.title || `${item.make} ${item.model}`.trim()}
-                      </div>
-                      <div className={styles.upcomingPrice}>from {formatAed(item.startingBid)}</div>
+                <div className={styles.planSection}>
+                  <div className={styles.sectionKicker}>Auction Plan</div>
+                  {auctionPlan.length > 0 ? (
+                    <div className={styles.planTrack}>
+                      {auctionPlan.map((item) => (
+                        <div key={`${item.index}-${item.lotNumber}`} className={styles.planStep}>
+                          <div className={styles.planIndex}>{item.index}</div>
+                          <div className={styles.planContent}>
+                            <div className={styles.planLot}>LOT {item.lotNumber}</div>
+                            <div className={styles.planTitle}>{item.title}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className={styles.planEmpty}>No upcoming lots in this session yet</div>
+                  )}
                 </div>
               </div>
-            ) : null}
+            </div>
           </div>
         </div>
       </div>

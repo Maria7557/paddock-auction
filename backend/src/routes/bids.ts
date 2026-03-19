@@ -10,7 +10,7 @@ import {
   ensureAuctionDepositLock,
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
-import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { hydrateAuthIfPresent, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
 import { publishAuctionRealtimeSnapshot } from "./auction-ws";
 
 type DecimalLike =
@@ -25,6 +25,17 @@ type DecimalLike =
     };
 
 type JsonRecord = Record<string, unknown>;
+
+type BidderCompanySummary = {
+  id: string;
+  name: string;
+  country: string;
+};
+
+type BidderUserSummary = {
+  id: string;
+  emirate: string | null;
+};
 
 type AuctionLockRow = {
   id: string;
@@ -287,6 +298,135 @@ async function serializeBid(bid: {
     amount: await toNumberValue(bid.amount),
     sequenceNo: bid.sequenceNo,
     createdAt: bid.createdAt.toISOString(),
+  };
+}
+
+function normalizeCountryLabel(country: string | null | undefined): string {
+  const value = country?.trim();
+
+  if (!value) {
+    return "UAE";
+  }
+
+  const normalized = value.toLowerCase();
+
+  if (normalized === "united arab emirates" || normalized === "uae" || normalized === "u.a.e.") {
+    return "UAE";
+  }
+
+  if (
+    normalized === "united states" ||
+    normalized === "united states of america" ||
+    normalized === "usa" ||
+    normalized === "u.s.a."
+  ) {
+    return "USA";
+  }
+
+  return value;
+}
+
+function countryToFlag(country: string | null | undefined): string {
+  const normalized = country?.trim().toLowerCase() ?? "";
+  const codeMap = new Map<string, string>([
+    ["uae", "AE"],
+    ["u.a.e.", "AE"],
+    ["united arab emirates", "AE"],
+    ["saudi arabia", "SA"],
+    ["ksa", "SA"],
+    ["qatar", "QA"],
+    ["kuwait", "KW"],
+    ["oman", "OM"],
+    ["bahrain", "BH"],
+    ["united states", "US"],
+    ["united states of america", "US"],
+    ["usa", "US"],
+    ["u.s.a.", "US"],
+    ["canada", "CA"],
+    ["united kingdom", "GB"],
+    ["uk", "GB"],
+    ["great britain", "GB"],
+    ["egypt", "EG"],
+    ["jordan", "JO"],
+    ["lebanon", "LB"],
+  ]);
+
+  const code = codeMap.get(normalized);
+
+  if (!code) {
+    return "";
+  }
+
+  return Array.from(code.toUpperCase())
+    .map((char) => String.fromCodePoint(127397 + char.charCodeAt(0)))
+    .join("");
+}
+
+function buildCompanyInitials(name: string | null | undefined): string {
+  const cleaned = name?.trim();
+
+  if (!cleaned) {
+    return "MK";
+  }
+
+  const parts = cleaned
+    .split(/[^A-Za-z0-9]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return cleaned.slice(0, 2).toUpperCase();
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
+function buildBidLocationLabel(city: string | null | undefined, country: string | null | undefined): string {
+  const cityValue = city?.trim();
+  const countryLabel = normalizeCountryLabel(country);
+
+  if (cityValue && cityValue.toLowerCase() !== countryLabel.toLowerCase()) {
+    return `${cityValue}, ${countryLabel}`;
+  }
+
+  return countryLabel;
+}
+
+async function serializeBidHistoryEntry(
+  bid: {
+    id: string;
+    amount: DecimalLike;
+    sequenceNo: number;
+    createdAt: Date;
+    auctionId: string;
+    companyId: string;
+    userId: string;
+  },
+  input: {
+    viewerCompanyId: string | null;
+    companyById: Map<string, BidderCompanySummary>;
+    userById: Map<string, BidderUserSummary>;
+  },
+): Promise<JsonRecord> {
+  const company = input.companyById.get(bid.companyId);
+  const user = input.userById.get(bid.userId);
+  const companyName = company?.name?.trim() || "Market bidder";
+  const country = company?.country?.trim() || "United Arab Emirates";
+  const city = user?.emirate?.trim() || null;
+
+  return {
+    ...(await serializeBid(bid)),
+    companyName,
+    companyInitials: buildCompanyInitials(companyName),
+    country,
+    city,
+    locationLabel: buildBidLocationLabel(city, country),
+    flag: countryToFlag(country),
+    isMine: input.viewerCompanyId === bid.companyId,
   };
 }
 
@@ -746,8 +886,14 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.get(
+  fastify.get<{
+    Params: unknown;
+    Querystring: unknown;
+  }>(
     "/auctions/:id/bids",
+    {
+      preHandler: hydrateAuthIfPresent,
+    },
     async function listAuctionBidsHandler(
       request: FastifyRequest<{
         Params: unknown;
@@ -801,19 +947,60 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       const hasNextPage = bids.length > limit;
       const pageItems = hasNextPage ? bids.slice(0, limit) : bids;
       const nextCursor = hasNextPage ? pageItems[pageItems.length - 1]?.id ?? null : null;
+      const companyIds = Array.from(new Set(pageItems.map((bid) => bid.companyId)));
+      const userIds = Array.from(new Set(pageItems.map((bid) => bid.userId)));
+      const [companies, users] = await Promise.all([
+        companyIds.length > 0
+          ? prisma.company.findMany({
+              where: {
+                id: {
+                  in: companyIds,
+                },
+              },
+              select: {
+                id: true,
+                name: true,
+                country: true,
+              },
+            })
+          : Promise.resolve([]),
+        userIds.length > 0
+          ? prisma.user.findMany({
+              where: {
+                id: {
+                  in: userIds,
+                },
+              },
+              select: {
+                id: true,
+                emirate: true,
+              },
+            })
+          : Promise.resolve([]),
+      ]);
+      const companyById = new Map(companies.map((company) => [company.id, company]));
+      const userById = new Map(users.map((user) => [user.id, user]));
+      const viewerCompanyId = request.auth?.companyId?.trim() ?? null;
 
       await reply.code(200).send({
         bids: await Promise.all(
-          pageItems.map(async (bid) =>
-            serializeBid({
-              id: bid.id,
-              auctionId: bid.auctionId,
-              companyId: bid.companyId,
-              userId: bid.userId,
-              amount: bid.amount,
-              sequenceNo: bid.sequenceNo,
-              createdAt: bid.createdAt,
-            }),
+          pageItems.map((bid) =>
+            serializeBidHistoryEntry(
+              {
+                id: bid.id,
+                auctionId: bid.auctionId,
+                companyId: bid.companyId,
+                userId: bid.userId,
+                amount: bid.amount,
+                sequenceNo: bid.sequenceNo,
+                createdAt: bid.createdAt,
+              },
+              {
+                viewerCompanyId,
+                companyById,
+                userById,
+              },
+            ),
           ),
         ),
         nextCursor,

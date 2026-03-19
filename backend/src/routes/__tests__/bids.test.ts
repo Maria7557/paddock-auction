@@ -8,6 +8,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 const mockPrisma = {
   user: {
     findUnique: vi.fn(),
+    findMany: vi.fn(),
+  },
+  company: {
+    findMany: vi.fn(),
   },
   bidRequest: {
     findUnique: vi.fn(),
@@ -94,6 +98,8 @@ beforeEach(() => {
       },
     ],
   });
+  mockPrisma.user.findMany.mockResolvedValue([]);
+  mockPrisma.company.findMany.mockResolvedValue([]);
 });
 
 afterEach(async () => {
@@ -459,6 +465,14 @@ describe("bidsRoutes", () => {
   it("returns paginated bid history with nextCursor", async () => {
     const server = await buildTestServer();
 
+    mockPrisma.company.findMany.mockResolvedValue([
+      { id: "company-3", name: "Market Kingdom", country: "Saudi Arabia" },
+      { id: "company-2", name: "Doha Motors", country: "Qatar" },
+    ]);
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: "user-3", emirate: "Riyadh" },
+      { id: "user-2", emirate: "Doha" },
+    ]);
     mockPrisma.bid.findMany.mockResolvedValue([
       {
         id: "bid-3",
@@ -505,6 +519,13 @@ describe("bidsRoutes", () => {
           amount: 130,
           sequenceNo: 3,
           createdAt: "2026-01-01T10:02:00.000Z",
+          companyName: "Market Kingdom",
+          companyInitials: "MK",
+          country: "Saudi Arabia",
+          city: "Riyadh",
+          locationLabel: "Riyadh, Saudi Arabia",
+          flag: "🇸🇦",
+          isMine: false,
         },
         {
           id: "bid-2",
@@ -514,6 +535,13 @@ describe("bidsRoutes", () => {
           amount: 120,
           sequenceNo: 2,
           createdAt: "2026-01-01T10:01:00.000Z",
+          companyName: "Doha Motors",
+          companyInitials: "DM",
+          country: "Qatar",
+          city: "Doha",
+          locationLabel: "Doha, Qatar",
+          flag: "🇶🇦",
+          isMine: false,
         },
       ],
       nextCursor: "bid-2",

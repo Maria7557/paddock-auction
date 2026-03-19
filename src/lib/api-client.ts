@@ -26,6 +26,21 @@ export type PasswordResetConfirmInput = {
   confirmPassword: string;
 };
 
+export type UiAuctionBidHistoryEntry = {
+  id: string;
+  bidder_alias: string;
+  amount_aed: number;
+  placed_at: string;
+  sequence_no: number;
+  is_mine: boolean;
+  company_initials: string;
+  company_name: string;
+  country: string;
+  city: string | null;
+  location_label: string;
+  flag: string;
+};
+
 export class ApiError extends Error {
   statusCode: number;
   payload: unknown;
@@ -371,16 +386,7 @@ export const api = {
         id: string,
         query?: SearchParamsInput,
         options?: RequestInit,
-      ): Promise<{
-        bids: Array<{
-          id: string;
-          bidder_alias: string;
-          amount_aed: number;
-          placed_at: string;
-          sequence_no: number;
-          is_mine: boolean;
-        }>;
-      }> => {
+      ): Promise<{ bids: UiAuctionBidHistoryEntry[] }> => {
         const payload = await getRequest<{
           bids?: Array<{
             id: string;
@@ -389,17 +395,33 @@ export const api = {
             sequenceNo: number;
             companyId?: string;
             userId?: string;
+            companyName?: string;
+            companyInitials?: string;
+            country?: string;
+            city?: string | null;
+            locationLabel?: string;
+            flag?: string;
+            isMine?: boolean;
           }>;
         }>(appendSearchParams(`/api/auctions/${id}/bids`, query), options);
 
         return {
           bids: (payload.bids ?? []).map((bid) => ({
             id: bid.id,
-            bidder_alias: bid.companyId ? `Company ${bid.companyId.slice(-4).toUpperCase()}` : "Bidder",
+            bidder_alias:
+              bid.locationLabel?.trim() ||
+              bid.companyName?.trim() ||
+              (bid.companyId ? `Company ${bid.companyId.slice(-4).toUpperCase()}` : "Bidder"),
             amount_aed: Number(bid.amount ?? 0),
             placed_at: bid.createdAt,
             sequence_no: Number(bid.sequenceNo ?? 0),
-            is_mine: false,
+            is_mine: bid.isMine === true,
+            company_initials: bid.companyInitials?.trim() || "MK",
+            company_name: bid.companyName?.trim() || "Market bidder",
+            country: bid.country?.trim() || "",
+            city: bid.city?.trim() || null,
+            location_label: bid.locationLabel?.trim() || bid.companyName?.trim() || "Market",
+            flag: bid.flag?.trim() || "",
           })),
         };
       },

@@ -75,7 +75,6 @@
   --color-primary: #116a43;
   --color-bg: #f7f9fb;
   min-height: 100dvh;
-  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
@@ -188,31 +187,34 @@
 
 .bodyGrid {
   flex: 1;
-  max-height: calc(100dvh - 48px);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .leftPane {
-  overflow-y: auto;
+  overflow: visible;
   padding: 20px 24px 80px;
 }
 
 .heroRow {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr);
-  align-items: stretch;
+  align-items: start;
   gap: 20px;
 }
 
+.leftColumn {
+  min-width: 0;
+}
+
 .lotHeader {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .lotHeaderRow {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
@@ -228,27 +230,70 @@
   letter-spacing: 0.1em;
 }
 
-.lotVin {
-  color: #b0b9c4;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
 .lotTitle {
-  margin: 0 0 4px;
-  color: #1a1f27;
+  margin: 0 0 10px;
+  color: var(--ink-primary);
   font-family: var(--font-body);
-  font-size: 26px;
+  font-size: clamp(22px, 3vw, 34px);
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
-.lotTrim {
-  color: #6b7584;
-  font-family: var(--font-body);
-  font-size: 14px;
+.titleBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.titleLeft {
+  min-width: 0;
+  flex: 1;
+}
+
+.quickMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  color: var(--ink-secondary);
+  font-size: 13.5px;
+}
+
+.quickMetaFacts {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.metaDot {
+  color: var(--line-strong);
+  margin: 0 7px 0 0;
+}
+
+.damage {
+  color: var(--amber-600);
+  font-weight: 600;
+}
+
+.specPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.specPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -375,6 +420,7 @@
 
 .block {
   margin-top: 16px;
+  width: 100%;
 }
 
 .blockLabel,
@@ -463,13 +509,15 @@
 }
 
 .rightPane {
+  position: sticky;
+  top: 68px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: #fff;
   border: 1px solid #e8edf2;
   border-radius: 12px;
-  min-height: 100%;
+  max-height: calc(100dvh - 92px);
   box-shadow: var(--shadow-soft);
 }
 
@@ -699,6 +747,7 @@
 
 .feedSection {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   padding: 0 20px;
 }
@@ -754,6 +803,13 @@
   transform: translateY(0);
 }
 
+.feedAvatarWrap {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  height: 52px;
+}
+
 .feedAvatar {
   width: 36px;
   height: 36px;
@@ -768,6 +824,22 @@
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
+}
+
+.feedFlag {
+  position: absolute;
+  left: 20px;
+  bottom: 2px;
+  min-width: 18px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .feedAvatarLeader {
@@ -788,11 +860,12 @@
 }
 
 .feedPrimary {
-  color: #4b5563;
+  color: var(--ink-primary);
   font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -801,23 +874,31 @@
   color: var(--color-primary);
 }
 
+.feedPrimaryMine {
+  color: var(--blue-600);
+}
+
 .feedSecondary {
-  margin-top: 1px;
-  color: #b0b9c4;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  margin-top: 4px;
+  color: var(--ink-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
 }
 
 .feedAmount {
   flex-shrink: 0;
-  color: #8a939e;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  color: #4b5563;
+  font-family: var(--font-body);
+  font-size: 15px;
   font-weight: 700;
 }
 
 .feedAmountLeader {
   color: var(--color-primary);
+}
+
+.feedAmountMine {
+  color: var(--blue-600);
 }
 
 .footerMeta {
@@ -838,6 +919,72 @@
   color: #9aa3ae;
   font-family: var(--font-mono);
   font-size: 10px;
+}
+
+.planSection {
+  padding: 14px 20px 18px;
+  border-top: 1px solid #f0f3f6;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.planTrack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e8edf2;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.planIndex {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef8f2;
+  color: var(--green-600);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.planContent {
+  min-width: 0;
+  flex: 1;
+}
+
+.planLot {
+  color: #7b8794;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.planTitle {
+  margin-top: 4px;
+  color: var(--ink-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.planEmpty {
+  color: #9aa3ae;
+  font-family: var(--font-body);
+  font-size: 13px;
 }
 
 .winnerOverlay {
@@ -914,6 +1061,9 @@
   }
 
   .rightPane {
+    position: static;
+    top: auto;
+    max-height: none;
     min-height: 0;
   }
 }
@@ -943,7 +1093,8 @@
   .currentBidSection,
   .bidPanel,
   .feedSection,
-  .footerMeta {
+  .footerMeta,
+  .planSection {
     padding-left: 14px;
     padding-right: 14px;
   }
