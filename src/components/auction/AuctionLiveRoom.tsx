@@ -857,7 +857,89 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
               <div className={styles.lotTrim}>{lot.series || lot.title}</div>
             </div>
 
-            <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+            <div className={styles.heroRow}>
+              <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+
+              <div className={styles.rightPane}>
+                <div className={styles.currentBidSection}>
+                  <div className={styles.sectionKicker}>Current Bid</div>
+                  <div className={`${styles.currentBidValue} ${pulseCurrentBid ? styles.currentBidValuePulse : ""}`}>
+                    {formatAed(snapshot.currentPrice || 0)}
+                  </div>
+
+                  <div className={styles.statsRow}>
+                    <div className={styles.statItem}>
+                      <div className={styles.statLabel}>BIDS</div>
+                      <div className={styles.statValue}>{snapshot.totalBids}</div>
+                    </div>
+
+                    <div className={styles.statItem}>
+                      <div className={styles.statLabel}>STEP</div>
+                      <div className={`${styles.statValue} ${styles.statValueAccent}`}>
+                        +{formatAed(snapshot.minIncrement)}
+                      </div>
+                    </div>
+
+                    <div className={styles.statItem}>
+                      <div className={styles.statLabel}>STARTED</div>
+                      <div className={styles.statValue}>{formatAed(snapshot.startingPrice)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.bidPanel}>
+                  <FuseBidButton
+                    onBid={() => void handleBid()}
+                    nextAmount={nextBidAmount}
+                    bidStep={snapshot.minIncrement}
+                    fuseProgress={fuseProgress}
+                    fuseSeconds={fuseSeconds}
+                    isLeading={isLeading}
+                    isLoading={isSubmittingBid}
+                    disabled={!isLive}
+                    expired={isFuseExpired}
+                    hasBids={hasBids}
+                  />
+
+                  {inlineError ? <div className={styles.inlineError}>{inlineError}</div> : null}
+                </div>
+
+                <div className={styles.feedSection}>
+                  <div className={styles.feedHeader}>
+                    <div className={styles.sectionKicker}>Live Bids</div>
+                    <div className={styles.feedHeaderMeta}>
+                      <IconUsers size={12} strokeWidth={2} />
+                      <span>{snapshot.totalBids} total</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.feedScroller}>
+                    {bidFeed.length === 0 ? (
+                      <div className={styles.feedEmpty}>No bids yet — be the first</div>
+                    ) : (
+                      bidFeed.map((entry, index) => (
+                        <BidFeedItem key={entry.id} entry={entry} isNew={index === 0 && entry.isNew} />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className={styles.footerMeta}>
+                  <div className={styles.footerMetaItem}>
+                    <IconClock size={12} strokeWidth={2} />
+                    <span>{formatRemainingTime(auctionRemainingMs)}</span>
+                  </div>
+                  <div className={styles.footerMetaItem}>
+                    <IconTag size={12} strokeWidth={2} />
+                    <span>{snapshot.state}</span>
+                  </div>
+                  <div className={styles.footerMetaItem}>
+                    <IconZap size={12} strokeWidth={2} />
+                    <span>WS {connectionState}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className={styles.block}>
               <div className={styles.blockLabel}>Specifications</div>
@@ -881,84 +963,6 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 </div>
               </div>
             ) : null}
-          </div>
-
-          <div className={styles.rightPane}>
-            <div className={styles.currentBidSection}>
-              <div className={styles.sectionKicker}>Current Bid</div>
-              <div className={`${styles.currentBidValue} ${pulseCurrentBid ? styles.currentBidValuePulse : ""}`}>
-                {formatAed(snapshot.currentPrice || 0)}
-              </div>
-
-              <div className={styles.statsRow}>
-                <div className={styles.statItem}>
-                  <div className={styles.statLabel}>BIDS</div>
-                  <div className={styles.statValue}>{snapshot.totalBids}</div>
-                </div>
-
-                <div className={styles.statItem}>
-                  <div className={styles.statLabel}>STEP</div>
-                  <div className={`${styles.statValue} ${styles.statValueAccent}`}>+{formatAed(snapshot.minIncrement)}</div>
-                </div>
-
-                <div className={styles.statItem}>
-                  <div className={styles.statLabel}>STARTED</div>
-                  <div className={styles.statValue}>{formatAed(snapshot.startingPrice)}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.bidPanel}>
-              <FuseBidButton
-                onBid={() => void handleBid()}
-                nextAmount={nextBidAmount}
-                bidStep={snapshot.minIncrement}
-                fuseProgress={fuseProgress}
-                fuseSeconds={fuseSeconds}
-                isLeading={isLeading}
-                isLoading={isSubmittingBid}
-                disabled={!isLive}
-                expired={isFuseExpired}
-                hasBids={hasBids}
-              />
-
-              {inlineError ? <div className={styles.inlineError}>{inlineError}</div> : null}
-            </div>
-
-            <div className={styles.feedSection}>
-              <div className={styles.feedHeader}>
-                <div className={styles.sectionKicker}>Live Bids</div>
-                <div className={styles.feedHeaderMeta}>
-                  <IconUsers size={12} strokeWidth={2} />
-                  <span>{snapshot.totalBids} total</span>
-                </div>
-              </div>
-
-              <div className={styles.feedScroller}>
-                {bidFeed.length === 0 ? (
-                  <div className={styles.feedEmpty}>No bids yet — be the first</div>
-                ) : (
-                  bidFeed.map((entry, index) => (
-                    <BidFeedItem key={entry.id} entry={entry} isNew={index === 0 && entry.isNew} />
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className={styles.footerMeta}>
-              <div className={styles.footerMetaItem}>
-                <IconClock size={12} strokeWidth={2} />
-                <span>{formatRemainingTime(auctionRemainingMs)}</span>
-              </div>
-              <div className={styles.footerMetaItem}>
-                <IconTag size={12} strokeWidth={2} />
-                <span>{snapshot.state}</span>
-              </div>
-              <div className={styles.footerMetaItem}>
-                <IconZap size={12} strokeWidth={2} />
-                <span>WS {connectionState}</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
