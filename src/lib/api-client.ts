@@ -1,3 +1,5 @@
+import type { AuctionLiveSnapshot } from "@/src/types/auction";
+
 type PrimitiveSearchValue = string | number | boolean | null | undefined;
 type SearchValue = PrimitiveSearchValue | PrimitiveSearchValue[];
 
@@ -273,6 +275,25 @@ async function postForm<T>(path: string, body: FormData, options?: RequestInit):
   });
 }
 
+async function postBidRequest<T>(
+  auctionId: string,
+  amount: number,
+  idempotencyKey: string,
+  options?: RequestInit,
+): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set("Idempotency-Key", idempotencyKey);
+
+  return postJson<T>(
+    "/api/bids",
+    { auctionId, amount, idempotencyKey },
+    {
+      ...options,
+      headers,
+    },
+  );
+}
+
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -304,6 +325,8 @@ export const api = {
       getRequest<T>(appendSearchParams("/api/auctions", query), options),
     get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
       getRequest<T>(`/api/auctions/${id}`, options),
+    getLiveSnapshot: async (id: string, options?: RequestInit): Promise<AuctionLiveSnapshot> =>
+      getRequest<AuctionLiveSnapshot>(`/api/auctions/${id}/live-snapshot`, options),
     liveState: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
       getRequest<T>(`/api/auctions/${id}/live`, options),
     live: async (id: string, options?: RequestInit): Promise<{ currentPrice?: number; endsAt?: string; state?: string }> => {
@@ -383,8 +406,18 @@ export const api = {
     },
   },
   bids: {
-    place: async <T = unknown>(auctionId: string, amount: number, idempotencyKey: string, options?: RequestInit): Promise<T> =>
-      postJson<T>("/api/bids", { auctionId, amount, idempotencyKey }, options),
+    place: async <T = unknown>(
+      auctionId: string,
+      amount: number,
+      idempotencyKey: string,
+      options?: RequestInit,
+    ): Promise<T> => postBidRequest<T>(auctionId, amount, idempotencyKey, options),
+    placeBid: async <T = unknown>(
+      auctionId: string,
+      amount: number,
+      idempotencyKey: string,
+      options?: RequestInit,
+    ): Promise<T> => postBidRequest<T>(auctionId, amount, idempotencyKey, options),
   },
   seller: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>

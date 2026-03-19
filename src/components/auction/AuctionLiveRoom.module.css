@@ -1,0 +1,513 @@
+.page {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg-page);
+  color: var(--ink-primary);
+  padding: 24px;
+}
+
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 auto 24px;
+  width: min(1360px, 100%);
+}
+
+.topBarMain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kicker {
+  color: var(--green-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.04;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 15px;
+}
+
+.topBarStatus {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.liveBadge,
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.liveBadge {
+  background: var(--green-100);
+  border-color: transparent;
+  color: var(--green-700);
+}
+
+.connectionDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connectionConnected {
+  background: var(--green-600);
+}
+
+.connectionConnecting,
+.connectionDisconnected {
+  background: var(--ink-muted);
+}
+
+.connectionError {
+  background: var(--red-600);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.95fr) minmax(320px, 0.9fr);
+  gap: 24px;
+  width: min(1360px, 100%);
+  margin: 0 auto;
+}
+
+.gallerySection,
+.detailsSection,
+.panelSection {
+  min-width: 0;
+}
+
+.galleryMain {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+.galleryImage,
+.thumbnailImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.galleryFallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-muted);
+}
+
+.galleryCounter {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-primary);
+  color: var(--bg-card);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.thumbnailRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.thumbnailButton {
+  flex: 0 0 84px;
+  height: 60px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.thumbnailActive {
+  border-color: var(--green-600);
+}
+
+.sectionCard,
+.bidCard {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.sectionCard {
+  padding: 24px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sectionHeader h2,
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.headerMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.specGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.specCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+}
+
+.specLabel {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.specValue {
+  color: var(--ink-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.descriptionBlock {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+.descriptionBlock p {
+  margin: 8px 0 0;
+}
+
+.bidCard {
+  position: sticky;
+  top: 24px;
+  padding: 20px;
+  box-shadow: var(--shadow-lift);
+}
+
+.bidCardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bidEyebrow {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.bidPrice {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.bidStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fuseWrap {
+  margin-top: 18px;
+}
+
+.fuseBar {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px 999px 0 0;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
+}
+
+.fuseFill {
+  height: 100%;
+  background: var(--green-600);
+  transition: width 0.3s ease;
+}
+
+.bidButton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 92px;
+  border: 1px solid var(--green-600);
+  border-radius: 0 0 16px 16px;
+  background: var(--green-600);
+  color: var(--bg-card);
+  cursor: pointer;
+  padding: 18px 16px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.bidButton:hover:not(:disabled) {
+  background: var(--green-700);
+  border-color: var(--green-700);
+  transform: translateY(-1px);
+}
+
+.bidButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bidButtonMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.bidButtonSub {
+  color: var(--green-100);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inlineError {
+  margin: 12px 0 0;
+  border-radius: 10px;
+  background: var(--red-100);
+  color: var(--red-600);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+}
+
+.feedSection {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.feedList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.feedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-subtle);
+}
+
+.feedRowOwn {
+  background: var(--green-100);
+}
+
+.feedMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.feedAmount {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.feedTimestamp {
+  color: var(--ink-muted);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12px;
+}
+
+.feedBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.feedBadgeLeader {
+  background: var(--green-600);
+  color: var(--bg-card);
+}
+
+.feedEmpty {
+  padding: 18px 16px;
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.overlayCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  padding: 28px 32px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lift);
+}
+
+.overlayEyebrow {
+  color: var(--amber-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  }
+
+  .detailsSection {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 18px;
+  }
+
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bidCard {
+    position: static;
+  }
+
+  .specGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .topBarStatus {
+    flex-wrap: wrap;
+  }
+
+  .bidButton {
+    min-height: 84px;
+  }
+
+  .thumbnailButton {
+    flex-basis: 72px;
+    height: 52px;
+  }
+}

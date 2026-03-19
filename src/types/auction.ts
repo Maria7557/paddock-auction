@@ -43,3 +43,23 @@ export interface PlatformStats {
   verifiedBuyers: number;
   maxDiscountPct: number;
 }
+
+export interface AuctionLiveSnapshot {
+  auctionId: string;
+  state: string;
+  currentPrice: number;
+  minIncrement: number;
+  startingPrice: number;
+  buyNowPrice: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  extensionCount: number;
+  totalBids: number;
+  highestBidId: string | null;
+  lastBid: {
+    id: string;
+    amount: number;
+    sequenceNo: number;
+    createdAt: string;
+  } | null;
+}
