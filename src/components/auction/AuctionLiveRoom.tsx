@@ -963,71 +963,53 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
         <div className={styles.bodyGrid}>
           <div className={styles.leftPane}>
-            <div className={styles.heroRow}>
-              <div className={styles.leftColumn}>
-                <div className={styles.lotHeader}>
-                  <div className={styles.lotHeaderRow}>
-                    <div className={styles.lotBadge}>LOT {formatLotNumber(lot.lotNumber)}</div>
-                  </div>
+            <div className={styles.lotHeader}>
+              <div className={styles.lotHeaderRow}>
+                <div className={styles.lotBadge}>LOT {formatLotNumber(lot.lotNumber)}</div>
+              </div>
 
-                  <div className={styles.titleBar}>
-                    <div className={styles.titleLeft}>
-                      <h1 className={styles.lotTitle}>{lot.title}</h1>
+              <div className={styles.titleBar}>
+                <div className={styles.titleLeft}>
+                  <h1 className={styles.lotTitle}>{lot.title}</h1>
 
-                      <div className={styles.quickMeta}>
-                        <div className={styles.quickMetaFacts}>
-                          {summaryFacts.map((fact, index) => (
-                            <span key={`${fact}-${index}`}>
-                              {index > 0 ? <span className={styles.metaDot}>·</span> : null}
-                              <span>{fact}</span>
-                            </span>
-                          ))}
-                          {hasDamage ? (
-                            <span>
-                              {summaryFacts.length > 0 ? <span className={styles.metaDot}>·</span> : null}
-                              <span className={styles.damage}>{damageSummary}</span>
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {specPills.length > 0 ? (
-                        <div className={styles.specPills}>
-                          {specPills.map((pill) => (
-                            <span key={pill} className={styles.specPill}>
-                              {pill}
-                            </span>
-                          ))}
-                        </div>
+                  <div className={styles.quickMeta}>
+                    <div className={styles.quickMetaFacts}>
+                      {summaryFacts.map((fact, index) => (
+                        <span key={`${fact}-${index}`}>
+                          {index > 0 ? <span className={styles.metaDot}>·</span> : null}
+                          <span>{fact}</span>
+                        </span>
+                      ))}
+                      {hasDamage ? (
+                        <span>
+                          {summaryFacts.length > 0 ? <span className={styles.metaDot}>·</span> : null}
+                          <span className={styles.damage}>{damageSummary}</span>
+                        </span>
                       ) : null}
                     </div>
                   </div>
-                </div>
 
+                  {specPills.length > 0 ? (
+                    <div className={styles.specPills}>
+                      {specPills.map((pill) => (
+                        <span key={pill} className={styles.specPill}>
+                          {pill}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.heroRow}>
+              <div className={styles.leftColumn}>
                 <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
 
                 <div className={styles.block}>
                   <div className={styles.blockLabel}>Vehicle Details</div>
                   <SpecGrid specs={specs} />
                 </div>
-
-                {upcomingLots.length > 0 ? (
-                  <div className={styles.block}>
-                    <div className={styles.blockLabel}>Next Lots</div>
-                    <div className={styles.upcomingGrid}>
-                      {upcomingLots.map((item) => (
-                        <div key={item.id} className={styles.upcomingCard}>
-                          <div className={styles.upcomingLotLabel}>LOT {item.lotNumber}</div>
-                          <div className={styles.upcomingTitle}>
-                            {item.year > 0 ? `${item.year} ` : ""}
-                            {item.title || `${item.make} ${item.model}`.trim()}
-                          </div>
-                          <div className={styles.upcomingPrice}>from {formatAed(item.startingBid)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
 
               <div className={styles.rightPane}>
@@ -1129,6 +1111,24 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 </div>
               </div>
             </div>
+
+            {upcomingLots.length > 0 ? (
+              <div className={styles.block}>
+                <div className={styles.blockLabel}>Next Lots</div>
+                <div className={styles.upcomingGrid}>
+                  {upcomingLots.map((item) => (
+                    <div key={item.id} className={styles.upcomingCard}>
+                      <div className={styles.upcomingLotLabel}>LOT {item.lotNumber}</div>
+                      <div className={styles.upcomingTitle}>
+                        {item.year > 0 ? `${item.year} ` : ""}
+                        {item.title || `${item.make} ${item.model}`.trim()}
+                      </div>
+                      <div className={styles.upcomingPrice}>from {formatAed(item.startingBid)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
