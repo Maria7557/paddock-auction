@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useAuctionLiveSocket } from "@/src/hooks/useAuctionLiveSocket";
+import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
 import type { UiAuctionBidHistoryEntry } from "@/src/lib/api-client";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
@@ -75,10 +77,14 @@ type UpcomingLot = {
 };
 
 type WinnerData = {
+  variant: "won" | "sold" | "closed";
   amount: number;
   flag: string;
   isMine: boolean;
+  title: string;
+  kicker: string;
   label: string;
+  nextLot: UpcomingLot | null;
 };
 
 type BuyerTier = "STANDARD" | "VIP";
@@ -164,6 +170,7 @@ type BidFeedItemProps = {
 type WinnerOverlayProps = {
   lot: LotDetail;
   winner: WinnerData;
+  heroImageUrl: string | null;
 };
 
 type AuctionPlanItem = {
@@ -186,6 +193,8 @@ type CountdownParts = {
   minutes: string;
   seconds: string;
 };
+
+type TransitionState = "idle" | "nextLot" | "sessionEnded";
 
 const API_MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? "";
 
@@ -786,7 +795,7 @@ function FuseBidButton({
   );
 }
 
-function WinnerOverlay({ lot, winner }: WinnerOverlayProps) {
+function WinnerOverlay({ lot, winner, heroImageUrl }: WinnerOverlayProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -799,19 +808,50 @@ function WinnerOverlay({ lot, winner }: WinnerOverlayProps) {
 
   return (
     <div className={`${styles.winnerOverlay} ${visible ? styles.winnerOverlayVisible : ""}`}>
-      <div className={styles.winnerIcon}>{winner.flag}</div>
-      <div className={styles.winnerKicker}>Lot {formatLotNumber(lot.lotNumber)} — Sold</div>
-      <div className={styles.winnerAmount}>{formatAed(winner.amount)}</div>
-      <div className={styles.winnerMeta}>{winner.label}</div>
-      <div className={styles.winnerBarTrack}>
-        <div className={styles.winnerBarFill} />
+      {heroImageUrl ? (
+        <div
+          className={styles.winnerBackdrop}
+          style={{ backgroundImage: `linear-gradient(rgba(247,249,251,0.66), rgba(247,249,251,0.95)), url(${heroImageUrl})` }}
+        />
+      ) : null}
+
+      <div className={styles.winnerSurface}>
+        <div className={styles.winnerIcon}>{winner.flag}</div>
+        <div className={styles.winnerKicker}>{winner.kicker || `Lot ${formatLotNumber(lot.lotNumber)} — Sold`}</div>
+        <div className={styles.winnerTitle}>{winner.title}</div>
+        {winner.amount > 0 ? <div className={styles.winnerAmount}>{formatAed(winner.amount)}</div> : null}
+        <div className={styles.winnerMeta}>{winner.label}</div>
+
+        {winner.nextLot ? (
+          <div className={styles.winnerNextLot}>
+            <div className={styles.winnerNextLotLabel}>Up next</div>
+            <div className={styles.winnerNextLotTitle}>
+              LOT {formatLotNumber(winner.nextLot.lotNumber)} ·{" "}
+              {winner.nextLot.year > 0 ? `${winner.nextLot.year} ` : ""}
+              {winner.nextLot.title}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.winnerNextLot}>
+            <div className={styles.winnerNextLotLabel}>Session update</div>
+            <div className={styles.winnerNextLotTitle}>No more lots remain in this live session.</div>
+          </div>
+        )}
+
+        <div className={styles.winnerBarTrack}>
+          <div className={styles.winnerBarFill} />
+        </div>
+        <div className={styles.winnerLoading}>
+          {winner.nextLot ? "NEXT LOT LOADING…" : "CLOSING LIVE SESSION…"}
+        </div>
       </div>
-      <div className={styles.winnerLoading}>NEXT LOT LOADING…</div>
     </div>
   );
 }
 
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId);
   const snapshot = liveSnapshot ?? initialSnapshot;
   const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
@@ -840,8 +880,10 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const [pulseCurrentBid, setPulseCurrentBid] = useState(false);
   const [winnerData, setWinnerData] = useState<WinnerData | null>(null);
   const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
+  const [transitionState, setTransitionState] = useState<TransitionState>("idle");
   const fuseRef = useRef<number | null>(null);
   const winnerTimerRef = useRef<number | null>(null);
+  const outcomeTriggerRef = useRef<string | null>(null);
   const previousStateRef = useRef(snapshot.state);
 
   const isLive = snapshot.state === "LIVE" || snapshot.state === "EXTENDED";
@@ -851,6 +893,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     [snapshot.currentPrice, snapshot.minIncrement],
   );
   const photos = useMemo(() => buildGalleryPhotos(lot), [lot]);
+  const primaryPhotoUrl = useMemo(() => photos.find((photo) => typeof photo.url === "string" && photo.url.length > 0)?.url ?? null, [photos]);
   const specs = useMemo(() => buildSpecRows(lot), [lot]);
   const upcomingLots = useMemo(() => buildUpcomingLots(lot), [lot]);
   const auctionPlan = useMemo(() => buildAuctionPlan(lot, upcomingLots), [lot, upcomingLots]);
@@ -865,6 +908,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     viewer.kycVerified &&
     viewer.hasRequiredDeposit;
   const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
+  const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
   const lotProgressLabel = `1 / ${Math.max(1, upcomingLots.length + 1)}`;
   const viewerCountLabel = "--";
   const countdownParts = useMemo(() => formatCountdownParts(auctionRemainingMs), [auctionRemainingMs]);
@@ -893,6 +937,14 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     [lot.fuelType, lot.regionSpec],
   );
   const roomMode = useMemo<RoomMode>(() => {
+    if (transitionState === "nextLot") {
+      return "NEXT_LOT";
+    }
+
+    if (transitionState === "sessionEnded") {
+      return "SESSION_ENDED";
+    }
+
     if (showWinnerOverlay && winnerData) {
       return winnerData.isMine ? "WON" : "SOLD_TO_OTHER";
     }
@@ -914,11 +966,60 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     }
 
     return upcomingLots.length > 0 ? "NEXT_LOT" : "SESSION_ENDED";
-  }, [canBid, isLive, isScheduled, showWinnerOverlay, upcomingLots.length, viewer, winnerData]);
+  }, [canBid, isLive, isScheduled, showWinnerOverlay, transitionState, upcomingLots.length, viewer, winnerData]);
   const stateCard = useMemo(
     () => buildStateCardConfig(roomMode, viewer, auctionRemainingMs, nextBidAmount),
     [auctionRemainingMs, nextBidAmount, roomMode, viewer],
   );
+
+  function triggerOutcome(variant: "won" | "sold" | "closed", reasonKey: string): void {
+    if (outcomeTriggerRef.current === reasonKey) {
+      return;
+    }
+
+    outcomeTriggerRef.current = reasonKey;
+
+    const nextLot = upcomingLots[0] ?? null;
+
+    setWinnerData({
+      variant,
+      amount: snapshot.currentPrice,
+      flag: variant === "closed" ? "🕊️" : variant === "won" ? "🏆" : "🔨",
+      isMine: variant === "won",
+      title: variant === "closed" ? "Lot closed" : variant === "won" ? "You won this lot" : "Lot sold",
+      kicker:
+        variant === "closed"
+          ? `Lot ${formatLotNumber(lot.lotNumber)} — Closed`
+          : variant === "won"
+            ? `Lot ${formatLotNumber(lot.lotNumber)} — Won`
+            : `Lot ${formatLotNumber(lot.lotNumber)} — Sold`,
+      label:
+        variant === "closed"
+          ? "This lot finished without a winning bid."
+          : variant === "won"
+            ? "Winning bid confirmed. Get ready for payment and the next lot."
+            : "Another bidder secured this vehicle.",
+      nextLot,
+    });
+    setShowWinnerOverlay(true);
+    setTransitionState("idle");
+
+    if (winnerTimerRef.current !== null) {
+      window.clearTimeout(winnerTimerRef.current);
+    }
+
+    winnerTimerRef.current = window.setTimeout(() => {
+      setShowWinnerOverlay(false);
+
+      if (nextLot) {
+        setTransitionState("nextLot");
+        router.replace(withLocalePath(`/auctions/live/${nextLot.id}`, locale));
+        return;
+      }
+
+      setTransitionState("sessionEnded");
+    }, WINNER_MS);
+  }
 
   useEffect(() => {
     const html = document.documentElement;
@@ -1174,29 +1275,24 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, [lastProcessedBidId, snapshot.lastBid]);
 
   useEffect(() => {
+    outcomeTriggerRef.current = null;
+    setShowWinnerOverlay(false);
+    setWinnerData(null);
+    setTransitionState("idle");
+  }, [auctionId]);
+
+  useEffect(() => {
     const nextState = snapshot.state;
     const previousState = previousStateRef.current;
     const isWinnerState = nextState === "CLOSED" || nextState === "PAYMENT_PENDING";
     const wasWinnerState = previousState === "CLOSED" || previousState === "PAYMENT_PENDING";
 
     if (isWinnerState && !wasWinnerState) {
-      const isMine = bidFeed[0]?.isMine === true;
-
-      setWinnerData({
-        amount: snapshot.currentPrice,
-        flag: "🏆",
-        isMine,
-        label: isMine ? "You won this lot" : "Winning bid confirmed",
-      });
-      setShowWinnerOverlay(true);
-
-      if (winnerTimerRef.current !== null) {
-        window.clearTimeout(winnerTimerRef.current);
+      if (snapshot.currentPrice <= 0) {
+        triggerOutcome("closed", `backend-${auctionId}-closed`);
+      } else {
+        triggerOutcome(bidFeed[0]?.isMine === true ? "won" : "sold", `backend-${auctionId}-${snapshot.lastBid?.id ?? "closed"}`);
       }
-
-      winnerTimerRef.current = window.setTimeout(() => {
-        setShowWinnerOverlay(false);
-      }, WINNER_MS);
     }
 
     previousStateRef.current = nextState;
@@ -1207,7 +1303,26 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
         winnerTimerRef.current = null;
       }
     };
-  }, [bidFeed, snapshot.currentPrice, snapshot.state]);
+  }, [auctionId, bidFeed, snapshot.currentPrice, snapshot.lastBid?.id, snapshot.state]);
+
+  useEffect(() => {
+    if (!isLive || !hasBids || !isFuseExpired || showWinnerOverlay) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const leadingEntry = bidFeed[0] ?? null;
+
+      if (!leadingEntry) {
+        triggerOutcome("closed", `fuse-${auctionId}-closed`);
+        return;
+      }
+
+      triggerOutcome(leadingEntry.isMine ? "won" : "sold", `fuse-${auctionId}-${leadingEntry.id}`);
+    }, 550);
+
+    return () => window.clearTimeout(timer);
+  }, [auctionId, bidFeed, hasBids, isFuseExpired, isLive, showWinnerOverlay]);
 
   const handleBid = async () => {
     if (!isLive || !canBid) {
@@ -1246,7 +1361,9 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   return (
     <>
-      {showWinnerOverlay && winnerData ? <WinnerOverlay lot={lot} winner={winnerData} /> : null}
+      {showWinnerOverlay && winnerData ? (
+        <WinnerOverlay lot={lot} winner={winnerData} heroImageUrl={primaryPhotoUrl} />
+      ) : null}
 
       <div className={styles.page} data-live-auction-room="true">
         <div className={styles.topBar}>
@@ -1353,7 +1470,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 </div>
 
                 <div className={styles.bidPanel}>
-                  {stateCard ? (
+                  {stateCard && (roomMode === "PRELIVE" || roomMode === "LIVE_GUEST" || roomMode === "LIVE_NO_DEPOSIT") ? (
                     <div
                       className={`${styles.stateCard} ${
                         stateCard.tone === "live"
@@ -1426,6 +1543,44 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                       <div className={styles.preliveChecklistItem}>Review the vehicle and damage details before launch</div>
                       <div className={styles.preliveChecklistItem}>Make sure your buyer account and deposit are ready</div>
                       <div className={styles.preliveChecklistItem}>Stay in this tab to move straight into live bidding</div>
+                    </div>
+                  </div>
+                ) : roomMode === "NEXT_LOT" ? (
+                  <div className={styles.outcomePanel}>
+                    <div className={styles.outcomePanelEyebrow}>Next lot</div>
+                    <div className={styles.outcomePanelTitle}>The session is moving forward</div>
+                    <p className={styles.outcomePanelBody}>
+                      This lot is complete. Stay in the room and get ready for the next vehicle in the auction order.
+                    </p>
+
+                    {upcomingLots[0] ? (
+                      <div className={styles.nextLotCard}>
+                        <div className={styles.nextLotLabel}>UP NEXT</div>
+                        <div className={styles.nextLotTitle}>
+                          LOT {formatLotNumber(upcomingLots[0].lotNumber)} ·{" "}
+                          {upcomingLots[0].year > 0 ? `${upcomingLots[0].year} ` : ""}
+                          {upcomingLots[0].title}
+                        </div>
+                        <div className={styles.nextLotMeta}>Starting from {formatAed(upcomingLots[0].startingBid)}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : roomMode === "SESSION_ENDED" ? (
+                  <div className={styles.outcomePanel}>
+                    <div className={styles.outcomePanelEyebrow}>Auction closed</div>
+                    <div className={styles.outcomePanelTitle}>Thank you for participating</div>
+                    <p className={styles.outcomePanelBody}>
+                      This live session has ended. You can return to the marketplace, review your dashboard, or join the
+                      next auction lineup.
+                    </p>
+
+                    <div className={styles.sessionEndedActions}>
+                      <Link href="/auctions" className={styles.stateCardAction}>
+                        Browse upcoming auctions
+                      </Link>
+                      <Link href="/dashboard" className={styles.secondaryAction}>
+                        Open dashboard
+                      </Link>
                     </div>
                   </div>
                 ) : (
