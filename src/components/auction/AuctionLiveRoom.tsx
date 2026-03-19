@@ -16,6 +16,16 @@ import styles from "./AuctionLiveRoom.module.css";
 const FUSE_DURATION_SECONDS = 20;
 const FUSE_TICK_INTERVAL_MS = 50;
 const WINNER_MS = 3_500;
+const DEFAULT_VIEWER_STATE: ViewerState = {
+  checked: false,
+  authenticated: false,
+  isBuyer: false,
+  userStatus: null,
+  companyStatus: null,
+  kycVerified: false,
+  hasRequiredDeposit: false,
+  buyerTier: null,
+};
 
 const PLACEHOLDER_PHOTOS = [
   { id: "placeholder-1", label: "Front 3/4", bg: "linear-gradient(135deg,#e8edf2 0%,#cdd5df 100%)" },
@@ -71,6 +81,52 @@ type WinnerData = {
   label: string;
 };
 
+type BuyerTier = "STANDARD" | "VIP";
+
+type ViewerState = {
+  checked: boolean;
+  authenticated: boolean;
+  isBuyer: boolean;
+  userStatus: string | null;
+  companyStatus: string | null;
+  kycVerified: boolean;
+  hasRequiredDeposit: boolean;
+  buyerTier: BuyerTier | null;
+};
+
+type AuthMeResponse = {
+  user?: {
+    role?: string;
+    status?: string;
+    kycVerified?: boolean;
+    companyUsers?: Array<{
+      company?: {
+        buyerTier?: BuyerTier | null;
+        status?: string | null;
+      } | null;
+    }>;
+  };
+};
+
+type BuyerDashboardResponse = {
+  depositStatus?: {
+    hasRequiredDeposit?: boolean;
+  };
+  vipStatus?: {
+    tier?: BuyerTier;
+  };
+};
+
+type RoomMode =
+  | "PRELIVE"
+  | "LIVE_GUEST"
+  | "LIVE_NO_DEPOSIT"
+  | "LIVE_READY"
+  | "WON"
+  | "SOLD_TO_OTHER"
+  | "NEXT_LOT"
+  | "SESSION_ENDED";
+
 type Props = {
   auctionId: string;
   initialSnapshot: AuctionLiveSnapshot;
@@ -114,6 +170,21 @@ type AuctionPlanItem = {
   index: number;
   lotNumber: string;
   title: string;
+};
+
+type StateCardConfig = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  actionLabel?: string;
+  actionHref?: string;
+  tone?: "default" | "live" | "warning" | "success" | "muted";
+};
+
+type CountdownParts = {
+  hours: string;
+  minutes: string;
+  seconds: string;
 };
 
 const API_MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? "";
@@ -169,6 +240,43 @@ function getConnectionClassName(
   }
 }
 
+function getStatusLabel(state: string): string {
+  switch (state) {
+    case "LIVE":
+      return "LIVE";
+    case "EXTENDED":
+      return "EXTENDED";
+    case "SCHEDULED":
+      return "UP NEXT";
+    case "PAYMENT_PENDING":
+      return "PAYMENT";
+    case "CLOSED":
+    case "ENDED":
+      return "CLOSED";
+    default:
+      return state;
+  }
+}
+
+function getStatusClassName(state: string): string {
+  switch (state) {
+    case "SCHEDULED":
+      return styles.livePillScheduled;
+    case "PAYMENT_PENDING":
+      return styles.livePillWarning;
+    case "CLOSED":
+    case "ENDED":
+    case "DEFAULTED":
+      return styles.livePillMuted;
+    default:
+      return "";
+  }
+}
+
+function isActiveStatus(value: string | null | undefined): boolean {
+  return value?.trim().toUpperCase() === "ACTIVE";
+}
+
 function getRemainingMs(endsAt: string | null): number {
   if (!endsAt) {
     return 0;
@@ -190,6 +298,101 @@ function formatRemainingTime(ms: number): string {
   const seconds = totalSeconds % 60;
 
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatCountdownParts(ms: number): CountdownParts {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return {
+    hours: String(hours).padStart(2, "0"),
+    minutes: String(minutes).padStart(2, "0"),
+    seconds: String(seconds).padStart(2, "0"),
+  };
+}
+
+function buildStateCardConfig(
+  mode: RoomMode,
+  viewer: ViewerState,
+  countdownMs: number,
+  nextBidAmount: number,
+): StateCardConfig | null {
+  if (mode === "PRELIVE") {
+    return {
+      eyebrow: "Auction starts in",
+      title: formatRemainingTime(countdownMs),
+      body:
+        "This room will go live automatically. Stay here to follow the countdown, see the bidding order, and be ready for the first call.",
+      tone: "default",
+    };
+  }
+
+  if (mode === "LIVE_GUEST") {
+    return {
+      eyebrow: "Observer mode",
+      title: "Live auction in progress",
+      body:
+        "You can watch every bid in real time, but only logged-in buyers with a ready deposit can place the next offer.",
+      actionLabel: "Log in to bid",
+      actionHref: "/login",
+      tone: "live",
+    };
+  }
+
+  if (mode === "LIVE_NO_DEPOSIT") {
+    if (!viewer.checked) {
+      return {
+        eyebrow: "Checking access",
+        title: "Syncing your bidding status",
+        body: "We are verifying your buyer profile, KYC, and deposit readiness for this live lot.",
+        tone: "default",
+      };
+    }
+
+    if (!viewer.isBuyer) {
+      return {
+        eyebrow: "Buyer access required",
+        title: "Switch to an approved buyer account",
+        body: "Live bidding is reserved for buyer workspaces. Sign in with your buyer account to enter this auction.",
+        actionLabel: "Go to login",
+        actionHref: "/login",
+        tone: "warning",
+      };
+    }
+
+    return {
+      eyebrow: "Deposit needed",
+      title: "Please add a security deposit to start bidding.",
+      body: `Your bid button unlocks as soon as the refundable deposit is ready. Next live offer: ${formatAed(nextBidAmount)}.`,
+      actionLabel: "Add Security Deposit",
+      actionHref: "/wallet",
+      tone: "warning",
+    };
+  }
+
+  if (mode === "SESSION_ENDED") {
+    return {
+      eyebrow: "Auction closed",
+      title: "Thanks for joining the session",
+      body: "This live window is finished. You can move back to the marketplace and join the next auction lineup.",
+      actionLabel: "Browse auctions",
+      actionHref: "/auctions",
+      tone: "muted",
+    };
+  }
+
+  if (mode === "NEXT_LOT") {
+    return {
+      eyebrow: "Up next",
+      title: "Preparing the next lot",
+      body: "The session is moving to the next vehicle. Stay here and the room will refresh with the next bidding target.",
+      tone: "success",
+    };
+  }
+
+  return null;
 }
 
 function createFeedEntry(
@@ -611,7 +814,10 @@ function WinnerOverlay({ lot, winner }: WinnerOverlayProps) {
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId);
   const snapshot = liveSnapshot ?? initialSnapshot;
-  const [auctionRemainingMs, setAuctionRemainingMs] = useState(() => getRemainingMs(initialSnapshot.endsAt));
+  const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
+  const [auctionRemainingMs, setAuctionRemainingMs] = useState(() =>
+    getRemainingMs(initialSnapshot.state === "SCHEDULED" ? initialSnapshot.startsAt : initialSnapshot.endsAt),
+  );
   const [fuseProgress, setFuseProgress] = useState(() => (initialSnapshot.totalBids > 0 ? 100 : 0));
   const [fuseSeconds, setFuseSeconds] = useState(() => (initialSnapshot.totalBids > 0 ? FUSE_DURATION_SECONDS : 0));
   const [bidFeed, setBidFeed] = useState<BidFeedEntry[]>(() =>
@@ -639,6 +845,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const previousStateRef = useRef(snapshot.state);
 
   const isLive = snapshot.state === "LIVE" || snapshot.state === "EXTENDED";
+  const isScheduled = snapshot.state === "SCHEDULED";
   const nextBidAmount = useMemo(
     () => snapshot.currentPrice + snapshot.minIncrement,
     [snapshot.currentPrice, snapshot.minIncrement],
@@ -650,9 +857,17 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const hasBids = snapshot.totalBids > 0;
   const isFuseExpired = hasBids && fuseProgress <= 0 && fuseSeconds <= 0;
   const isLeading = bidFeed[0]?.isMine === true;
+  const canBid =
+    viewer.authenticated &&
+    viewer.isBuyer &&
+    isActiveStatus(viewer.userStatus) &&
+    isActiveStatus(viewer.companyStatus) &&
+    viewer.kycVerified &&
+    viewer.hasRequiredDeposit;
   const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
   const lotProgressLabel = `1 / ${Math.max(1, upcomingLots.length + 1)}`;
   const viewerCountLabel = "--";
+  const countdownParts = useMemo(() => formatCountdownParts(auctionRemainingMs), [auctionRemainingMs]);
   const summaryFacts = useMemo(
     () =>
       [
@@ -676,6 +891,33 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
         lot.fuelType && lot.fuelType !== "Not specified" ? lot.fuelType : null,
       ].filter((pill): pill is string => Boolean(pill && pill.trim())),
     [lot.fuelType, lot.regionSpec],
+  );
+  const roomMode = useMemo<RoomMode>(() => {
+    if (showWinnerOverlay && winnerData) {
+      return winnerData.isMine ? "WON" : "SOLD_TO_OTHER";
+    }
+
+    if (isScheduled) {
+      return "PRELIVE";
+    }
+
+    if (isLive) {
+      if (!viewer.checked || !viewer.authenticated) {
+        return "LIVE_GUEST";
+      }
+
+      if (!canBid) {
+        return "LIVE_NO_DEPOSIT";
+      }
+
+      return "LIVE_READY";
+    }
+
+    return upcomingLots.length > 0 ? "NEXT_LOT" : "SESSION_ENDED";
+  }, [canBid, isLive, isScheduled, showWinnerOverlay, upcomingLots.length, viewer, winnerData]);
+  const stateCard = useMemo(
+    () => buildStateCardConfig(roomMode, viewer, auctionRemainingMs, nextBidAmount),
+    [auctionRemainingMs, nextBidAmount, roomMode, viewer],
   );
 
   useEffect(() => {
@@ -710,15 +952,81 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    async function loadViewer(): Promise<void> {
+      try {
+        const authPayload = await api.auth.me<AuthMeResponse>({ cache: "no-store" });
+
+        if (!active) {
+          return;
+        }
+
+        const user = authPayload.user;
+        const primaryCompany = user?.companyUsers?.[0]?.company ?? null;
+        const isBuyer = user?.role === "BUYER";
+        const baseViewer: ViewerState = {
+          checked: true,
+          authenticated: true,
+          isBuyer,
+          userStatus: user?.status ?? null,
+          companyStatus: primaryCompany?.status ?? null,
+          kycVerified: user?.kycVerified === true,
+          hasRequiredDeposit: false,
+          buyerTier: primaryCompany?.buyerTier ?? null,
+        };
+
+        if (!isBuyer) {
+          setViewer(baseViewer);
+          return;
+        }
+
+        try {
+          const dashboard = await api.buyer.dashboard<BuyerDashboardResponse>({ cache: "no-store" });
+
+          if (!active) {
+            return;
+          }
+
+          setViewer({
+            ...baseViewer,
+            hasRequiredDeposit: dashboard.depositStatus?.hasRequiredDeposit === true,
+            buyerTier: dashboard.vipStatus?.tier ?? baseViewer.buyerTier ?? "STANDARD",
+          });
+        } catch {
+          if (active) {
+            setViewer(baseViewer);
+          }
+        }
+      } catch {
+        if (active) {
+          setViewer({
+            ...DEFAULT_VIEWER_STATE,
+            checked: true,
+          });
+        }
+      }
+    }
+
+    void loadViewer();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const updateRemaining = () => {
-      setAuctionRemainingMs(getRemainingMs(snapshot.endsAt));
+      const targetIso = snapshot.state === "SCHEDULED" ? snapshot.startsAt : snapshot.endsAt;
+
+      setAuctionRemainingMs(getRemainingMs(targetIso));
     };
 
     updateRemaining();
     const timer = window.setInterval(updateRemaining, 1_000);
 
     return () => window.clearInterval(timer);
-  }, [snapshot.endsAt]);
+  }, [snapshot.endsAt, snapshot.startsAt, snapshot.state]);
 
   useEffect(() => {
     if (fuseRef.current !== null) {
@@ -902,6 +1210,11 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, [bidFeed, snapshot.currentPrice, snapshot.state]);
 
   const handleBid = async () => {
+    if (!isLive || !canBid) {
+      setInlineError("Live bidding is locked until your buyer access is fully ready.");
+      return;
+    }
+
     const idempotencyKey = createIdempotencyKey();
     const optimisticEntry = createFeedEntry(
       nextBidAmount,
@@ -947,9 +1260,9 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
           </div>
 
           <div className={styles.topBarRight}>
-            <div className={styles.livePill}>
+            <div className={`${styles.livePill} ${getStatusClassName(snapshot.state)}`}>
               <span className={`${styles.connectionDot} ${getConnectionClassName(connectionState)}`} />
-              <span>LIVE</span>
+              <span>{getStatusLabel(snapshot.state)}</span>
             </div>
 
             <div className={styles.topMeta}>
@@ -1014,9 +1327,9 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
               <div className={styles.rightPane}>
                 <div className={styles.currentBidSection}>
-                  <div className={styles.sectionKicker}>Current Bid</div>
+                  <div className={styles.sectionKicker}>{isScheduled ? "Starting Bid" : "Current Bid"}</div>
                   <div className={`${styles.currentBidValue} ${pulseCurrentBid ? styles.currentBidValuePulse : ""}`}>
-                    {formatAed(snapshot.currentPrice || 0)}
+                    {formatAed((isScheduled && snapshot.currentPrice === 0 ? snapshot.startingPrice : snapshot.currentPrice) || 0)}
                   </div>
 
                   <div className={styles.statsRow}>
@@ -1040,41 +1353,102 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 </div>
 
                 <div className={styles.bidPanel}>
-                  <FuseBidButton
-                    onBid={() => void handleBid()}
-                    nextAmount={nextBidAmount}
-                    bidStep={snapshot.minIncrement}
-                    fuseProgress={fuseProgress}
-                    fuseSeconds={fuseSeconds}
-                    isLeading={isLeading}
-                    isLoading={isSubmittingBid}
-                    disabled={!isLive}
-                    expired={isFuseExpired}
-                    hasBids={hasBids}
-                  />
+                  {stateCard ? (
+                    <div
+                      className={`${styles.stateCard} ${
+                        stateCard.tone === "live"
+                          ? styles.stateCardLive
+                          : stateCard.tone === "warning"
+                            ? styles.stateCardWarning
+                            : stateCard.tone === "success"
+                              ? styles.stateCardSuccess
+                              : stateCard.tone === "muted"
+                                ? styles.stateCardMuted
+                                : ""
+                      }`}
+                    >
+                      <div className={styles.stateCardEyebrow}>{stateCard.eyebrow}</div>
+                      <div className={styles.stateCardTitle}>{stateCard.title}</div>
+                      <p className={styles.stateCardBody}>{stateCard.body}</p>
+                      {stateCard.actionHref && stateCard.actionLabel ? (
+                        <Link href={stateCard.actionHref} className={styles.stateCardAction}>
+                          {stateCard.actionLabel}
+                        </Link>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {roomMode === "LIVE_READY" ? (
+                    <FuseBidButton
+                      onBid={() => void handleBid()}
+                      nextAmount={nextBidAmount}
+                      bidStep={snapshot.minIncrement}
+                      fuseProgress={fuseProgress}
+                      fuseSeconds={fuseSeconds}
+                      isLeading={isLeading}
+                      isLoading={isSubmittingBid}
+                      disabled={!isLive || !canBid}
+                      expired={isFuseExpired}
+                      hasBids={hasBids}
+                    />
+                  ) : null}
 
                   {inlineError ? <div className={styles.inlineError}>{inlineError}</div> : null}
                 </div>
 
-                <div className={styles.feedSection}>
-                  <div className={styles.feedHeader}>
-                    <div className={styles.sectionKicker}>Live Bids</div>
-                    <div className={styles.feedHeaderMeta}>
-                      <IconUsers size={12} strokeWidth={2} />
-                      <span>{snapshot.totalBids} total</span>
+                {roomMode === "PRELIVE" ? (
+                  <div className={styles.prelivePanel}>
+                    <div className={styles.preliveHero}>
+                      <div className={styles.preliveEyebrow}>Coming soon room</div>
+                      <div className={styles.preliveTitle}>Auction goes live shortly</div>
+                      <p className={styles.preliveBody}>
+                        Watch the countdown, review the lot order, and stay ready for the opening bid. The room will
+                        switch into live bidding automatically.
+                      </p>
+                    </div>
+
+                    <div className={styles.preliveCountdown}>
+                      <div className={styles.preliveTimeCard}>
+                        <span className={styles.preliveTimeValue}>{countdownParts.hours}</span>
+                        <span className={styles.preliveTimeLabel}>hours</span>
+                      </div>
+                      <div className={styles.preliveTimeCard}>
+                        <span className={styles.preliveTimeValue}>{countdownParts.minutes}</span>
+                        <span className={styles.preliveTimeLabel}>minutes</span>
+                      </div>
+                      <div className={styles.preliveTimeCard}>
+                        <span className={styles.preliveTimeValue}>{countdownParts.seconds}</span>
+                        <span className={styles.preliveTimeLabel}>seconds</span>
+                      </div>
+                    </div>
+
+                    <div className={styles.preliveChecklist}>
+                      <div className={styles.preliveChecklistItem}>Review the vehicle and damage details before launch</div>
+                      <div className={styles.preliveChecklistItem}>Make sure your buyer account and deposit are ready</div>
+                      <div className={styles.preliveChecklistItem}>Stay in this tab to move straight into live bidding</div>
                     </div>
                   </div>
+                ) : (
+                  <div className={styles.feedSection}>
+                    <div className={styles.feedHeader}>
+                      <div className={styles.sectionKicker}>Live Bids</div>
+                      <div className={styles.feedHeaderMeta}>
+                        <IconUsers size={12} strokeWidth={2} />
+                        <span>{snapshot.totalBids} total</span>
+                      </div>
+                    </div>
 
-                  <div className={styles.feedScroller}>
-                    {bidFeed.length === 0 ? (
-                      <div className={styles.feedEmpty}>No bids yet — be the first</div>
-                    ) : (
-                      bidFeed.map((entry, index) => (
-                        <BidFeedItem key={entry.id} entry={entry} isNew={index === 0 && entry.isNew} />
-                      ))
-                    )}
+                    <div className={styles.feedScroller}>
+                      {bidFeed.length === 0 ? (
+                        <div className={styles.feedEmpty}>No bids yet — be the first</div>
+                      ) : (
+                        bidFeed.map((entry, index) => (
+                          <BidFeedItem key={entry.id} entry={entry} isNew={index === 0 && entry.isNew} />
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className={styles.footerMeta}>
                   <div className={styles.footerMetaItem}>
