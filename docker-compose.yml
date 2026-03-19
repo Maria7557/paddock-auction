@@ -19,6 +19,15 @@ services:
     networks:
       - fleetbid-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: fleetbid-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - fleetbid-network
+
   backend:
     build:
       context: .
@@ -27,11 +36,14 @@ services:
       - .env.docker
     environment:
       DATABASE_URL: postgresql://fleetbid:fleetbid@postgres:5432/fleetbid
+      REDIS_URL: redis://redis:6379
       PORT: "4000"
       NODE_ENV: production
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "4000:4000"
     networks:

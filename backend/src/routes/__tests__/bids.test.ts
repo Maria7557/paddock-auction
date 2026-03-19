@@ -6,6 +6,9 @@ import { SignJWT } from "jose";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = {
+  user: {
+    findUnique: vi.fn(),
+  },
   bidRequest: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -77,6 +80,20 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.user.findUnique.mockResolvedValue({
+    id: "user-1",
+    role: "BUYER",
+    status: "ACTIVE",
+    kycVerified: true,
+    companyUsers: [
+      {
+        companyId: "company-1",
+        company: {
+          status: "ACTIVE",
+        },
+      },
+    ],
+  });
 });
 
 afterEach(async () => {
@@ -160,6 +177,9 @@ describe("bidsRoutes", () => {
         auctionId: "auction-1",
         companyId: "company-1",
         status: "ACTIVE",
+      },
+      select: {
+        id: true,
       },
     });
     expect(txMock.$executeRaw).toHaveBeenCalledTimes(2);
@@ -276,6 +296,19 @@ describe("bidsRoutes", () => {
       id: "bid-request-2",
     });
     mockPrisma.bidRequest.update.mockResolvedValue({});
+    txMock.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: "auction-1",
+          state: "LIVE",
+          version: 5,
+          current_price: 100,
+          min_increment: 10,
+          last_bid_sequence: 7,
+          ends_at: new Date(Date.now() + 600_000),
+        },
+      ])
+      .mockResolvedValueOnce([]);
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(txMock));
 
     const response = await server.inject({

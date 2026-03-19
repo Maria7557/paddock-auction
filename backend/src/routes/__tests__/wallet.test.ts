@@ -4,12 +4,16 @@ import { SignJWT } from "jose";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = {
+  user: {
+    findUnique: vi.fn(),
+  },
   idempotencyKey: {
     findFirst: vi.fn(),
     create: vi.fn(),
     updateMany: vi.fn(),
   },
   invoice: {
+    count: vi.fn(),
     findUnique: vi.fn(),
   },
   paymentDeadline: {
@@ -60,6 +64,21 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.user.findUnique.mockResolvedValue({
+    id: "user-1",
+    role: "BUYER",
+    status: "ACTIVE",
+    kycVerified: true,
+    companyUsers: [
+      {
+        companyId: "company-1",
+        company: {
+          status: "ACTIVE",
+        },
+      },
+    ],
+  });
+  mockPrisma.invoice.count.mockResolvedValue(0);
 });
 
 afterEach(async () => {
@@ -101,6 +120,7 @@ describe("walletRoutes", () => {
           },
         ]),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
 
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(txMock));
@@ -131,6 +151,23 @@ describe("walletRoutes", () => {
           createdAt: "2026-01-01T00:00:00.000Z",
         },
       ],
+      transactions: [
+        {
+          id: "ledger-1",
+          type: "DEPOSIT_TOPUP",
+          amount: 150,
+          reference: "deposit-1",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      pendingWithdrawal: 0,
+      pendingWithdrawalAmount: 0,
+      withdrawalEligibility: {
+        noActiveAuctionLocks: false,
+        noOutstandingInvoices: true,
+        noComplianceHolds: true,
+        canWithdraw: false,
+      },
     });
 
     await server.close();

@@ -1,11 +1,13 @@
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { prisma } from "./db";
 import { setSchedulerLogger, startScheduler, stopScheduler } from "./scheduler";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
+import { auctionWsRoutes } from "./routes/auction-ws";
 import { bidsRoutes } from "./routes/bids";
 import { buyerRoutes } from "./routes/buyer";
 import { financeRoutes } from "./routes/finance";
@@ -129,6 +131,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   await server.register(cookie);
+  await server.register(websocket);
 
   await server.register(
     async function registerApiRoutes(api): Promise<void> {
@@ -146,6 +149,7 @@ export async function buildServer(): Promise<FastifyInstance> {
         prefix: "/auth",
       });
 
+      await api.register(auctionWsRoutes);
       await api.register(bidsRoutes);
       await api.register(buyerRoutes);
       await api.register(sellerRoutes);

@@ -16,6 +16,7 @@ const { mockPrisma } = vi.hoisted(() => ({
       updateMany: vi.fn(),
     },
     invoice: {
+      count: vi.fn(),
       findUnique: vi.fn(),
     },
     paymentDeadline: {
@@ -124,6 +125,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.invoice.count.mockResolvedValue(0);
   mockPrisma.user.findUnique.mockResolvedValue({
     id: buyerUserId,
     role: "BUYER",
@@ -168,6 +170,7 @@ describe("GET /api/wallet", () => {
         createdAt: new Date("2026-03-14T08:00:00.000Z"),
       },
     ]);
+    tx.$queryRaw.mockResolvedValue([]);
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     const res = await request

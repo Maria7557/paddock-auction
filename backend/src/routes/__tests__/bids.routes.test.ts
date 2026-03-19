@@ -40,7 +40,16 @@ const { mockTx, mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
+const { mockPublishAuctionRealtimeSnapshot } = vi.hoisted(() => ({
+  mockPublishAuctionRealtimeSnapshot: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../auction-ws", () => ({
+  auctionWsRoutes: async () => {},
+  publishAuctionRealtimeSnapshot: mockPublishAuctionRealtimeSnapshot,
+  closeAuctionRealtime: vi.fn(),
+}));
 
 import { buildServer } from "../../server";
 
@@ -227,6 +236,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPublishAuctionRealtimeSnapshot.mockResolvedValue(true);
   mockPrisma.user.findUnique.mockResolvedValue({
     id: buyerId,
     role: "BUYER",
@@ -460,6 +470,7 @@ describe("POST /api/bids", () => {
     expect(res.body.bid.amount).toBe(51_000);
     expect(res.body.bid.sequenceNo).toBe(6);
     expect(res.body.bid.createdAt).toBe("2026-03-14T09:00:00.000Z");
+    expect(mockPublishAuctionRealtimeSnapshot).toHaveBeenCalledWith(auctionId, server.log);
   });
 
   it("runs anti-sniping extension when less than three minutes remain", async () => {

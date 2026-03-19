@@ -11,6 +11,7 @@ import {
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
 import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { publishAuctionRealtimeSnapshot } from "./auction-ws";
 
 type DecimalLike =
   | number
@@ -697,6 +698,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             bidId: bid.id,
           },
         });
+        void publishAuctionRealtimeSnapshot(payload.auctionId, fastify.log);
 
         fastify.log.info(
           {
@@ -988,6 +990,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           },
         );
 
+        void publishAuctionRealtimeSnapshot(parsedParams.data.id, fastify.log);
         await reply.code(200).send({
           message: `Purchase confirmed for AED ${result.price.toLocaleString("en-AE")}`,
         });

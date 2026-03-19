@@ -484,7 +484,7 @@ describe("GET /api/admin/vehicles", () => {
           model: "X5",
           year: 2023,
           vin: "VIN001",
-          auctions: [{ id: "a1", state: "SCHEDULED" }],
+          auctions: [{ id: "a1", state: "SCHEDULED", sellerCompanyId: null, transitions: [] }],
         },
       ]);
 
