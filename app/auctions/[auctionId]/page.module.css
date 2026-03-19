@@ -28,6 +28,42 @@
 .breadcrumb a:hover { color: var(--green-600); }
 .breadcrumb span { color: var(--ink-muted); }
 
+.liveBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 14px 24px;
+  border-radius: var(--radius-card);
+  background: #116a43;
+  color: #fff;
+  text-decoration: none;
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.liveBanner:hover {
+  background: var(--green-700);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: pulse 1.5s infinite;
+}
+
+.liveBannerArrow {
+  margin-left: auto;
+  font-size: 18px;
+}
+
 /* ── Title bar ────────────────────────────────────────────────────────────── */
 .titleBar {
   display: flex;
@@ -160,6 +196,9 @@
   .page {
     width: calc(100% - 32px);
     padding-bottom: 110px; /* room for mobile bid bar */
+  }
+  .liveBanner {
+    padding: 14px 16px;
   }
   .titleBar { flex-direction: column; gap: 10px; }
   .h1 { font-size: 22px; }

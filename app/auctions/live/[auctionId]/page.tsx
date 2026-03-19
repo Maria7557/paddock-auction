@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AuctionLiveRoom } from "@/src/components/auction/AuctionLiveRoom";
@@ -11,6 +12,21 @@ type PageProps = {
     auctionId: string;
   }>;
 };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { auctionId } = await params;
+  const lot = await getLot(auctionId);
+
+  if (!lot) {
+    return {
+      title: "Live Auction | FleetBid",
+    };
+  }
+
+  return {
+    title: `${lot.year} ${lot.make} ${lot.model} — Live Auction | FleetBid`,
+  };
+}
 
 export default async function LiveAuctionPage({ params }: PageProps) {
   const { auctionId } = await params;

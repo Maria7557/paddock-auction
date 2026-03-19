@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { IconCar, IconClock, IconMapPin, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
+import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useAuctionLiveSocket } from "@/src/hooks/useAuctionLiveSocket";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
@@ -11,13 +12,58 @@ import type { LotDetail } from "@/app/auctions/[auctionId]/page";
 
 import styles from "./AuctionLiveRoom.module.css";
 
+const FUSE_DURATION_SECONDS = 20;
+const FUSE_TICK_INTERVAL_MS = 50;
+const WINNER_MS = 3_500;
+
+const PLACEHOLDER_PHOTOS = [
+  { id: "placeholder-1", label: "Front 3/4", bg: "linear-gradient(135deg,#e8edf2 0%,#cdd5df 100%)" },
+  { id: "placeholder-2", label: "Rear 3/4", bg: "linear-gradient(135deg,#dde3ea 0%,#bec8d4 100%)" },
+  { id: "placeholder-3", label: "Interior", bg: "linear-gradient(135deg,#ede9e3 0%,#d4cdc4 100%)" },
+  { id: "placeholder-4", label: "Dashboard", bg: "linear-gradient(135deg,#e3e8ed 0%,#c8d0d9 100%)" },
+  { id: "placeholder-5", label: "Engine Bay", bg: "linear-gradient(135deg,#e6e6e6 0%,#cdcdcd 100%)" },
+  { id: "placeholder-6", label: "Odometer", bg: "linear-gradient(135deg,#eaeaea 0%,#d0d0d0 100%)" },
+] as const;
+
 type BidFeedEntry = {
   id: string;
   amount: number;
   timestamp: number;
   isLeader: boolean;
-  isOwn: boolean;
+  isMine: boolean;
+  isNew: boolean;
   source: "snapshot" | "optimistic";
+};
+
+type GalleryPhoto = {
+  id: string;
+  label: string;
+  url: string | null;
+  bg: string;
+};
+
+type SpecRow = {
+  label: string;
+  value: string;
+  green?: boolean;
+  mono?: boolean;
+};
+
+type UpcomingLot = {
+  id: string;
+  lotNumber: string;
+  title: string;
+  year: number;
+  make: string;
+  model: string;
+  startingBid: number;
+};
+
+type WinnerData = {
+  amount: number;
+  flag: string;
+  isMine: boolean;
+  label: string;
 };
 
 type Props = {
@@ -26,12 +72,73 @@ type Props = {
   lot: LotDetail;
 };
 
+type FuseBidButtonProps = {
+  onBid: () => void;
+  nextAmount: number;
+  bidStep: number;
+  fuseProgress: number;
+  fuseSeconds: number;
+  isLeading: boolean;
+  isLoading: boolean;
+  disabled: boolean;
+  expired: boolean;
+  hasBids: boolean;
+};
+
+type GalleryProps = {
+  lotKey: string;
+  photos: GalleryPhoto[];
+  title: string;
+};
+
+type SpecGridProps = {
+  specs: SpecRow[];
+};
+
+type BidFeedItemProps = {
+  entry: BidFeedEntry;
+  isNew: boolean;
+};
+
+type WinnerOverlayProps = {
+  lot: LotDetail;
+  winner: WinnerData;
+};
+
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatSessionId(auctionId: string): string {
+  return `AUC-${auctionId.slice(0, 8).toUpperCase()}`;
+}
+
+function formatLotNumber(lotNumber: string): string {
+  const digits = String(lotNumber).replace(/\D/g, "");
+
+  if (digits.length > 0) {
+    return digits.slice(-3).padStart(3, "0");
+  }
+
+  return String(lotNumber).toUpperCase();
+}
+
+function timeAgo(timestamp: number): string {
+  const diffSeconds = Math.floor((Date.now() - timestamp) / 1_000);
+
+  if (diffSeconds < 5) {
+    return "just now";
+  }
+
+  if (diffSeconds < 60) {
+    return `${diffSeconds}s ago`;
+  }
+
+  return `${Math.floor(diffSeconds / 60)}m ago`;
 }
 
 function getConnectionClassName(
@@ -77,39 +184,337 @@ function createFeedEntry(
   timestamp: number,
   id: string,
   source: "snapshot" | "optimistic",
-  isOwn = false,
+  isMine = false,
+  isNew = true,
 ): BidFeedEntry {
   return {
     id,
     amount,
     timestamp,
     isLeader: true,
-    isOwn,
+    isMine,
+    isNew,
     source,
   };
 }
 
-function buildSpecRows(lot: LotDetail): Array<{ label: string; value: string }> {
-  const rows = [
+function buildGalleryPhotos(lot: LotDetail): GalleryPhoto[] {
+  const lotWithMedia = lot as LotDetail & {
+    media?: Array<{
+      url?: string | null;
+      label?: string | null;
+    }> | null;
+  };
+
+  if (Array.isArray(lotWithMedia.media) && lotWithMedia.media.length > 0) {
+    return lotWithMedia.media
+      .filter((item) => typeof item?.url === "string" && item.url.trim().length > 0)
+      .map((item, index) => ({
+        id: `media-${index + 1}`,
+        label: item.label?.trim() || `Photo ${index + 1}`,
+        url: item.url!.trim(),
+        bg: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].bg,
+      }));
+  }
+
+  if (Array.isArray(lot.images) && lot.images.length > 0) {
+    return lot.images
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item, index) => ({
+        id: `image-${index + 1}`,
+        label: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].label,
+        url: item,
+        bg: PLACEHOLDER_PHOTOS[index % PLACEHOLDER_PHOTOS.length].bg,
+      }));
+  }
+
+  return PLACEHOLDER_PHOTOS.map((photo) => ({
+    ...photo,
+    url: null,
+  }));
+}
+
+function buildSpecRows(lot: LotDetail): SpecRow[] {
+  return [
     { label: "Year", value: String(lot.year || "—") },
     { label: "Mileage", value: lot.mileageKm > 0 ? `${lot.mileageKm.toLocaleString("en-AE")} km` : "—" },
-    { label: "Region", value: lot.regionSpec || "—" },
-    { label: "Fuel", value: lot.fuelType || "—" },
-    { label: "Transmission", value: lot.transmission || "—" },
-    { label: "Body", value: lot.bodyStyle || "—" },
     { label: "Color", value: lot.color || "—" },
-    { label: "Condition", value: lot.condition || "—" },
+    { label: "Fuel", value: lot.fuelType || "—" },
+    { label: "Gearbox", value: lot.transmission || "—" },
+    { label: "Body", value: lot.bodyStyle || "—" },
+    { label: "Condition", value: lot.condition || "—", green: true },
+    { label: "Region", value: lot.regionSpec || "—" },
+    { label: "VIN", value: lot.vin ? lot.vin.slice(-8) : "—", mono: true },
   ];
+}
 
-  return rows;
+function buildUpcomingLots(lot: LotDetail): UpcomingLot[] {
+  return lot.similar.slice(0, 3).map((item) => ({
+    id: item.id,
+    lotNumber: item.id.slice(0, 3).toUpperCase(),
+    title: item.title,
+    year: item.year,
+    make: item.title.split(" ").at(1) ?? "",
+    model: item.title.split(" ").slice(2).join(" ") || "",
+    startingBid: item.currentBidAed,
+  }));
+}
+
+function Gallery({ lotKey, photos, title }: GalleryProps) {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    setActive(0);
+  }, [lotKey]);
+
+  const activePhoto = photos[active] ?? photos[0];
+
+  if (!activePhoto) {
+    return null;
+  }
+
+  return (
+    <div className={styles.gallery}>
+      <div className={styles.galleryFrame}>
+        {activePhoto.url ? (
+          <img
+            src={activePhoto.url}
+            alt={`${title} — ${activePhoto.label}`}
+            className={styles.galleryImage}
+          />
+        ) : (
+          <div className={styles.galleryPlaceholder} style={{ background: activePhoto.bg }}>
+            <IconCar size={80} strokeWidth={1.25} className={styles.galleryPlaceholderIcon} />
+            <div className={styles.galleryPlaceholderLabel}>{activePhoto.label.toUpperCase()}</div>
+          </div>
+        )}
+
+        <div className={styles.galleryCounter}>
+          {active + 1} / {photos.length}
+        </div>
+
+        {active > 0 ? (
+          <button
+            type="button"
+            className={`${styles.galleryNav} ${styles.galleryNavLeft}`}
+            onClick={() => setActive((current) => Math.max(0, current - 1))}
+            aria-label="Previous photo"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        ) : null}
+
+        {active < photos.length - 1 ? (
+          <button
+            type="button"
+            className={`${styles.galleryNav} ${styles.galleryNavRight}`}
+            onClick={() => setActive((current) => Math.min(photos.length - 1, current + 1))}
+            aria-label="Next photo"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+
+      <div className={styles.thumbnailRow}>
+        {photos.map((photo, index) => (
+          <button
+            key={photo.id}
+            type="button"
+            className={`${styles.thumbnailButton} ${index === active ? styles.thumbnailActive : ""}`}
+            onClick={() => setActive(index)}
+            aria-label={`View ${photo.label}`}
+            style={!photo.url ? { background: photo.bg } : undefined}
+          >
+            {photo.url ? (
+              <img src={photo.url} alt={photo.label} className={styles.thumbnailImage} />
+            ) : (
+              <span className={styles.thumbnailPlaceholder}>🚙</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SpecGrid({ specs }: SpecGridProps) {
+  return (
+    <div className={styles.specGrid}>
+      {specs.map((spec) => (
+        <div key={spec.label} className={styles.specCard}>
+          <div className={styles.specLabel}>{spec.label}</div>
+          <div
+            className={`${styles.specValue} ${spec.green ? styles.specValueGreen : ""} ${spec.mono ? styles.specValueMono : ""}`}
+          >
+            {spec.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BidFeedItem({ entry, isNew }: BidFeedItemProps) {
+  const [visible, setVisible] = useState(!isNew);
+
+  useEffect(() => {
+    if (!isNew) {
+      setVisible(true);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setVisible(true);
+    }, 20);
+
+    return () => window.clearTimeout(timer);
+  }, [isNew]);
+
+  return (
+    <div className={`${styles.feedItem} ${visible ? styles.feedItemVisible : ""}`}>
+      <div
+        className={`${styles.feedAvatar} ${entry.isLeader ? styles.feedAvatarLeader : ""} ${entry.isMine ? styles.feedAvatarMine : ""}`}
+      >
+        {entry.isMine ? "YOU" : "MKT"}
+      </div>
+
+      <div className={styles.feedText}>
+        <div className={`${styles.feedPrimary} ${entry.isLeader ? styles.feedPrimaryLeader : ""}`}>
+          {entry.isMine ? "YOU" : "MARKET"}
+        </div>
+        <div className={styles.feedSecondary}>{timeAgo(entry.timestamp)}</div>
+      </div>
+
+      <div className={`${styles.feedAmount} ${entry.isLeader ? styles.feedAmountLeader : ""}`}>
+        {formatAed(entry.amount)}
+      </div>
+    </div>
+  );
+}
+
+function FuseBidButton({
+  onBid,
+  nextAmount,
+  bidStep,
+  fuseProgress,
+  fuseSeconds,
+  isLeading,
+  isLoading,
+  disabled,
+  expired,
+  hasBids,
+}: FuseBidButtonProps) {
+  const hasTimer = hasBids && fuseProgress > 0;
+  const urgent = fuseSeconds <= 5;
+  const warning = fuseSeconds <= 10;
+  const fuseColor = urgent ? "#ef4444" : warning ? "#f97316" : "#116a43";
+  const fuseGlow = urgent ? "rgba(239,68,68,.5)" : warning ? "rgba(249,115,22,.4)" : "rgba(17,106,67,.35)";
+
+  return (
+    <div className={styles.fuseButtonShell}>
+      <div
+        className={`${styles.fuseTimerWrap} ${hasTimer ? styles.fuseTimerWrapActive : ""}`}
+        style={
+          {
+            "--fuse-color": fuseColor,
+            "--fuse-glow": fuseGlow,
+          } as React.CSSProperties
+        }
+      >
+        {hasTimer ? (
+          <>
+            <div className={styles.fuseTrack}>
+              <div className={styles.fuseFill} style={{ width: `${fuseProgress}%` }} />
+            </div>
+            <div className={styles.fuseTip} style={{ left: `calc(${fuseProgress}% - 6px)` }} />
+            <div className={styles.fuseSeconds}>{fuseSeconds}s</div>
+          </>
+        ) : null}
+      </div>
+
+      <button
+        type="button"
+        onClick={onBid}
+        disabled={disabled || isLoading || expired}
+        className={`${styles.bidButton} ${hasTimer ? styles.bidButtonWithTimer : styles.bidButtonIdle} ${isLeading ? styles.bidButtonLeading : ""}`}
+        style={
+          {
+            "--fuse-color": fuseColor,
+            "--fuse-progress": `${fuseProgress}%`,
+          } as React.CSSProperties
+        }
+      >
+        {!disabled && !isLoading ? <div className={styles.bidButtonShine} /> : null}
+        {hasTimer ? <div className={styles.bidButtonFuseGlow} /> : null}
+
+        <div className={styles.bidButtonInner}>
+          <div className={styles.bidButtonMain}>
+            {isLoading
+              ? "Placing bid…"
+              : disabled
+                ? "Auction ended"
+                : expired
+                  ? "Going... Going... Gone!"
+                  : isLeading
+                    ? "✓ You're leading"
+                    : "Place Bid"}
+          </div>
+
+          {!isLoading && !disabled && !expired && !isLeading ? (
+            <div className={styles.bidButtonSub}>
+              {formatAed(nextAmount)} · +{formatAed(bidStep)}
+            </div>
+          ) : null}
+
+          {!isLoading && !disabled && !expired && isLeading ? (
+            <div className={styles.bidButtonSubMuted}>next bid {formatAed(nextAmount)}</div>
+          ) : null}
+        </div>
+      </button>
+
+      {!hasBids ? (
+        <div className={styles.fuseIdleLabel}>Place the first bid to start the timer</div>
+      ) : null}
+    </div>
+  );
+}
+
+function WinnerOverlay({ lot, winner }: WinnerOverlayProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setVisible(true);
+    }, 40);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className={`${styles.winnerOverlay} ${visible ? styles.winnerOverlayVisible : ""}`}>
+      <div className={styles.winnerIcon}>{winner.flag}</div>
+      <div className={styles.winnerKicker}>Lot {formatLotNumber(lot.lotNumber)} — Sold</div>
+      <div className={styles.winnerAmount}>{formatAed(winner.amount)}</div>
+      <div className={styles.winnerMeta}>{winner.label}</div>
+      <div className={styles.winnerBarTrack}>
+        <div className={styles.winnerBarFill} />
+      </div>
+      <div className={styles.winnerLoading}>NEXT LOT LOADING…</div>
+    </div>
+  );
 }
 
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId);
   const snapshot = liveSnapshot ?? initialSnapshot;
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [remainingMs, setRemainingMs] = useState(() => getRemainingMs(initialSnapshot.endsAt));
-  const [fuseWindowMs, setFuseWindowMs] = useState(() => Math.max(getRemainingMs(initialSnapshot.endsAt), 1));
+  const [auctionRemainingMs, setAuctionRemainingMs] = useState(() => getRemainingMs(initialSnapshot.endsAt));
+  const [fuseProgress, setFuseProgress] = useState(() => (initialSnapshot.totalBids > 0 ? 100 : 0));
+  const [fuseSeconds, setFuseSeconds] = useState(() => (initialSnapshot.totalBids > 0 ? FUSE_DURATION_SECONDS : 0));
   const [bidFeed, setBidFeed] = useState<BidFeedEntry[]>(() =>
     initialSnapshot.lastBid
       ? [
@@ -118,6 +523,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
             Date.parse(initialSnapshot.lastBid.createdAt),
             initialSnapshot.lastBid.id,
             "snapshot",
+            false,
+            false,
           ),
         ]
       : [],
@@ -125,23 +532,68 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const [isSubmittingBid, setIsSubmittingBid] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [lastProcessedBidId, setLastProcessedBidId] = useState(initialSnapshot.lastBid?.id ?? null);
+  const [pulseCurrentBid, setPulseCurrentBid] = useState(false);
+  const [winnerData, setWinnerData] = useState<WinnerData | null>(null);
+  const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
+  const fuseRef = useRef<number | null>(null);
+  const winnerTimerRef = useRef<number | null>(null);
+  const previousStateRef = useRef(snapshot.state);
 
   const isLive = snapshot.state === "LIVE" || snapshot.state === "EXTENDED";
-  const hasMultipleImages = lot.images.length > 1;
   const nextBidAmount = useMemo(
     () => snapshot.currentPrice + snapshot.minIncrement,
     [snapshot.currentPrice, snapshot.minIncrement],
   );
-  const specRows = useMemo(() => buildSpecRows(lot), [lot]);
-  const fuseProgress = Math.max(0, Math.min(100, (remainingMs / Math.max(fuseWindowMs, 1)) * 100));
+  const photos = useMemo(() => buildGalleryPhotos(lot), [lot]);
+  const specs = useMemo(() => buildSpecRows(lot), [lot]);
+  const upcomingLots = useMemo(() => buildUpcomingLots(lot), [lot]);
+  const hasBids = snapshot.totalBids > 0;
+  const isFuseExpired = hasBids && fuseProgress <= 0 && fuseSeconds <= 0;
+  const isLeading = bidFeed[0]?.isMine === true;
+  const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
+  const lotProgressLabel = `1 / ${Math.max(1, upcomingLots.length + 1)}`;
+  const viewerCountLabel = "--";
 
   useEffect(() => {
-    setActiveImageIndex(0);
-  }, [lot.auctionId]);
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousHtmlBackground = html.style.background;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyBackground = body.style.background;
+    const chromeElements = Array.from(document.querySelectorAll("body > header, body > footer")).map((element) => ({
+      element,
+      display: element instanceof HTMLElement ? element.style.display : "",
+    }));
+
+    html.style.overflow = "hidden";
+    html.style.background = "#f7f9fb";
+    body.style.overflow = "hidden";
+    body.style.background = "#f7f9fb";
+
+    chromeElements.forEach(({ element }) => {
+      if (element instanceof HTMLElement) {
+        element.style.display = "none";
+      }
+    });
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      html.style.background = previousHtmlBackground;
+      body.style.overflow = previousBodyOverflow;
+      body.style.background = previousBodyBackground;
+
+      chromeElements.forEach(({ element, display }) => {
+        if (element instanceof HTMLElement) {
+          element.style.display = display;
+        }
+      });
+    };
+  }, []);
 
   useEffect(() => {
     const updateRemaining = () => {
-      setRemainingMs(getRemainingMs(snapshot.endsAt));
+      setAuctionRemainingMs(getRemainingMs(snapshot.endsAt));
     };
 
     updateRemaining();
@@ -151,8 +603,42 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, [snapshot.endsAt]);
 
   useEffect(() => {
-    setFuseWindowMs(Math.max(getRemainingMs(snapshot.endsAt), 1));
-  }, [snapshot.endsAt]);
+    if (fuseRef.current !== null) {
+      window.clearInterval(fuseRef.current);
+      fuseRef.current = null;
+    }
+
+    if (snapshot.totalBids === 0) {
+      setFuseProgress(0);
+      setFuseSeconds(0);
+      return undefined;
+    }
+
+    setFuseProgress(100);
+    setFuseSeconds(FUSE_DURATION_SECONDS);
+
+    const startedAt = Date.now();
+
+    fuseRef.current = window.setInterval(() => {
+      const elapsedSeconds = (Date.now() - startedAt) / 1_000;
+      const remainingSeconds = Math.max(0, FUSE_DURATION_SECONDS - elapsedSeconds);
+
+      setFuseProgress((remainingSeconds / FUSE_DURATION_SECONDS) * 100);
+      setFuseSeconds(Math.ceil(remainingSeconds));
+
+      if (remainingSeconds === 0 && fuseRef.current !== null) {
+        window.clearInterval(fuseRef.current);
+        fuseRef.current = null;
+      }
+    }, FUSE_TICK_INTERVAL_MS);
+
+    return () => {
+      if (fuseRef.current !== null) {
+        window.clearInterval(fuseRef.current);
+        fuseRef.current = null;
+      }
+    };
+  }, [snapshot.totalBids]);
 
   useEffect(() => {
     if (!inlineError) {
@@ -176,6 +662,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
       Date.parse(snapshot.lastBid.createdAt),
       snapshot.lastBid.id,
       "snapshot",
+      false,
+      true,
     );
 
     setBidFeed((currentFeed) => {
@@ -195,20 +683,65 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
           entry.id === optimisticMatch.id
             ? {
                 ...nextEntry,
-                isOwn: optimisticMatch.isOwn,
+                isMine: optimisticMatch.isMine,
+                isNew: true,
               }
             : {
                 ...entry,
                 isLeader: false,
+                isNew: false,
               },
         );
       }
 
-      return [nextEntry, ...currentFeed.map((entry) => ({ ...entry, isLeader: false }))].slice(0, 40);
+      return [nextEntry, ...currentFeed.map((entry) => ({ ...entry, isLeader: false, isNew: false }))].slice(0, 40);
     });
 
     setLastProcessedBidId(snapshot.lastBid.id);
+    setPulseCurrentBid(true);
+
+    const timer = window.setTimeout(() => {
+      setPulseCurrentBid(false);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
   }, [lastProcessedBidId, snapshot.lastBid]);
+
+  useEffect(() => {
+    const nextState = snapshot.state;
+    const previousState = previousStateRef.current;
+    const isWinnerState = nextState === "CLOSED" || nextState === "PAYMENT_PENDING";
+    const wasWinnerState = previousState === "CLOSED" || previousState === "PAYMENT_PENDING";
+
+    if (isWinnerState && !wasWinnerState) {
+      const isMine = bidFeed[0]?.isMine === true;
+
+      setWinnerData({
+        amount: snapshot.currentPrice,
+        flag: "🏆",
+        isMine,
+        label: isMine ? "You won this lot" : "Winning bid confirmed",
+      });
+      setShowWinnerOverlay(true);
+
+      if (winnerTimerRef.current !== null) {
+        window.clearTimeout(winnerTimerRef.current);
+      }
+
+      winnerTimerRef.current = window.setTimeout(() => {
+        setShowWinnerOverlay(false);
+      }, WINNER_MS);
+    }
+
+    previousStateRef.current = nextState;
+
+    return () => {
+      if (winnerTimerRef.current !== null) {
+        window.clearTimeout(winnerTimerRef.current);
+        winnerTimerRef.current = null;
+      }
+    };
+  }, [bidFeed, snapshot.currentPrice, snapshot.state]);
 
   const handleBid = async () => {
     const idempotencyKey = createIdempotencyKey();
@@ -217,6 +750,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
       Date.now(),
       `optimistic-${idempotencyKey}`,
       "optimistic",
+      true,
       true,
     );
 
@@ -229,7 +763,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
       });
 
       setBidFeed((currentFeed) =>
-        [optimisticEntry, ...currentFeed.map((entry) => ({ ...entry, isLeader: false }))].slice(0, 40),
+        [optimisticEntry, ...currentFeed.map((entry) => ({ ...entry, isLeader: false, isNew: false }))].slice(0, 40),
       );
     } catch (error) {
       setInlineError(getApiErrorMessage(error, "Bid failed — please try again"));
@@ -239,176 +773,154 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   };
 
   return (
-    <div className={styles.page}>
-      <div className={styles.topBar}>
-        <div className={styles.topBarMain}>
-          <span className={styles.kicker}>FleetBid Live Room</span>
-          <h1 className={styles.title}>
-            {lot.year} {lot.make} {lot.model}
-          </h1>
-          <p className={styles.subtitle}>
-            Lot #{lot.lotNumber} • {lot.location}
-          </p>
-        </div>
-        <div className={styles.topBarStatus}>
-          <span className={styles.liveBadge}>
-            <span className={`${styles.connectionDot} ${getConnectionClassName(connectionState)}`} />
-            {snapshot.state}
-          </span>
-          <span className={styles.metaChip}>
-            <IconClock size={14} strokeWidth={2.1} />
-            {formatRemainingTime(remainingMs)}
-          </span>
-        </div>
-      </div>
+    <>
+      {showWinnerOverlay && winnerData ? <WinnerOverlay lot={lot} winner={winnerData} /> : null}
 
-      <div className={styles.layout}>
-        <section className={styles.gallerySection}>
-          <div className={styles.galleryMain}>
-            {lot.images[activeImageIndex] ? (
-              <img
-                src={lot.images[activeImageIndex]}
-                alt={`${lot.title} image ${activeImageIndex + 1}`}
-                className={styles.galleryImage}
-              />
-            ) : (
-              <div className={styles.galleryFallback}>
-                <IconCar size={40} strokeWidth={1.8} />
-                <span>No image</span>
-              </div>
-            )}
-            <span className={styles.galleryCounter}>
-              {Math.min(activeImageIndex + 1, lot.images.length)} / {lot.images.length || 1}
-            </span>
+      <div className={styles.page} data-live-auction-room="true">
+        <div className={styles.topBar}>
+          <div className={styles.topBarLeft}>
+            <Link href="/" className={styles.brand} aria-label="FleetBid home">
+              <span className={styles.brandMark}>FB</span>
+              <span className={styles.brandText}>FleetBid</span>
+            </Link>
+            <div className={styles.topDivider} />
+            <div className={styles.sessionId}>{sessionId}</div>
           </div>
-          {hasMultipleImages ? (
-            <div className={styles.thumbnailRow}>
-              {lot.images.slice(0, 8).map((image, index) => (
-                <button
-                  key={`${image}-${index}`}
-                  type="button"
-                  className={`${styles.thumbnailButton} ${index === activeImageIndex ? styles.thumbnailActive : ""}`}
-                  onClick={() => setActiveImageIndex(index)}
-                >
-                  <img src={image} alt={`Thumbnail ${index + 1}`} className={styles.thumbnailImage} />
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </section>
 
-        <section className={styles.detailsSection}>
-          <div className={styles.sectionCard}>
-            <div className={styles.sectionHeader}>
-              <h2>Vehicle Specs</h2>
-              <span className={styles.headerMeta}>
-                <IconMapPin size={14} strokeWidth={2} />
-                {lot.location}
-              </span>
+          <div className={styles.topBarRight}>
+            <div className={styles.livePill}>
+              <span className={`${styles.connectionDot} ${getConnectionClassName(connectionState)}`} />
+              <span>LIVE</span>
             </div>
-            <div className={styles.specGrid}>
-              {specRows.map((row) => (
-                <div key={row.label} className={styles.specCard}>
-                  <span className={styles.specLabel}>{row.label}</span>
-                  <span className={styles.specValue}>{row.value}</span>
+
+            <div className={styles.topMeta}>
+              <IconEye size={11} strokeWidth={2} />
+              <span>{viewerCountLabel}</span>
+            </div>
+
+            <div className={styles.topMeta}>{lotProgressLabel}</div>
+          </div>
+        </div>
+
+        <div className={styles.bodyGrid}>
+          <div className={styles.leftPane}>
+            <div className={styles.lotHeader}>
+              <div className={styles.lotHeaderRow}>
+                <div className={styles.lotBadge}>LOT {formatLotNumber(lot.lotNumber)}</div>
+                <div className={styles.lotVin}>{lot.vin || "—"}</div>
+              </div>
+
+              <h1 className={styles.lotTitle}>
+                {lot.year} {lot.make} {lot.model}
+              </h1>
+              <div className={styles.lotTrim}>{lot.series || lot.title}</div>
+            </div>
+
+            <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+
+            <div className={styles.block}>
+              <div className={styles.blockLabel}>Specifications</div>
+              <SpecGrid specs={specs} />
+            </div>
+
+            {upcomingLots.length > 0 ? (
+              <div className={styles.block}>
+                <div className={styles.blockLabel}>Coming Up</div>
+                <div className={styles.upcomingGrid}>
+                  {upcomingLots.map((item) => (
+                    <div key={item.id} className={styles.upcomingCard}>
+                      <div className={styles.upcomingLotLabel}>LOT {item.lotNumber}</div>
+                      <div className={styles.upcomingTitle}>
+                        {item.year > 0 ? `${item.year} ` : ""}
+                        {item.title || `${item.make} ${item.model}`.trim()}
+                      </div>
+                      <div className={styles.upcomingPrice}>from {formatAed(item.startingBid)}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className={styles.descriptionBlock}>
-              <span className={styles.specLabel}>Description</span>
-              <p>{lot.description}</p>
-            </div>
+              </div>
+            ) : null}
           </div>
-        </section>
 
-        <aside className={styles.panelSection}>
-          <div className={styles.bidCard}>
-            <div className={styles.bidCardHeader}>
-              <div>
-                <span className={styles.bidEyebrow}>Live Bidding</span>
-                <p className={styles.bidPrice}>{formatAed(snapshot.currentPrice)}</p>
+          <div className={styles.rightPane}>
+            <div className={styles.currentBidSection}>
+              <div className={styles.sectionKicker}>Current Bid</div>
+              <div className={`${styles.currentBidValue} ${pulseCurrentBid ? styles.currentBidValuePulse : ""}`}>
+                {formatAed(snapshot.currentPrice || 0)}
               </div>
-              <div className={styles.bidStats}>
-                <span className={styles.metaChip}>
-                  <IconTag size={14} strokeWidth={2} />
-                  Step {formatAed(snapshot.minIncrement)}
-                </span>
-                <span className={styles.metaChip}>
-                  <IconUsers size={14} strokeWidth={2} />
-                  {snapshot.totalBids} bids
-                </span>
-                <span className={styles.metaChip}>Start {formatAed(snapshot.startingPrice)}</span>
+
+              <div className={styles.statsRow}>
+                <div className={styles.statItem}>
+                  <div className={styles.statLabel}>BIDS</div>
+                  <div className={styles.statValue}>{snapshot.totalBids}</div>
+                </div>
+
+                <div className={styles.statItem}>
+                  <div className={styles.statLabel}>STEP</div>
+                  <div className={`${styles.statValue} ${styles.statValueAccent}`}>+{formatAed(snapshot.minIncrement)}</div>
+                </div>
+
+                <div className={styles.statItem}>
+                  <div className={styles.statLabel}>STARTED</div>
+                  <div className={styles.statValue}>{formatAed(snapshot.startingPrice)}</div>
+                </div>
               </div>
             </div>
 
-            <div className={styles.fuseWrap}>
-              <div className={styles.fuseBar}>
-                <div
-                  className={styles.fuseFill}
-                  style={{
-                    width: snapshot.endsAt ? `${fuseProgress}%` : "0%",
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                className={styles.bidButton}
-                disabled={!isLive || isSubmittingBid}
-                onClick={() => void handleBid()}
-              >
-                <span className={styles.bidButtonMain}>
-                  <IconZap size={16} strokeWidth={2.2} />
-                  {isSubmittingBid ? "Placing bid..." : `Bid ${formatAed(nextBidAmount)}`}
-                </span>
-              </button>
-            </div>
+            <div className={styles.bidPanel}>
+              <FuseBidButton
+                onBid={() => void handleBid()}
+                nextAmount={nextBidAmount}
+                bidStep={snapshot.minIncrement}
+                fuseProgress={fuseProgress}
+                fuseSeconds={fuseSeconds}
+                isLeading={isLeading}
+                isLoading={isSubmittingBid}
+                disabled={!isLive}
+                expired={isFuseExpired}
+                hasBids={hasBids}
+              />
 
-            {inlineError ? <p className={styles.inlineError}>{inlineError}</p> : null}
+              {inlineError ? <div className={styles.inlineError}>{inlineError}</div> : null}
+            </div>
 
             <div className={styles.feedSection}>
-              <div className={styles.sectionHeader}>
-                <h3>Bid Feed</h3>
-                <span className={styles.headerMeta}>
-                  <IconClock size={14} strokeWidth={2} />
-                  {connectionState}
-                </span>
+              <div className={styles.feedHeader}>
+                <div className={styles.sectionKicker}>Live Bids</div>
+                <div className={styles.feedHeaderMeta}>
+                  <IconUsers size={12} strokeWidth={2} />
+                  <span>{snapshot.totalBids} total</span>
+                </div>
               </div>
-              <div className={styles.feedList}>
-                {bidFeed.length > 0 ? (
-                  bidFeed.map((entry) => (
-                    <div key={entry.id} className={`${styles.feedRow} ${entry.isOwn ? styles.feedRowOwn : ""}`}>
-                      <div className={styles.feedMeta}>
-                        <span className={styles.feedAmount}>{formatAed(entry.amount)}</span>
-                        <span className={styles.feedTimestamp}>
-                          {new Date(entry.timestamp).toLocaleTimeString("en-AE", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </span>
-                      </div>
-                      <span className={`${styles.feedBadge} ${entry.isLeader ? styles.feedBadgeLeader : ""}`}>
-                        {entry.isOwn ? "You" : "Market"}
-                      </span>
-                    </div>
-                  ))
+
+              <div className={styles.feedScroller}>
+                {bidFeed.length === 0 ? (
+                  <div className={styles.feedEmpty}>No bids yet — be the first</div>
                 ) : (
-                  <div className={styles.feedEmpty}>No bids yet — first accepted update will appear here.</div>
+                  bidFeed.map((entry, index) => (
+                    <BidFeedItem key={entry.id} entry={entry} isNew={index === 0 && entry.isNew} />
+                  ))
                 )}
               </div>
             </div>
-          </div>
-        </aside>
-      </div>
 
-      {!isLive ? (
-        <div className={styles.overlay}>
-          <div className={styles.overlayCard}>
-            <span className={styles.overlayEyebrow}>Auction not live</span>
-            <strong>{snapshot.state}</strong>
+            <div className={styles.footerMeta}>
+              <div className={styles.footerMetaItem}>
+                <IconClock size={12} strokeWidth={2} />
+                <span>{formatRemainingTime(auctionRemainingMs)}</span>
+              </div>
+              <div className={styles.footerMetaItem}>
+                <IconTag size={12} strokeWidth={2} />
+                <span>{snapshot.state}</span>
+              </div>
+              <div className={styles.footerMetaItem}>
+                <IconZap size={12} strokeWidth={2} />
+                <span>WS {connectionState}</span>
+              </div>
+            </div>
           </div>
         </div>
-      ) : null}
-    </div>
+      </div>
+    </>
   );
 }

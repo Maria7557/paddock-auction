@@ -413,6 +413,21 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
   return (
     <MarketShell mainClassName={styles.mainTight}>
       <div className={styles.page}>
+        {isLive ? (
+          <Link
+            href={`/auctions/live/${lot.auctionId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.liveBanner}
+          >
+            <span className={styles.liveDot} aria-hidden />
+            Auction is LIVE — Join the bidding room
+            <span className={styles.liveBannerArrow} aria-hidden>
+              →
+            </span>
+          </Link>
+        ) : null}
+
         <nav className={styles.breadcrumb} aria-label="breadcrumb">
           <Link href={withLocalePath("/", display.locale)}>{isRu ? "Главная" : "Home"}</Link>
           <span aria-hidden>›</span>
