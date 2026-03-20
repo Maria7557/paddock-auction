@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { AuctionLiveRoom } from "@/src/components/auction/AuctionLiveRoom";
+import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
+import { getLocalePreference } from "@/src/lib/display_preferences";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import type { AuctionLiveSnapshot } from "@/src/types/auction";
 import { getLot } from "@/app/auctions/[auctionId]/page";
@@ -30,9 +32,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function LiveAuctionPage({ params }: PageProps) {
   const { auctionId } = await params;
+  const locale = await getLocalePreference();
   const requestOptions = await withServerCookies({
     cache: "no-store",
   });
+  const activeEvent = await api.events.getByAuction(auctionId, requestOptions);
+
+  if (activeEvent?.eventId) {
+    redirect(withLocalePath(`/auctions/live/event/${activeEvent.eventId}`, locale));
+  }
 
   const [lot, initialSnapshot] = await Promise.all([
     getLot(auctionId),

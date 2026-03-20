@@ -63,3 +63,41 @@ export interface AuctionLiveSnapshot {
     createdAt: string;
   } | null;
 }
+
+export type EventLotState =
+  | "QUEUED"
+  | "ON_BLOCK"
+  | "LAST_CHANCE_1"
+  | "LAST_CHANCE_2"
+  | "SOLD"
+  | "UNSOLD"
+  | "CLOSED";
+
+export type AuctionEventState = "SCHEDULED" | "LIVE" | "CLOSED";
+
+export interface EventUpcomingLot {
+  position: number;
+  auctionId: string;
+  title: string;
+  startingPrice: number;
+}
+
+export interface EventCurrentLot {
+  lotId: string;
+  auctionId: string;
+  position: number;
+  callRound: number;
+  callEndsAt: string;
+  onBlockAt: string;
+  snapshot: AuctionLiveSnapshot;
+}
+
+export interface EventRuntime {
+  eventId: string;
+  scheduledAt: string;
+  state: AuctionEventState;
+  currentLot: EventCurrentLot | null;
+  totalLots: number;
+  completedLots: number;
+  upcomingLots: EventUpcomingLot[];
+}

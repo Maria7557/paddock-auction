@@ -1,4 +1,4 @@
-import type { AuctionLiveSnapshot } from "@/src/types/auction";
+import type { AuctionLiveSnapshot, EventRuntime } from "@/src/types/auction";
 
 type PrimitiveSearchValue = string | number | boolean | null | undefined;
 type SearchValue = PrimitiveSearchValue | PrimitiveSearchValue[];
@@ -39,6 +39,63 @@ export type UiAuctionBidHistoryEntry = {
   city: string | null;
   location_label: string;
   flag: string;
+};
+
+export type AdminEventListEntry = {
+  id: string;
+  title: string;
+  scheduledAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  state: string;
+  status: string;
+  lotsCount: number;
+};
+
+export type AdminEventLotsResponse = {
+  event: {
+    id: string;
+    title: string;
+    scheduledAt: string;
+    state: string;
+  };
+  lots: Array<{
+    id: string;
+    auctionId: string;
+    position: number;
+    state: string;
+    title: string;
+    startingPrice: number;
+    currentPrice: number;
+    imageUrl: string | null;
+  }>;
+  availableAuctions: Array<{
+    auctionId: string;
+    title: string;
+    startingPrice: number;
+  }>;
+};
+
+export type EventResultEntry = {
+  lotId: string;
+  position: number;
+  auctionId: string;
+  vehicle: string;
+  status: "QUEUED" | "ON_BLOCK" | "SOLD" | "UNSOLD" | "SOLD_DEFAULTED";
+  winningBid: number;
+  bids: number;
+  buyerCompany: string | null;
+  payment: string | null;
+};
+
+export type AdminEventResultsResponse = {
+  event: {
+    id: string;
+    title: string;
+    scheduledAt: string;
+    state: string;
+  };
+  results: EventResultEntry[];
 };
 
 export class ApiError extends Error {
@@ -364,6 +421,24 @@ export const api = {
     buyNow: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
       postJson<T>(`/api/auctions/${id}/buy-now`, undefined, options),
   },
+  events: {
+    getRuntime: async (eventId: string, options?: RequestInit): Promise<EventRuntime> =>
+      getRequest<EventRuntime>(`/api/events/${eventId}/runtime`, options),
+    getByAuction: async (
+      auctionId: string,
+      options?: RequestInit,
+    ): Promise<{ eventId: string } | null> => {
+      try {
+        return await getRequest<{ eventId: string }>(`/api/events/by-auction/${auctionId}`, options);
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 404) {
+          return null;
+        }
+
+        throw error;
+      }
+    },
+  },
   ui: {
     auctions: {
       get: async (
@@ -525,6 +600,35 @@ export const api = {
         postJson<T>(`/api/admin/events/${id}/remove-vehicle`, payload, options),
       addVehicle: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/events/${id}/add-vehicle`, payload, options),
+      getAdminEvents: async (options?: RequestInit): Promise<AdminEventListEntry[]> => {
+        const payload = await getRequest<{ events?: AdminEventListEntry[] }>("/api/admin/events", options);
+        return payload.events ?? [];
+      },
+      getAdminEventLots: async (eventId: string, options?: RequestInit): Promise<AdminEventLotsResponse> =>
+        getRequest<AdminEventLotsResponse>(`/api/admin/events/${eventId}/lots`, options),
+      addLotToEvent: async (
+        eventId: string,
+        auctionId: string,
+        position: number,
+        options?: RequestInit,
+      ): Promise<{
+        id: string;
+        eventId: string;
+        auctionId: string;
+        position: number;
+        state: string;
+      }> =>
+        postJson(`/api/admin/events/${eventId}/lots`, { auctionId, position }, options),
+      removeLotFromEvent: async (eventId: string, lotId: string, options?: RequestInit): Promise<void> =>
+        deleteRequest<void>(`/api/admin/events/${eventId}/lots/${lotId}`, options),
+      startEvent: async (eventId: string, options?: RequestInit): Promise<void> =>
+        postJson<void>(`/api/admin/events/${eventId}/start`, undefined, options),
+      getEventConsole: async (eventId: string, options?: RequestInit): Promise<EventRuntime> =>
+        getRequest<EventRuntime>(`/api/events/${eventId}/runtime`, options),
+      getEventResults: async (eventId: string, options?: RequestInit): Promise<EventResultEntry[]> => {
+        const payload = await getRequest<AdminEventResultsResponse>(`/api/admin/events/${eventId}/results`, options);
+        return payload.results;
+      },
     },
     companies: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
