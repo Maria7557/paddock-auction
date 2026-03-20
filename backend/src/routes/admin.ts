@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 
+import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
 import { sendNewEventAnnouncementEmail } from "../lib/email";
+import { createAuctionEventRecord } from "./auction-events";
 
 type DecimalLike =
   | number
@@ -106,10 +108,31 @@ const eventQuerySchema = z.object({
 
 const eventSchema = z.object({
   title: z.string().trim().min(1),
-  date: z.string().trim().min(1),
+  scheduledAt: z.string().trim().min(1).optional(),
+  date: z.string().trim().min(1).optional(),
   startTime: z.string().trim().min(1).optional(),
   time: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
+}).superRefine((value, ctx) => {
+  if (value.scheduledAt) {
+    return;
+  }
+
+  if (!value.date?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["date"],
+      message: "Date is required",
+    });
+  }
+
+  if (!(value.startTime?.trim() || value.time?.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["startTime"],
+      message: "Start time is required",
+    });
+  }
 });
 
 const eventIdParamsSchema = z.object({
@@ -2315,83 +2338,42 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const rawStatus = parsedQuery.data.status?.toUpperCase() ?? "";
-      const where =
-        rawStatus && (await isAuctionState(rawStatus))
+      const where: Prisma.AuctionEventWhereInput =
+        rawStatus === "SCHEDULED" || rawStatus === "LIVE" || rawStatus === "CLOSED"
           ? {
-              transitions: {
-                some: {
-                  trigger: "EVENT_META",
-                },
-              },
-              state: rawStatus as (typeof auctionStates)[number],
+              state: rawStatus,
             }
-          : {
-              transitions: {
-                some: {
-                  trigger: "EVENT_META",
-                },
-              },
-            };
+          : {};
 
-      const events = await prisma.auction.findMany({
+      const events = await prisma.auctionEvent.findMany({
         where,
         select: {
           id: true,
+          title: true,
           state: true,
+          scheduledAt: true,
           startsAt: true,
           endsAt: true,
-          transitions: {
-            where: {
-              trigger: "EVENT_META",
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
+          lots: {
             select: {
-              reason: true,
+              id: true,
             },
           },
         },
-        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
       });
-      const lots = await prisma.auction.findMany({
-        where: {
-          transitions: {
-            none: {
-              trigger: "EVENT_META",
-            },
-          },
-        },
-        select: {
-          startsAt: true,
-          endsAt: true,
-        },
-      });
-      const lotsCountByWindow = new Map<string, number>();
-
-      for (const lot of lots) {
-        const key = `${lot.startsAt.toISOString()}::${lot.endsAt.toISOString()}`;
-        lotsCountByWindow.set(key, (lotsCountByWindow.get(key) ?? 0) + 1);
-      }
 
       await reply.code(200).send({
-        events: await Promise.all(
-          events.map(async (event) => {
-            const key = `${event.startsAt.toISOString()}::${event.endsAt.toISOString()}`;
-            const meta = await parseEventMeta(event.transitions[0]?.reason ?? null);
-
-            return {
-              id: event.id,
-              title:
-                meta.title?.trim() || `Auction Event ${event.startsAt.toLocaleDateString("en-GB")}`,
-              startsAt: event.startsAt.toISOString(),
-              endsAt: event.endsAt.toISOString(),
-              status: event.state,
-              lotsCount: lotsCountByWindow.get(key) ?? 0,
-            };
-          }),
-        ),
+        events: events.map((event) => ({
+          id: event.id,
+          title: event.title,
+          scheduledAt: event.scheduledAt.toISOString(),
+          startsAt: (event.startsAt ?? event.scheduledAt).toISOString(),
+          endsAt: event.endsAt?.toISOString() ?? null,
+          state: event.state,
+          status: event.state,
+          lotsCount: event.lots.length,
+        })),
       });
     },
   );
@@ -2413,16 +2395,10 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       return;
     }
 
-    const startTime = parsedBody.data.startTime ?? parsedBody.data.time;
-
-    if (!startTime) {
-      await reply.code(400).send({
-        error: "INVALID_PAYLOAD",
-      });
-      return;
-    }
-
-    const startsAt = new Date(`${parsedBody.data.date}T${startTime}:00+04:00`);
+    const startTime = parsedBody.data.startTime ?? parsedBody.data.time ?? "00:00";
+    const startsAt = parsedBody.data.scheduledAt
+      ? new Date(parsedBody.data.scheduledAt)
+      : new Date(`${parsedBody.data.date}T${startTime}:00+04:00`);
 
     if (Number.isNaN(startsAt.getTime())) {
       await reply.code(400).send({
@@ -2483,6 +2459,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
+      await createAuctionEventRecord(tx, {
+        id: auction.id,
+        title: parsedBody.data.title,
+        scheduledAt: startsAt,
+      });
+
       await createAuditLog(tx, {
         actorId,
         action: "EVENT_CREATED",
@@ -2491,7 +2473,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         payload: {
           eventId: auction.id,
           title: parsedBody.data.title,
-          date: parsedBody.data.date,
+          date: parsedBody.data.date ?? startsAt.toISOString().slice(0, 10),
           time: startTime,
           description: parsedBody.data.description ?? "",
         },
@@ -2527,6 +2509,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     await reply.code(201).send({
       id: createdAuction.id,
       success: true,
+      event: {
+        id: createdAuction.id,
+        title: parsedBody.data.title,
+        scheduledAt: startsAt.toISOString(),
+        state: "SCHEDULED",
+      },
     });
   });
 

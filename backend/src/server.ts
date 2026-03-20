@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { prisma } from "./db";
 import { setSchedulerLogger, startScheduler, stopScheduler } from "./scheduler";
 import { adminRoutes } from "./routes/admin";
+import { auctionEventsRoutes } from "./routes/auction-events";
 import { authRoutes } from "./routes/auth";
 import { auctionWsRoutes } from "./routes/auction-ws";
 import { bidsRoutes } from "./routes/bids";
@@ -149,6 +150,7 @@ export async function buildServer(): Promise<FastifyInstance> {
         prefix: "/auth",
       });
 
+      await api.register(auctionEventsRoutes);
       await api.register(auctionWsRoutes);
       await api.register(bidsRoutes);
       await api.register(buyerRoutes);

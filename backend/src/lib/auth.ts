@@ -92,6 +92,10 @@ async function sendUnauthorized(reply: FastifyReply): Promise<void> {
   await reply.code(401).send({ error: "Unauthorized" });
 }
 
+async function sendForbidden(reply: FastifyReply): Promise<void> {
+  await reply.code(403).send({ error: "Forbidden" });
+}
+
 export async function verifyToken(token: string): Promise<AuthTokenPayload> {
   const secret = await getJwtSecret();
   const verified = await jwtVerify(token, secret, {
@@ -158,7 +162,7 @@ export async function requireAdminAuth(
   }
 
   if (request.auth?.role !== "ADMIN") {
-    await sendUnauthorized(reply);
+    await sendForbidden(reply);
   }
 }
 

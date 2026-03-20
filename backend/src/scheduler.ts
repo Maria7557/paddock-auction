@@ -5,6 +5,7 @@ import cron from "node-cron";
 
 import { prisma } from "./db";
 import { createIssuedInvoice, releaseAuctionDepositLocks } from "./lib/auction-deposit-locks";
+import { checkAndTick, startEvent } from "./lib/event-orchestrator";
 
 type DecimalLike =
   | number
@@ -392,6 +393,79 @@ export async function enforcePaymentDeadlines(): Promise<void> {
   );
 }
 
+export async function runEventAutoStartJob(): Promise<void> {
+  const dueEvents = await prisma.auctionEvent.findMany({
+    where: {
+      state: "SCHEDULED",
+      scheduledAt: {
+        lte: new Date(),
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  let processed = 0;
+
+  for (const event of dueEvents) {
+    await startEvent(event.id);
+    processed += 1;
+    schedulerLogger.info(
+      {
+        job: "runEventAutoStartJob",
+        eventId: event.id,
+      },
+      "Event auto-started",
+    );
+  }
+
+  schedulerLogger.info(
+    {
+      job: "runEventAutoStartJob",
+      processed,
+    },
+    "Scheduler job completed",
+  );
+}
+
+export async function runEventTickJob(): Promise<void> {
+  const liveEvents = await prisma.auctionEvent.findMany({
+    where: {
+      state: "LIVE",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  let processed = 0;
+
+  for (const event of liveEvents) {
+    try {
+      await checkAndTick(event.id);
+      processed += 1;
+    } catch (error) {
+      schedulerLogger.error(
+        {
+          job: "runEventTickJob",
+          eventId: event.id,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        "Event tick failed",
+      );
+    }
+  }
+
+  schedulerLogger.info(
+    {
+      job: "runEventTickJob",
+      processed,
+    },
+    "Scheduler job completed",
+  );
+}
+
 export async function setSchedulerLogger(logger: LoggerLike): Promise<void> {
   schedulerLogger = logger;
 }
@@ -425,6 +499,38 @@ export async function startScheduler(): Promise<void> {
         schedulerLogger.error(
           {
             job: "enforcePaymentDeadlines",
+            err: error instanceof Error ? error.message : String(error),
+          },
+          "Scheduler job failed",
+        );
+      }
+    }),
+  );
+
+  scheduledTasks.push(
+    cron.schedule("*/30 * * * * *", async () => {
+      try {
+        await runEventAutoStartJob();
+      } catch (error) {
+        schedulerLogger.error(
+          {
+            job: "runEventAutoStartJob",
+            err: error instanceof Error ? error.message : String(error),
+          },
+          "Scheduler job failed",
+        );
+      }
+    }),
+  );
+
+  scheduledTasks.push(
+    cron.schedule("*/2 * * * * *", async () => {
+      try {
+        await runEventTickJob();
+      } catch (error) {
+        schedulerLogger.error(
+          {
+            job: "runEventTickJob",
             err: error instanceof Error ? error.message : String(error),
           },
           "Scheduler job failed",

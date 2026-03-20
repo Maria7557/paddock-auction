@@ -11,6 +11,7 @@ import {
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
 import { hydrateAuthIfPresent, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { notifyEventRuntime } from "./auction-events";
 import { publishAuctionRealtimeSnapshot } from "./auction-ws";
 
 type DecimalLike =
@@ -839,6 +840,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           },
         });
         void publishAuctionRealtimeSnapshot(payload.auctionId, fastify.log);
+        void notifyEventRuntime(payload.auctionId, fastify.log);
 
         fastify.log.info(
           {

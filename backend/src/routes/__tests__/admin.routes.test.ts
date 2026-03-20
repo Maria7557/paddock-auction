@@ -16,6 +16,9 @@ const { mockPrisma } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       findFirst: vi.fn(),
     },
+    auctionEvent: {
+      findMany: vi.fn(),
+    },
     company: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -74,6 +77,9 @@ function buildAdminTx(overrides: Record<string, unknown> = {}) {
       update: vi.fn(),
       create: vi.fn(),
       deleteMany: vi.fn(),
+    },
+    auctionEvent: {
+      create: vi.fn(),
     },
     auctionStateTransition: {
       create: vi.fn(),
@@ -153,20 +159,20 @@ describe("admin auth guard", () => {
     expect(res.body.error).toBe("Unauthorized");
   });
 
-  it("returns 401 for SELLER token", async () => {
+  it("returns 403 for SELLER token", async () => {
     const res = await request
       .get("/api/admin/companies/pending")
       .set("Authorization", `Bearer ${sellerToken}`);
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
-  it("returns 401 for BUYER token", async () => {
+  it("returns 403 for BUYER token", async () => {
     const res = await request
       .get("/api/admin/companies/pending")
       .set("Authorization", `Bearer ${buyerToken}`);
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("allows ADMIN token through", async () => {
@@ -1004,6 +1010,12 @@ describe("POST /api/admin/events", () => {
     tx.auction.create.mockResolvedValue({
       id: "ev1",
     });
+    tx.auctionEvent.create.mockResolvedValue({
+      id: "ev1",
+      title: "Evening Event",
+      scheduledAt: new Date("2026-03-15T14:00:00.000Z"),
+      state: "SCHEDULED",
+    });
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     const res = await request
@@ -1020,6 +1032,12 @@ describe("POST /api/admin/events", () => {
     expect(res.body).toEqual({
       id: "ev1",
       success: true,
+      event: {
+        id: "ev1",
+        title: "Evening Event",
+        scheduledAt: "2026-03-15T14:00:00.000Z",
+        state: "SCHEDULED",
+      },
     });
     expect(mockEmail.sendNewEventAnnouncementEmail).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1036,35 +1054,18 @@ describe("POST /api/admin/events", () => {
 });
 
 describe("GET /api/admin/events", () => {
-  it("returns filtered real event seeds and counts assigned lots", async () => {
-    mockPrisma.auction.findMany
-      .mockResolvedValueOnce([
-        {
-          id: "ev1",
-          state: "SCHEDULED",
-          startsAt: new Date("2026-03-15T14:00:00.000Z"),
-          endsAt: new Date("2026-03-15T16:00:00.000Z"),
-          transitions: [
-            {
-              trigger: "EVENT_META",
-              reason: JSON.stringify({
-                title: "Evening Event",
-                description: "Prime lots",
-              }),
-            },
-          ],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          startsAt: new Date("2026-03-15T14:00:00.000Z"),
-          endsAt: new Date("2026-03-15T16:00:00.000Z"),
-        },
-        {
-          startsAt: new Date("2026-03-15T14:00:00.000Z"),
-          endsAt: new Date("2026-03-15T16:00:00.000Z"),
-        },
-      ]);
+  it("returns auction events with lot counts from the runtime tables", async () => {
+    mockPrisma.auctionEvent.findMany.mockResolvedValue([
+      {
+        id: "ev1",
+        title: "Evening Event",
+        state: "SCHEDULED",
+        scheduledAt: new Date("2026-03-15T14:00:00.000Z"),
+        startsAt: null,
+        endsAt: null,
+        lots: [{ id: "lot-1" }, { id: "lot-2" }],
+      },
+    ]);
 
     const res = await request
       .get("/api/admin/events?status=SCHEDULED")
@@ -1075,13 +1076,15 @@ describe("GET /api/admin/events", () => {
       {
         id: "ev1",
         title: "Evening Event",
+        scheduledAt: "2026-03-15T14:00:00.000Z",
         startsAt: "2026-03-15T14:00:00.000Z",
-        endsAt: "2026-03-15T16:00:00.000Z",
+        endsAt: null,
+        state: "SCHEDULED",
         status: "SCHEDULED",
         lotsCount: 2,
       },
     ]);
-    expect(mockPrisma.auction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.auctionEvent.findMany).toHaveBeenCalledTimes(1);
   });
 });
 
