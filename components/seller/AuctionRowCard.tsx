@@ -29,15 +29,15 @@ export function AuctionRowCard({ auction, onAction, busyActionId }: AuctionRowCa
       </td>
       <td>{formatSellerAuctionBid(auction.currentBidAed)}</td>
       <td>{auction.bidsCount}</td>
-      <td>{formatSellerDateTime(auction.endsAt)}</td>
+      <td>{normalizedState === "DRAFT" ? "Awaiting schedule" : formatSellerDateTime(auction.endsAt)}</td>
       <td>
         <div className="seller-table-actions">
           {normalizedState === "DRAFT" ? (
             <>
               <Link href={`/seller/auctions/${auction.id}`} className="seller-inline-link">
-                Edit
+                View
               </Link>
-              <span className="text-muted">Awaiting admin review</span>
+              <span className="text-muted">Awaiting admin scheduling</span>
             </>
           ) : null}
 

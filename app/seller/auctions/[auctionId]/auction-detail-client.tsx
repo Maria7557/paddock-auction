@@ -219,7 +219,7 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
       };
     }
 
-    if (state === "SCHEDULED" || state === "DRAFT") {
+    if (state === "SCHEDULED") {
       return {
         iso: data.auction.startsAt,
         prefix: "Starts in",
@@ -241,9 +241,6 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
       const payload: Record<string, unknown> = { action };
 
       if (action === "update") {
-        payload.startsAt = new Date(editForm.startsAt).toISOString();
-        payload.endsAt = new Date(editForm.endsAt).toISOString();
-
         if (editForm.buyNowPriceAed.trim()) {
           const buyNowPrice = Number(editForm.buyNowPriceAed);
 
@@ -345,14 +342,21 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
           ))}
         </div>
 
-        <p className="text-muted" style={{ marginTop: "12px" }}>
-          Starts: {formatSellerDateTime(data.auction.startsAt)} · Ends: {formatSellerDateTime(data.auction.endsAt)}
-        </p>
+        {state === "DRAFT" ? (
+          <p className="text-muted" style={{ marginTop: "12px" }}>
+            Inspection drop-off stays internal until FleetBid admin assigns this lot to an event and publishes the live
+            auction schedule.
+          </p>
+        ) : (
+          <p className="text-muted" style={{ marginTop: "12px" }}>
+            Starts: {formatSellerDateTime(data.auction.startsAt)} · Ends: {formatSellerDateTime(data.auction.endsAt)}
+          </p>
+        )}
       </section>
 
       {state === "DRAFT" ? (
         <section className="surface-panel seller-section-block">
-          <h3>Edit Draft</h3>
+          <h3>Draft Setup</h3>
           <div className="seller-form-grid">
             <label>
               Buy Now Price (AED)
@@ -364,24 +368,6 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
                 onChange={(event) => setEditForm((previous) => ({ ...previous, buyNowPriceAed: event.target.value }))}
               />
             </label>
-
-            <label>
-              Starts At
-              <input
-                type="datetime-local"
-                value={editForm.startsAt}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, startsAt: event.target.value }))}
-              />
-            </label>
-
-            <label>
-              Ends At
-              <input
-                type="datetime-local"
-                value={editForm.endsAt}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, endsAt: event.target.value }))}
-              />
-            </label>
           </div>
 
           <div className="seller-inline-actions" style={{ marginTop: "14px" }}>
@@ -390,7 +376,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
             </button>
           </div>
           <p className="text-muted" style={{ marginTop: "12px" }}>
-            FleetBid admin reviews this draft, sets the market price, and assigns the event date before it goes live.
+            FleetBid admin reviews this draft, uses the inspection drop-off date as internal prep info, and assigns the
+            live event date before this lot becomes scheduled.
           </p>
         </section>
       ) : null}

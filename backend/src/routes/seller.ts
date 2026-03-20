@@ -148,12 +148,6 @@ async function toDateValue(value: string | undefined, fallback: Date): Promise<D
   return parsed;
 }
 
-async function addDays(value: Date, days: number): Promise<Date> {
-  const next = new Date(value);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
 async function normalizeVin(vin: string): Promise<string> {
   return vin.trim().toUpperCase();
 }
@@ -585,14 +579,9 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
 
     try {
       const now = new Date();
-      const inspectionDropoffDate = payload.inspectionDropoffDate
-        ? new Date(payload.inspectionDropoffDate)
-        : null;
-      const derivedStartsAt = inspectionDropoffDate ? await addDays(inspectionDropoffDate, 2) : now;
-      const derivedEndsAt = inspectionDropoffDate
-        ? await addDays(inspectionDropoffDate, 3)
-        : new Date(derivedStartsAt.getTime() + 24 * 60 * 60 * 1000);
-      const viewingEndsAt = inspectionDropoffDate ? await addDays(inspectionDropoffDate, 2) : null;
+      const inspectionDropoffDate = payload.inspectionDropoffDate ? new Date(payload.inspectionDropoffDate) : null;
+      const draftStartsAt = now;
+      const draftEndsAt = new Date(draftStartsAt.getTime() + 24 * 60 * 60 * 1000);
       const mediaItems = await toVehicleMediaCreateInput({
         images: payload.images,
         mulkiyaFrontUrl: payload.mulkiyaFrontUrl,
@@ -637,12 +626,12 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             vehicleId: vehicle.id,
             sellerCompanyId: companyId,
             state: "DRAFT",
-            startsAt: derivedStartsAt,
-            endsAt: derivedEndsAt,
+            startsAt: draftStartsAt,
+            endsAt: draftEndsAt,
             inspectionDropoffDate,
-            viewingEndsAt,
-            auctionStartsAt: derivedStartsAt,
-            auctionEndsAt: derivedEndsAt,
+            viewingEndsAt: null,
+            auctionStartsAt: null,
+            auctionEndsAt: null,
             startingPrice: 0,
             currentPrice: 0,
             buyNowPrice: payload.buyNowPrice,
@@ -1443,28 +1432,16 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const startsAt = await toDateValue(payload.startsAt, auction.startsAt);
-      const endsAt = await toDateValue(payload.endsAt, auction.endsAt);
-
-      if (endsAt <= startsAt) {
-        await reply.code(400).send({
-          error: "INVALID_AUCTION_WINDOW",
-        });
-        return;
-      }
-
       await prisma.$transaction(async (tx) => {
         await tx.auction.update({
           where: {
             id,
           },
           data: {
-            startsAt,
-            endsAt,
             inspectionDropoffDate: payload.inspectionDropoffDate ? new Date(payload.inspectionDropoffDate) : undefined,
-            viewingEndsAt: payload.viewingEndsAt ? new Date(payload.viewingEndsAt) : undefined,
-            auctionStartsAt: payload.auctionStartsAt ? new Date(payload.auctionStartsAt) : startsAt,
-            auctionEndsAt: payload.auctionEndsAt ? new Date(payload.auctionEndsAt) : endsAt,
+            viewingEndsAt: undefined,
+            auctionStartsAt: undefined,
+            auctionEndsAt: undefined,
             buyNowPrice: payload.buyNowPrice === undefined ? undefined : payload.buyNowPrice,
             minIncrement: payload.minIncrement,
           },
@@ -1479,12 +1456,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             companyId,
             auctionId: id,
             changes: {
-              startsAt: startsAt.toISOString(),
-              endsAt: endsAt.toISOString(),
               inspectionDropoffDate: payload.inspectionDropoffDate ?? null,
-              viewingEndsAt: payload.viewingEndsAt ?? null,
-              auctionStartsAt: payload.auctionStartsAt ?? startsAt.toISOString(),
-              auctionEndsAt: payload.auctionEndsAt ?? endsAt.toISOString(),
               buyNowPrice: payload.buyNowPrice ?? null,
               minIncrement: payload.minIncrement ?? null,
             },

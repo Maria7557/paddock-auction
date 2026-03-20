@@ -46,7 +46,7 @@ export function AuctionStatusBadge({ state }: AuctionStatusBadgeProps) {
   }
 
   if (normalized === "DRAFT") {
-    return <span className="seller-status seller-status-draft">DRAFT</span>;
+    return <span className="seller-status seller-status-draft">COMING SOON</span>;
   }
 
   if (normalized === "PAYMENT_PENDING") {

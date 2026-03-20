@@ -327,13 +327,38 @@ async function resolveAssignedEventId(
   }
 }
 
-async function resolveVehicleStatus(state: string | null): Promise<"PENDING" | "APPROVED" | "REJECTED"> {
-  if (!state || state === "DRAFT") {
+type VehicleWorkflowTransition = {
+  trigger: string;
+  reason: string | null;
+};
+
+function readLatestEventAssignmentTransition(
+  transitions: VehicleWorkflowTransition[] | null | undefined,
+): VehicleWorkflowTransition | null {
+  return (
+    transitions?.find((transition) => transition.trigger === "EVENT_ASSIGNED" || transition.trigger === "EVENT_UNASSIGNED") ??
+    null
+  );
+}
+
+function hasVehicleApprovalTransition(transitions: VehicleWorkflowTransition[] | null | undefined): boolean {
+  return transitions?.some((transition) => transition.trigger === "ADMIN_VEHICLE_APPROVED") ?? false;
+}
+
+async function resolveVehicleStatus(
+  state: string | null,
+  hasAdminApproval = false,
+): Promise<"PENDING" | "APPROVED" | "REJECTED"> {
+  if (!state) {
     return "PENDING";
   }
 
   if (state === "CANCELED") {
     return "REJECTED";
+  }
+
+  if (state === "DRAFT") {
+    return hasAdminApproval ? "APPROVED" : "PENDING";
   }
 
   return "APPROVED";
@@ -359,10 +384,7 @@ type AdminVehicleListRow = {
   latestAuctionId: string | null;
   latestAuctionState: string | null;
   sellerCompanyId: string | null;
-  latestEventAssignmentTransition: {
-    trigger: string;
-    reason: string | null;
-  } | null;
+  latestTransitions: VehicleWorkflowTransition[];
 };
 
 async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
@@ -402,13 +424,13 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
             transitions: {
               where: {
                 trigger: {
-                  in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED"],
+                  in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED", "ADMIN_VEHICLE_APPROVED"],
                 },
               },
               orderBy: {
                 createdAt: "desc",
               },
-              take: 1,
+              take: 3,
               select: {
                 trigger: true,
                 reason: true,
@@ -431,7 +453,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
       sellerCompanyId: vehicle.auctions[0]?.sellerCompanyId ?? null,
-      latestEventAssignmentTransition: vehicle.auctions[0]?.transitions[0] ?? null,
+      latestTransitions: vehicle.auctions[0]?.transitions ?? [],
     }));
   } catch (error) {
     if (!isSchemaDriftPrismaError(error)) {
@@ -462,13 +484,13 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
             transitions: {
               where: {
                 trigger: {
-                  in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED"],
+                  in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED", "ADMIN_VEHICLE_APPROVED"],
                 },
               },
               orderBy: {
                 createdAt: "desc",
               },
-              take: 1,
+              take: 3,
               select: {
                 trigger: true,
                 reason: true,
@@ -491,7 +513,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
       sellerCompanyId: vehicle.auctions[0]?.sellerCompanyId ?? null,
-      latestEventAssignmentTransition: vehicle.auctions[0]?.transitions[0] ?? null,
+      latestTransitions: vehicle.auctions[0]?.transitions ?? [],
     }));
   }
 }
@@ -656,11 +678,14 @@ async function assignVehicleToEvent(input: {
     }
 
     await prisma.$transaction(async (tx) => {
+      const nextAuctionState = latestAuction.state === "DRAFT" ? "SCHEDULED" : latestAuction.state;
+
       await tx.auction.update({
         where: {
           id: latestAuction.id,
         },
         data: {
+          state: nextAuctionState,
           startsAt: event.startsAt,
           endsAt: event.endsAt,
         },
@@ -670,7 +695,7 @@ async function assignVehicleToEvent(input: {
         data: {
           auctionId: latestAuction.id,
           fromState: latestAuction.state,
-          toState: latestAuction.state,
+          toState: nextAuctionState,
           trigger: "EVENT_ASSIGNED",
           actorId: input.actorId,
           reason: JSON.stringify({
@@ -688,6 +713,8 @@ async function assignVehicleToEvent(input: {
           vehicleId: input.vehicleId,
           auctionId: latestAuction.id,
           eventId: event.id,
+          previousState: latestAuction.state,
+          nextState: nextAuctionState,
         },
       });
     });
@@ -700,11 +727,14 @@ async function assignVehicleToEvent(input: {
   }
 
   await prisma.$transaction(async (tx) => {
+    const nextAuctionState = latestAuction.state === "SCHEDULED" ? "DRAFT" : latestAuction.state;
+
     await tx.auction.update({
       where: {
         id: latestAuction.id,
       },
       data: {
+        state: nextAuctionState,
         startsAt: latestAuction.auctionStartsAt ?? latestAuction.startsAt,
         endsAt: latestAuction.auctionEndsAt ?? latestAuction.endsAt,
       },
@@ -714,7 +744,7 @@ async function assignVehicleToEvent(input: {
       data: {
         auctionId: latestAuction.id,
         fromState: latestAuction.state,
-        toState: latestAuction.state,
+        toState: nextAuctionState,
         trigger: "EVENT_UNASSIGNED",
         actorId: input.actorId,
         reason: JSON.stringify({
@@ -732,6 +762,8 @@ async function assignVehicleToEvent(input: {
         vehicleId: input.vehicleId,
         auctionId: latestAuction.id,
         eventId: null,
+        previousState: latestAuction.state,
+        nextState: nextAuctionState,
       },
     });
   });
@@ -789,8 +821,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       for (const vehicle of vehicles) {
         const latestState = vehicle.latestAuctionState;
-        const resolvedStatus = await resolveVehicleStatus(latestState);
-        const assignedEventId = await resolveAssignedEventId(vehicle.latestEventAssignmentTransition);
+        const resolvedStatus = await resolveVehicleStatus(
+          latestState,
+          hasVehicleApprovalTransition(vehicle.latestTransitions),
+        );
+        const assignedEventId = await resolveAssignedEventId(
+          readLatestEventAssignmentTransition(vehicle.latestTransitions),
+        );
 
         if (status !== "ALL" && resolvedStatus !== status) {
           continue;
@@ -876,13 +913,13 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
               transitions: {
                 where: {
                   trigger: {
-                    in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED"],
+                    in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED", "ADMIN_VEHICLE_APPROVED"],
                   },
                 },
                 orderBy: {
                   createdAt: "desc",
                 },
-                take: 1,
+                take: 3,
                 select: {
                   trigger: true,
                   reason: true,
@@ -901,7 +938,8 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const latestAuction = vehicle.auctions[0] ?? null;
-      const assignedEventId = await resolveAssignedEventId(latestAuction?.transitions[0] ?? null);
+      const latestTransitions = latestAuction?.transitions ?? [];
+      const assignedEventId = await resolveAssignedEventId(readLatestEventAssignmentTransition(latestTransitions));
       const sellerCompanyId = latestAuction?.sellerCompanyId ?? null;
       const [company, assignedEvent] = await Promise.all([
         sellerCompanyId
@@ -957,7 +995,10 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           mileage: vehicle.mileage,
           vin: vehicle.vin,
           marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
-          status: await resolveVehicleStatus(latestAuction?.state ?? null),
+          status: await resolveVehicleStatus(
+            latestAuction?.state ?? null,
+            hasVehicleApprovalTransition(latestTransitions),
+          ),
           photoUrls: photoUrls.length > 0 ? photoUrls : vehicle.images,
           mulkiyaFrontUrl: vehicle.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
           mulkiyaBackUrl: vehicle.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
@@ -1066,20 +1107,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       const latestAuction = vehicle.auctions[0];
 
       await prisma.$transaction(async (tx) => {
-        await tx.auction.update({
-          where: {
-            id: latestAuction.id,
-          },
-          data: {
-            state: "SCHEDULED",
-          },
-        });
-
         await tx.auctionStateTransition.create({
           data: {
             auctionId: latestAuction.id,
             fromState: latestAuction.state,
-            toState: "SCHEDULED",
+            toState: latestAuction.state,
             trigger: "ADMIN_VEHICLE_APPROVED",
             actorId,
             reason: JSON.stringify({
@@ -1097,7 +1129,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             vehicleId: id,
             auctionId: latestAuction.id,
             previousState: latestAuction.state,
-            nextState: "SCHEDULED",
+            nextState: latestAuction.state,
           },
         });
       });
@@ -1417,6 +1449,19 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           endsAt: true,
           startingPrice: true,
           buyNowPrice: true,
+          transitions: {
+            where: {
+              trigger: "ADMIN_VEHICLE_APPROVED",
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
+            select: {
+              trigger: true,
+              reason: true,
+            },
+          },
           vehicle: {
             select: {
               id: true,
@@ -1452,7 +1497,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
               auctionId: auction.id,
               vehicleId: auction.vehicle.id,
               label: `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}`,
-              status: await resolveVehicleStatus(auction.state),
+              status: await resolveVehicleStatus(auction.state, hasVehicleApprovalTransition(auction.transitions)),
               startsAt: auction.startsAt.toISOString(),
               endsAt: auction.endsAt.toISOString(),
               startingPriceAed: await toNumberValue(auction.startingPrice),
