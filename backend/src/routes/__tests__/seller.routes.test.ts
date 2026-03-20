@@ -284,6 +284,44 @@ describe("POST /api/seller/vehicles", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           minIncrement: 500,
+          auctionStartsAt: null,
+          auctionEndsAt: null,
+          viewingEndsAt: null,
+        }),
+      }),
+    );
+  });
+
+  it("stores inspection drop-off as informational only without deriving auction schedule", async () => {
+    const tx = buildSellerTx();
+    tx.vehicle.create.mockResolvedValue({
+      id: "v-new",
+      ...validVehicle,
+      vin: "VIN-UNIQUE-001",
+      marketPrice: null,
+    });
+    tx.auction.create.mockResolvedValue({
+      id: "a-new",
+      state: "DRAFT",
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/seller/vehicles")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        ...validVehicle,
+        inspectionDropoffDate: "2026-04-10T00:00:00.000Z",
+      });
+
+    expect(res.status).toBe(201);
+    expect(tx.auction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          inspectionDropoffDate: new Date("2026-04-10T00:00:00.000Z"),
+          viewingEndsAt: null,
+          auctionStartsAt: null,
+          auctionEndsAt: null,
         }),
       }),
     );
@@ -687,6 +725,19 @@ describe("PATCH /api/seller/auctions/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       success: true,
+    });
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "a1",
+      },
+      data: {
+        inspectionDropoffDate: undefined,
+        viewingEndsAt: undefined,
+        auctionStartsAt: undefined,
+        auctionEndsAt: undefined,
+        buyNowPrice: undefined,
+        minIncrement: undefined,
+      },
     });
   });
 

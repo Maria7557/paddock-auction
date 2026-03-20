@@ -51,10 +51,18 @@ export function VehicleListCard({ vehicle }: VehicleListCardProps) {
       </div>
 
       <div className="seller-vehicle-side">
-        {vehicle.latestAuction ? <AuctionStatusBadge state={vehicle.latestAuction.state} /> : <span className="seller-status seller-status-draft">NO AUCTION</span>}
+        {vehicle.latestAuction ? (
+          <AuctionStatusBadge state={vehicle.latestAuction.state} />
+        ) : (
+          <span className="seller-status seller-status-draft">NO AUCTION</span>
+        )}
 
         {vehicle.latestAuction ? (
-          <p className="seller-vehicle-end">Ends: {formatSellerDateTime(vehicle.latestAuction.endsAt)}</p>
+          <p className="seller-vehicle-end">
+            {vehicle.latestAuction.state === "DRAFT"
+              ? "Awaiting admin scheduling"
+              : `Ends: ${formatSellerDateTime(vehicle.latestAuction.endsAt)}`}
+          </p>
         ) : (
           <p className="seller-vehicle-end">Create an auction draft</p>
         )}

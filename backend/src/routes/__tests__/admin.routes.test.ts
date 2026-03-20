@@ -472,6 +472,43 @@ describe("GET /api/admin/vehicles", () => {
     expect(res.body.vehicles[0].companyName).toBe("Fleet Operator LLC");
   });
 
+  it("treats admin-approved draft lots as approved until scheduling is assigned", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([{ id: "c1", name: "Fleet Operator LLC" }]);
+    mockPrisma.vehicle.findMany.mockResolvedValue([
+      {
+        id: "v1",
+        brand: "BMW",
+        model: "X5",
+        year: 2023,
+        vin: "VIN001",
+        marketPrice: 200000,
+        media: [],
+        images: [],
+        auctions: [
+          {
+            id: "a1",
+            state: "DRAFT",
+            sellerCompanyId: "c1",
+            transitions: [
+              {
+                trigger: "ADMIN_VEHICLE_APPROVED",
+                reason: JSON.stringify({ vehicleId: "v1" }),
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/vehicles")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vehicles).toHaveLength(1);
+    expect(res.body.vehicles[0].status).toBe("APPROVED");
+  });
+
   it("falls back to base vehicle query when optional columns are missing", async () => {
     mockPrisma.vehicle.findMany
       .mockRejectedValueOnce({
@@ -636,7 +673,7 @@ describe("GET /api/admin/vehicles/:id", () => {
 });
 
 describe("POST /api/admin/vehicles/:id/approve", () => {
-  it("returns 200 when vehicle is approved", async () => {
+  it("records approval without scheduling the auction", async () => {
     mockPrisma.vehicle.findUnique.mockResolvedValue({
       id: "v1",
       auctions: [{ id: "a1", state: "DRAFT" }],
@@ -651,6 +688,15 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(tx.auction.update).not.toHaveBeenCalled();
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "a1",
+        fromState: "DRAFT",
+        toState: "DRAFT",
+        trigger: "ADMIN_VEHICLE_APPROVED",
+      }),
+    });
   });
 
   it("returns 404 when vehicle is not found", async () => {
@@ -707,17 +753,17 @@ describe("POST /api/admin/vehicles/:id/set-market-price", () => {
 });
 
 describe("POST /api/admin/vehicles/:id/assign-event", () => {
-  it("returns 200 when vehicle is assigned to event", async () => {
+  it("returns 200 when vehicle is assigned to event and makes it scheduled", async () => {
     mockPrisma.vehicle.findUnique.mockResolvedValue({
       id: "v1",
       auctions: [
         {
           id: "a1",
-          state: "SCHEDULED",
+          state: "DRAFT",
           startsAt: new Date("2026-03-20T08:00:00.000Z"),
           endsAt: new Date("2026-03-21T08:00:00.000Z"),
-          auctionStartsAt: new Date("2026-03-20T08:00:00.000Z"),
-          auctionEndsAt: new Date("2026-03-21T08:00:00.000Z"),
+          auctionStartsAt: null,
+          auctionEndsAt: null,
         },
       ],
     });
@@ -740,6 +786,71 @@ describe("POST /api/admin/vehicles/:id/assign-event", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.eventId).toBe("event-1");
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "a1",
+      },
+      data: {
+        state: "SCHEDULED",
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+      },
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "a1",
+        fromState: "DRAFT",
+        toState: "SCHEDULED",
+        trigger: "EVENT_ASSIGNED",
+      }),
+    });
+  });
+
+  it("returns vehicle to draft when event assignment is removed", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [
+        {
+          id: "a1",
+          state: "SCHEDULED",
+          startsAt: new Date("2026-03-29T08:00:00.000Z"),
+          endsAt: new Date("2026-03-30T08:00:00.000Z"),
+          auctionStartsAt: new Date("2026-03-20T08:00:00.000Z"),
+          auctionEndsAt: new Date("2026-03-21T08:00:00.000Z"),
+        },
+      ],
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/assign-event")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        eventId: null,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.eventId).toBeNull();
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "a1",
+      },
+      data: {
+        state: "DRAFT",
+        startsAt: new Date("2026-03-20T08:00:00.000Z"),
+        endsAt: new Date("2026-03-21T08:00:00.000Z"),
+      },
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "a1",
+        fromState: "SCHEDULED",
+        toState: "DRAFT",
+        trigger: "EVENT_UNASSIGNED",
+      }),
+    });
   });
 });
 

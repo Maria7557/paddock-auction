@@ -396,6 +396,8 @@ function renderBuyerDetail(payload: UserDetailResponse, locale: SupportedLocale)
 function renderVehicleDetail(payload: VehicleDetailResponse, locale: SupportedLocale) {
   const { vehicle } = payload;
   const damageItems = readDamageItems(vehicle.damageMap);
+  const latestAuctionState = vehicle.latestAuction?.state?.toUpperCase() ?? null;
+  const hasScheduledWindow = latestAuctionState !== "DRAFT";
 
   return (
     <>
@@ -478,15 +480,15 @@ function renderVehicleDetail(payload: VehicleDetailResponse, locale: SupportedLo
             label="Min Increment"
             value={vehicle.latestAuction ? formatAed(vehicle.latestAuction.minIncrementAed) : "-"}
           />
-          <Field label="Starts" value={formatDateTime(vehicle.latestAuction?.startsAt, locale)} />
-          <Field label="Ends" value={formatDateTime(vehicle.latestAuction?.endsAt, locale)} />
+          <Field label="Starts" value={hasScheduledWindow ? formatDateTime(vehicle.latestAuction?.startsAt, locale) : "-"} />
+          <Field label="Ends" value={hasScheduledWindow ? formatDateTime(vehicle.latestAuction?.endsAt, locale) : "-"} />
           <Field
             label="Inspection Drop-off"
             value={formatDateTime(vehicle.latestAuction?.inspectionDropoffDate, locale)}
           />
-          <Field label="Viewing Ends" value={formatDateTime(vehicle.latestAuction?.viewingEndsAt, locale)} />
-          <Field label="Auction Starts" value={formatDateTime(vehicle.latestAuction?.auctionStartsAt, locale)} />
-          <Field label="Auction Ends" value={formatDateTime(vehicle.latestAuction?.auctionEndsAt, locale)} />
+          <Field label="Viewing Ends" value={hasScheduledWindow ? formatDateTime(vehicle.latestAuction?.viewingEndsAt, locale) : "-"} />
+          <Field label="Auction Starts" value={hasScheduledWindow ? formatDateTime(vehicle.latestAuction?.auctionStartsAt, locale) : "-"} />
+          <Field label="Auction Ends" value={hasScheduledWindow ? formatDateTime(vehicle.latestAuction?.auctionEndsAt, locale) : "-"} />
           <Field
             label="Assigned Event"
             value={

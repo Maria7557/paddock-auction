@@ -177,7 +177,7 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
 
   return (
     <section className="seller-section-stack">
-      {created ? <p className="inline-note tone-success">Vehicle added and auction draft created</p> : null}
+      {created ? <p className="inline-note tone-success">Vehicle added. FleetBid admin will schedule the auction separately.</p> : null}
 
       <section className="surface-panel seller-section-block">
         <div className="seller-section-head">
@@ -253,19 +253,31 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
             <p>Current Bid</p>
             <strong>{formatSellerAuctionBid(auction.currentPrice)}</strong>
           </article>
-          <article>
-            <p>Inspection Drop-off</p>
-            <strong>{auction.inspectionDropoffDate ? formatSellerDateTime(auction.inspectionDropoffDate) : "-"}</strong>
-          </article>
-          <article>
-            <p>Auction Starts</p>
-            <strong>{formatSellerDateTime(auction.startsAt)}</strong>
-          </article>
-          <article>
-            <p>Auction Ends</p>
-            <strong>{formatSellerDateTime(auction.endsAt)}</strong>
-          </article>
+          {auction.state === "DRAFT" ? (
+            <article>
+              <p>Auction Schedule</p>
+              <strong>Coming soon</strong>
+            </article>
+          ) : (
+            <>
+              <article>
+                <p>Auction Starts</p>
+                <strong>{formatSellerDateTime(auction.startsAt)}</strong>
+              </article>
+              <article>
+                <p>Auction Ends</p>
+                <strong>{formatSellerDateTime(auction.endsAt)}</strong>
+              </article>
+            </>
+          )}
         </div>
+
+        {auction.state === "DRAFT" ? (
+          <p className="text-muted" style={{ marginTop: "12px" }}>
+            Inspection drop-off is shared with FleetBid admin as preparation info only. The live auction date appears
+            here after admin assigns the event.
+          </p>
+        ) : null}
       </section>
       ) : null}
 
