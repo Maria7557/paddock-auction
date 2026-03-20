@@ -16,6 +16,7 @@ type AuctionsResponse = {
     bidsCount: number;
     startsAt: string;
     endsAt: string;
+    approvalStatusLabel?: string;
   }>;
 };
 

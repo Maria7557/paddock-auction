@@ -45,6 +45,11 @@
   --space-5: 32px;
   --space-6: 40px;
   --space-7: 56px;
+
+  --select-chevron-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5,4.5L6,8l3.5-3.5' stroke='%237b8794' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --select-chevron-size: 12px;
+  --select-chevron-offset: 14px;
+  --select-padding-right: 40px;
 }
 
 @theme inline {
@@ -1624,9 +1629,20 @@ select {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-control);
   padding: 10px 12px;
-  background: #fff;
+  background-color: #fff;
   color: var(--ink-primary);
   font-size: 14px;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: var(--select-chevron-icon);
+  background-repeat: no-repeat;
+  background-position: right var(--select-chevron-offset) center;
+  background-size: var(--select-chevron-size) var(--select-chevron-size);
+  padding-right: var(--select-padding-right);
 }
 
 input:focus-visible,
@@ -1760,7 +1776,14 @@ select:focus-visible {
 .home-utility-select {
   height: 30px;
   border-radius: var(--radius-pill);
-  padding: 0 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 0 var(--select-padding-right) 0 12px;
+  background-image: var(--select-chevron-icon);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: var(--select-chevron-size) var(--select-chevron-size);
   font-size: 12px;
   color: var(--ink-secondary);
 }
@@ -3610,9 +3633,22 @@ select:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   padding: 9px 11px;
-  background: #fff;
+  background-color: #fff;
   color: var(--ink-primary);
   font-size: 14px;
+}
+
+.seller-filter-field select,
+.seller-form-grid select,
+.seller-table td select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: var(--select-chevron-icon);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: var(--select-chevron-size) var(--select-chevron-size);
+  padding-right: var(--select-padding-right);
 }
 
 .seller-filter-field input:focus,

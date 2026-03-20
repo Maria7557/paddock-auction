@@ -42,6 +42,7 @@ export type LotDetail = {
   lotNumber: string;
   auctionId: string;
   state: LotAuctionState;
+  showVipEarlyAccessBadge: boolean;
   title: string;
   make: string;
   model: string;
@@ -95,6 +96,7 @@ export type LotDetail = {
     currentBidAed: number;
     state: string;
     imageUrl: string;
+    showVipEarlyAccessBadge?: boolean;
   }>;
 };
 
@@ -214,6 +216,7 @@ function mapSimilarAuction(source: Record<string, unknown>): SimilarLot | null {
     currentBidAed: Number(source.currentPrice ?? source.currentBidAed ?? source.startingPrice ?? 0),
     state: String(source.state ?? "SCHEDULED"),
     imageUrl: buildSimilarImage(vehicle),
+    showVipEarlyAccessBadge: source.showVipEarlyAccessBadge === true,
   };
 }
 
@@ -286,6 +289,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       lotNumber: String(auction.lotNumber ?? `LOT-${auctionId.slice(0, 8).toUpperCase()}`),
       auctionId: String(auction.id ?? auctionId),
       state: (auction.state as LotAuctionState | undefined) ?? "SCHEDULED",
+      showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
       title:
         `${String(vehicle.brand ?? vehicle.make ?? "")} ${String(vehicle.model ?? "")} ${String(vehicle.year ?? "")}`.trim() ||
         String(auction.lotNumber ?? `Lot ${auctionId.slice(0, 8).toUpperCase()}`),
@@ -347,6 +351,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
               mileageKm: Number(similarVehicle.mileage ?? 0),
               currentBidAed: Number(item.currentPrice ?? item.currentBidAed ?? 0),
               state: String(item.state ?? "SCHEDULED"),
+              showVipEarlyAccessBadge: item.showVipEarlyAccessBadge === true,
               imageUrl:
                 Array.isArray(similarVehicle.images) &&
                 typeof similarVehicle.images[0] === "string" &&
@@ -447,6 +452,11 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
                     {pill}
                   </span>
                 ))}
+              </div>
+            ) : null}
+            {lot.showVipEarlyAccessBadge ? (
+              <div className={styles.statusPills}>
+                <span className={styles.vipBadge}>{isRu ? "VIP ранний доступ" : "VIP early access"}</span>
               </div>
             ) : null}
           </div>

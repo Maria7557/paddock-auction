@@ -5,6 +5,11 @@ import { z } from "zod";
 
 import { prisma } from "../../db";
 import { loadBuyerAccessContext, requireAuth } from "../../lib/auth";
+import {
+  evaluateVipAccess,
+  readTrustedCurrentTime,
+  type VipRequestActorBase,
+} from "../../lib/vip-early-access";
 
 type DecimalLike =
   | number
@@ -252,6 +257,7 @@ async function requireBuyerContext(
   userStatus: string;
   companyStatus: string;
   kycVerified: boolean;
+  buyerTier: "STANDARD" | "VIP";
 } | null> {
   const context = await loadBuyerAccessContext(request);
 
@@ -471,6 +477,29 @@ async function loadSellerCompanyLookup(companyIds: string[]): Promise<Map<string
   return new Map(companies.map((company) => [company.id, { name: company.name, country: company.country }]));
 }
 
+function createBuyerActorBase(input: {
+  userId: string;
+  companyId: string;
+  userStatus: string;
+  companyStatus: string;
+  kycVerified: boolean;
+  buyerTier: "STANDARD" | "VIP";
+}): VipRequestActorBase {
+  return {
+    userId: input.userId,
+    companyId: input.companyId,
+    role: "BUYER",
+    buyerContext: {
+      userId: input.userId,
+      companyId: input.companyId,
+      userStatus: input.userStatus,
+      companyStatus: input.companyStatus,
+      kycVerified: input.kycVerified,
+      buyerTier: input.buyerTier,
+    },
+  };
+}
+
 export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook("preHandler", requireAuth);
 
@@ -489,6 +518,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       if (!buyerContext) {
         return;
       }
+
+      const actorBase = createBuyerActorBase(buyerContext);
+      const now = await readTrustedCurrentTime(prisma);
 
       const issuedInvoiceWhere = {
         buyerCompanyId: buyerContext.companyId,
@@ -513,6 +545,14 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           distinct: ["auctionId"],
           select: {
             auctionId: true,
+            auction: {
+              select: {
+                sellerCompanyId: true,
+                approvedAt: true,
+                vipAccessPolicy: true,
+                vipReleaseAt: true,
+              },
+            },
           },
         }),
         prisma.bid.findMany({
@@ -534,6 +574,10 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
                 state: true,
                 highestBidId: true,
                 currentPrice: true,
+                sellerCompanyId: true,
+                approvedAt: true,
+                vipAccessPolicy: true,
+                vipReleaseAt: true,
                 vehicle: {
                   select: {
                     brand: true,
@@ -554,6 +598,11 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
             createdAt: true,
             auction: {
               select: {
+                id: true,
+                sellerCompanyId: true,
+                approvedAt: true,
+                vipAccessPolicy: true,
+                vipReleaseAt: true,
                 vehicle: {
                   select: {
                     brand: true,
@@ -639,9 +688,49 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
+      const bidAccessByAuction = new Map(
+        bids.map((bid) => [
+          bid.auctionId,
+          {
+            approvedAt: bid.auction.approvedAt,
+            vipAccessPolicy: bid.auction.vipAccessPolicy,
+            vipReleaseAt: bid.auction.vipReleaseAt,
+            sellerCompanyId: bid.auction.sellerCompanyId,
+          },
+        ]),
+      );
+
       const bidActivities: DashboardActivity[] = [];
+      const visibleActiveBidAuctions = activeBidAuctions.filter((entry) =>
+        evaluateVipAccess({
+          actorBase,
+          snapshot: {
+            approvedAt: entry.auction.approvedAt,
+            vipAccessPolicy: entry.auction.vipAccessPolicy,
+            vipReleaseAt: entry.auction.vipReleaseAt,
+            sellerCompanyId: entry.auction.sellerCompanyId,
+          },
+          now,
+        }).canViewDetail,
+      );
 
       for (const auctionSummary of bidsByAuction.values()) {
+        const bidAccess = bidAccessByAuction.get(auctionSummary.auctionId);
+        const accessDecision = evaluateVipAccess({
+          actorBase,
+          snapshot: {
+            approvedAt: bidAccess?.approvedAt,
+            vipAccessPolicy: bidAccess?.vipAccessPolicy,
+            vipReleaseAt: bidAccess?.vipReleaseAt,
+            sellerCompanyId: bidAccess?.sellerCompanyId,
+          },
+          now,
+        });
+
+        if (!accessDecision.canViewDetail) {
+          continue;
+        }
+
         const isWinning = auctionSummary.highestBidId
           ? auctionSummary.myBidIds.has(auctionSummary.highestBidId)
           : false;
@@ -674,7 +763,19 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      const watchedActivities: DashboardActivity[] = savedLots.map((savedLot) => {
+      const visibleSavedLots = savedLots.filter((savedLot) =>
+        evaluateVipAccess({
+          actorBase,
+          snapshot: {
+            approvedAt: savedLot.auction.approvedAt,
+            vipAccessPolicy: savedLot.auction.vipAccessPolicy,
+            vipReleaseAt: savedLot.auction.vipReleaseAt,
+            sellerCompanyId: savedLot.auction.sellerCompanyId,
+          },
+          now,
+        }).canViewDetail,
+      );
+      const watchedActivities: DashboardActivity[] = visibleSavedLots.map((savedLot) => {
         const lotTitle = buildLotTitle(
           savedLot.auction.vehicle?.brand,
           savedLot.auction.vehicle?.model,
@@ -705,11 +806,11 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         normalizeStatusValue(buyerContext.userStatus) === "ACTIVE" &&
         normalizeStatusValue(buyerContext.companyStatus) === "ACTIVE";
       const hasActivity =
-        activeBidAuctions.length > 0 ||
-        bids.length > 0 ||
-        savedLots.length > 0 ||
+        visibleActiveBidAuctions.length > 0 ||
+        bidActivities.length > 0 ||
+        visibleSavedLots.length > 0 ||
         recentIssuedInvoices.length > 0;
-      const savedAuctionIds = new Set(savedLots.map((entry) => entry.auctionId));
+      const savedAuctionIds = new Set(visibleSavedLots.map((entry) => entry.auctionId));
 
       let onboardingStep: 1 | 2 | 3 | 4 = 1;
 
@@ -723,7 +824,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       let recommendedLots: RecommendedLot[] = [];
 
-      if (activeBidAuctions.length === 0) {
+      if (visibleActiveBidAuctions.length === 0) {
         const auctions = await prisma.auction.findMany({
           where: {
             state: {
@@ -750,11 +851,28 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           Array.from(new Set(auctions.map((auction) => auction.sellerCompanyId))),
         );
 
-        const serializedLots = await Promise.all(
-          auctions.map((auction) =>
-            serializeLotSummary(auction, companyLookup, savedAuctionIds.has(auction.id)),
-          ),
-        );
+        const serializedLots = (
+          await Promise.all(
+            auctions.map(async (auction) => {
+              const accessDecision = evaluateVipAccess({
+                actorBase,
+                snapshot: {
+                  approvedAt: auction.approvedAt,
+                  vipAccessPolicy: auction.vipAccessPolicy,
+                  vipReleaseAt: auction.vipReleaseAt,
+                  sellerCompanyId: auction.sellerCompanyId,
+                },
+                now,
+              });
+
+              if (accessDecision.listingMode !== "FULL") {
+                return null;
+              }
+
+              return serializeLotSummary(auction, companyLookup, savedAuctionIds.has(auction.id));
+            }),
+          )
+        ).filter((lot): lot is LotSummary => lot !== null);
 
         recommendedLots = serializedLots.map((lot) => ({
           id: lot.id,
@@ -795,9 +913,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       const responseBody: BuyerDashboardResponse = {
         metrics: {
-          activeBids: activeBidAuctions.length,
-          watching: savedLots.length,
-          watchlistCount: savedLots.length,
+          activeBids: visibleActiveBidAuctions.length,
+          watching: visibleSavedLots.length,
+          watchlistCount: visibleSavedLots.length,
           invoicesDue,
           depositBalance: availableBalanceAed,
           depositLocked: lockedBalanceAed,
@@ -844,6 +962,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      const actorBase = createBuyerActorBase(buyerContext);
+      const now = await readTrustedCurrentTime(prisma);
+
       const bids = await prisma.bid.findMany({
         where: {
           userId: buyerContext.userId,
@@ -861,6 +982,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
               highestBidId: true,
               currentPrice: true,
               sellerCompanyId: true,
+              approvedAt: true,
+              vipAccessPolicy: true,
+              vipReleaseAt: true,
               startsAt: true,
               endsAt: true,
               vehicle: {
@@ -900,6 +1024,21 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       >();
 
       for (const bid of bids) {
+        const accessDecision = evaluateVipAccess({
+          actorBase,
+          snapshot: {
+            approvedAt: bid.auction.approvedAt,
+            vipAccessPolicy: bid.auction.vipAccessPolicy,
+            vipReleaseAt: bid.auction.vipReleaseAt,
+            sellerCompanyId: bid.auction.sellerCompanyId,
+          },
+          now,
+        });
+
+        if (!accessDecision.canViewDetail) {
+          continue;
+        }
+
         const bidAmount = await toNumberValue(bid.amount);
         const currentBid = await toNumberValue(bid.auction.currentPrice);
         const lotTitle = buildLotTitle(
@@ -1041,6 +1180,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      const actorBase = createBuyerActorBase(buyerContext);
+      const now = await readTrustedCurrentTime(prisma);
+
       const parsedQuery = watchlistQuerySchema.safeParse(request.query ?? {});
 
       if (!parsedQuery.success) {
@@ -1076,9 +1218,28 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         Array.from(new Set(savedLots.map((savedLot) => savedLot.auction.sellerCompanyId))),
       );
 
-      const lotSummaries = await Promise.all(
-        savedLots.map((savedLot) => serializeLotSummary(savedLot.auction, companyLookup, true)),
-      );
+      const lotSummaries = (
+        await Promise.all(
+          savedLots.map(async (savedLot) => {
+            const accessDecision = evaluateVipAccess({
+              actorBase,
+              snapshot: {
+                approvedAt: savedLot.auction.approvedAt,
+                vipAccessPolicy: savedLot.auction.vipAccessPolicy,
+                vipReleaseAt: savedLot.auction.vipReleaseAt,
+                sellerCompanyId: savedLot.auction.sellerCompanyId,
+              },
+              now,
+            });
+
+            if (accessDecision.listingMode !== "FULL") {
+              return null;
+            }
+
+            return serializeLotSummary(savedLot.auction, companyLookup, true);
+          }),
+        )
+      ).filter((lot): lot is LotSummary => lot !== null);
       const filteredLots = applyLotFilters(lotSummaries, parsedQuery.data);
       const sortedLots = sortLots(filteredLots, parsedQuery.data.sort);
       const { pageItems, nextCursor } = paginateLots(
@@ -1126,6 +1287,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { lotId } = parsedParams.data;
+      const actorBase = createBuyerActorBase(buyerContext);
       const existing = await prisma.savedLot.findFirst({
         where: {
           userId: buyerContext.userId,
@@ -1155,12 +1317,34 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         },
         select: {
           id: true,
+          sellerCompanyId: true,
+          approvedAt: true,
+          vipAccessPolicy: true,
+          vipReleaseAt: true,
         },
       });
 
       if (!auction) {
         await reply.code(404).send({
           error: "LOT_NOT_FOUND",
+        });
+        return;
+      }
+
+      const accessDecision = evaluateVipAccess({
+        actorBase,
+        snapshot: {
+          approvedAt: auction.approvedAt,
+          vipAccessPolicy: auction.vipAccessPolicy,
+          vipReleaseAt: auction.vipReleaseAt,
+          sellerCompanyId: auction.sellerCompanyId,
+        },
+        now: await readTrustedCurrentTime(prisma),
+      });
+
+      if (!accessDecision.canWatchlist) {
+        await reply.code(403).send({
+          error: "LOT_UNAVAILABLE",
         });
         return;
       }

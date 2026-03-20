@@ -16,6 +16,7 @@ type SimilarLot = {
   currentBidAed: number;
   state: string;
   imageUrl: string;
+  showVipEarlyAccessBadge?: boolean;
 };
 
 export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display: DisplaySettings }) {
@@ -47,16 +48,21 @@ export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display
                   sizes="(max-width: 740px) 100vw, 300px"
                   style={{ objectFit: "cover" }}
                 />
-                <div className={styles.badge} data-live={isLive}>
-                  {isLive ? (
-                    <>
-                      <span className={styles.dot} aria-hidden /> LIVE
-                    </>
-                  ) : isRu ? (
-                    "Скоро"
-                  ) : (
-                    "Upcoming"
-                  )}
+                <div className={styles.badgeStack}>
+                  <div className={styles.badge} data-live={isLive}>
+                    {isLive ? (
+                      <>
+                        <span className={styles.dot} aria-hidden /> LIVE
+                      </>
+                    ) : isRu ? (
+                      "Скоро"
+                    ) : (
+                      "Upcoming"
+                    )}
+                  </div>
+                  {lot.showVipEarlyAccessBadge ? (
+                    <div className={styles.vipBadge}>{isRu ? "VIP ранний доступ" : "VIP early access"}</div>
+                  ) : null}
                 </div>
               </div>
               <div className={styles.body}>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { LotCard } from "@/components/auction/LotCard";
-import { api } from "@/src/lib/api-client";
+import { ApiError, api } from "@/src/lib/api-client";
 import { isLiveAuctionState } from "@/src/lib/auction-display";
 import type { DisplaySettings } from "@/src/lib/money";
 
@@ -37,6 +37,7 @@ interface Lot {
   endsAt: string | null;
   startsAt: string | null;
   totalBids: number;
+  showVipEarlyAccessBadge?: boolean;
   vehicle: {
     brand: string;
     model: string;
@@ -53,6 +54,8 @@ interface Lot {
   };
 }
 
+type BuyerTier = "STANDARD" | "VIP";
+
 type ApiAuction = {
   id?: string;
   state?: string;
@@ -65,6 +68,7 @@ type ApiAuction = {
   sellerRef?: string;
   location?: string;
   totalBids?: number;
+  showVipEarlyAccessBadge?: boolean;
   vehicle?: {
     brand?: string;
     model?: string;
@@ -78,7 +82,14 @@ type ApiAuction = {
   };
 };
 
+type BuyerDashboardResponse = {
+  vipStatus?: {
+    tier?: BuyerTier;
+  };
+};
+
 type Filters = {
+  vipEarlyAccess: string;
   brand: string;
   model: string;
   status: string;
@@ -93,6 +104,7 @@ type Filters = {
 };
 
 const DEFAULT_FILTERS: Filters = {
+  vipEarlyAccess: "",
   brand: "",
   model: "",
   status: "",
@@ -106,8 +118,17 @@ const DEFAULT_FILTERS: Filters = {
   sort: "ending_soon",
 };
 
-function sanitizeFilters(filters: Filters): Filters {
+function sanitizeFilters(
+  filters: Filters,
+  options: {
+    canUseVipEarlyAccessFilter: boolean;
+  },
+): Filters {
   const next = { ...filters };
+
+  if (!options.canUseVipEarlyAccessFilter) {
+    next.vipEarlyAccess = "";
+  }
 
   if (!next.brand) {
     next.model = "";
@@ -126,7 +147,12 @@ function sanitizeFilters(filters: Filters): Filters {
   return next;
 }
 
-function mergeInitialFilters(initialParams: Record<string, string>): Filters {
+function mergeInitialFilters(
+  initialParams: Record<string, string>,
+  options: {
+    canUseVipEarlyAccessFilter: boolean;
+  },
+): Filters {
   const merged: Filters = { ...DEFAULT_FILTERS };
 
   for (const key of Object.keys(DEFAULT_FILTERS) as Array<keyof Filters>) {
@@ -137,7 +163,7 @@ function mergeInitialFilters(initialParams: Record<string, string>): Filters {
     }
   }
 
-  return sanitizeFilters(merged);
+  return sanitizeFilters(merged, options);
 }
 
 function serializeFilters(filters: Filters, includeDefaults = true): string {
@@ -166,7 +192,26 @@ function buildUrl(pathname: string, queryString: string): string {
   return `${pathname}?${queryString}`;
 }
 
-function mapApiAuctionToLot(auction: ApiAuction): Lot {
+function buildApiQuery(
+  filters: Filters,
+  options: {
+    canUseVipEarlyAccessFilter: boolean;
+  },
+): Record<string, string> | undefined {
+  if (options.canUseVipEarlyAccessFilter && filters.vipEarlyAccess === "active") {
+    return {
+      vipEarlyAccess: "active",
+    };
+  }
+
+  return undefined;
+}
+
+function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
+  if (!auction.id) {
+    return null;
+  }
+
   const vehicle = auction.vehicle ?? {};
   const year = Number(vehicle.year ?? 0);
   const brand = String(vehicle.brand ?? "").trim();
@@ -189,6 +234,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot {
     endsAt: auction.endsAt ?? null,
     startsAt: auction.startsAt ?? null,
     totalBids: Number(auction.totalBids ?? 0),
+    showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
     vehicle: {
       brand,
       model,
@@ -206,8 +252,18 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot {
   };
 }
 
-function filterAndSortLots(source: Lot[], filters: Filters): Lot[] {
+function filterAndSortLots(
+  source: Lot[],
+  filters: Filters,
+  options: {
+    prioritizeVipEarlyAccessLots: boolean;
+  },
+): Lot[] {
   const filtered = source.filter((lot) => {
+    if (filters.vipEarlyAccess === "active" && lot.showVipEarlyAccessBadge !== true) {
+      return false;
+    }
+
     if (filters.brand && lot.vehicle.brand !== filters.brand) {
       return false;
     }
@@ -251,7 +307,16 @@ function filterAndSortLots(source: Lot[], filters: Filters): Lot[] {
     return true;
   });
 
-  return filtered.sort((left, right) => {
+  const sortedFullLots = filtered.sort((left, right) => {
+    if (options.prioritizeVipEarlyAccessLots) {
+      const leftVipPriority = left.showVipEarlyAccessBadge === true ? 1 : 0;
+      const rightVipPriority = right.showVipEarlyAccessBadge === true ? 1 : 0;
+
+      if (leftVipPriority !== rightVipPriority) {
+        return rightVipPriority - leftVipPriority;
+      }
+    }
+
     if (filters.sort === "newest") {
       return new Date(right.startsAt ?? 0).getTime() - new Date(left.startsAt ?? 0).getTime();
     }
@@ -266,20 +331,31 @@ function filterAndSortLots(source: Lot[], filters: Filters): Lot[] {
 
     return new Date(left.endsAt ?? left.startsAt ?? 0).getTime() - new Date(right.endsAt ?? right.startsAt ?? 0).getTime();
   });
+
+  return sortedFullLots;
 }
 
 export function AuctionsClient({
   initialParams,
   display,
+  viewerBuyerTier,
 }: {
   initialParams: Record<string, string>;
   display: DisplaySettings;
+  viewerBuyerTier: BuyerTier | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+  const [resolvedViewerBuyerTier, setResolvedViewerBuyerTier] = useState<BuyerTier | null>(viewerBuyerTier);
+  const canUseVipEarlyAccessFilter = resolvedViewerBuyerTier === "VIP";
+  const lastVipFilterCapabilityRef = useRef(canUseVipEarlyAccessFilter);
 
-  const [filters, setFilters] = useState<Filters>(() => mergeInitialFilters(initialParams));
+  const [filters, setFilters] = useState<Filters>(() =>
+    mergeInitialFilters(initialParams, {
+      canUseVipEarlyAccessFilter,
+    }),
+  );
   const [lots, setLots] = useState<Lot[]>([]);
   const [catalogLots, setCatalogLots] = useState<Lot[]>([]);
   const [total, setTotal] = useState(0);
@@ -290,7 +366,12 @@ export function AuctionsClient({
 
   const brandToModels = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    const sourceLots = catalogLots.length > 0 ? catalogLots : lots;
+    const sourceLots =
+      filters.vipEarlyAccess === "active"
+        ? lots
+        : catalogLots.length > 0
+          ? catalogLots
+          : lots;
 
     for (const lot of sourceLots) {
       const brand = lot.vehicle.brand.trim();
@@ -310,7 +391,7 @@ export function AuctionsClient({
     }
 
     return map;
-  }, [catalogLots, lots]);
+  }, [catalogLots, filters.vipEarlyAccess, lots]);
 
   const brandOptions = useMemo(() => {
     return Array.from(brandToModels.keys()).sort((left, right) => left.localeCompare(right));
@@ -328,15 +409,22 @@ export function AuctionsClient({
     setLoading(true);
 
     try {
+      const query = buildApiQuery(nextFilters, {
+        canUseVipEarlyAccessFilter,
+      });
       const data = await api.auctions.list<{
         auctions?: ApiAuction[];
         lots?: ApiAuction[];
         total?: number;
-      }>(undefined, {
+      }>(query, {
         cache: "no-store",
       });
-      const mappedLots = (data.auctions ?? data.lots ?? []).map(mapApiAuctionToLot);
-      const filteredLots = filterAndSortLots(mappedLots, nextFilters);
+      const mappedLots = (data.auctions ?? data.lots ?? [])
+        .map(mapApiAuctionToLot)
+        .filter((lot): lot is Lot => lot !== null);
+      const filteredLots = filterAndSortLots(mappedLots, nextFilters, {
+        prioritizeVipEarlyAccessLots: canUseVipEarlyAccessFilter,
+      });
 
       setLots(filteredLots);
       setTotal(filteredLots.length);
@@ -346,14 +434,18 @@ export function AuctionsClient({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canUseVipEarlyAccessFilter]);
 
   const fetchCatalogLots = useCallback(async () => {
     try {
       const data = await api.auctions.list<{ auctions?: ApiAuction[]; lots?: ApiAuction[] }>(undefined, {
         cache: "no-store",
       });
-      setCatalogLots((data.auctions ?? data.lots ?? []).map(mapApiAuctionToLot));
+      setCatalogLots(
+        (data.auctions ?? data.lots ?? [])
+          .map(mapApiAuctionToLot)
+          .filter((lot): lot is Lot => lot !== null),
+      );
     } catch {
       setCatalogLots([]);
     }
@@ -365,9 +457,78 @@ export function AuctionsClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    if (viewerBuyerTier === null) {
+      setResolvedViewerBuyerTier(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    async function syncBuyerTier(): Promise<void> {
+      try {
+        const dashboard = await api.buyer.dashboard<BuyerDashboardResponse>({
+          cache: "no-store",
+        });
+
+        if (!active) {
+          return;
+        }
+
+        setResolvedViewerBuyerTier(dashboard.vipStatus?.tier === "VIP" ? "VIP" : "STANDARD");
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        if (error instanceof ApiError && error.statusCode === 401) {
+          setResolvedViewerBuyerTier(null);
+        }
+      }
+    }
+
+    void syncBuyerTier();
+
+    return () => {
+      active = false;
+    };
+  }, [viewerBuyerTier]);
+
+  useEffect(() => {
+    if (lastVipFilterCapabilityRef.current === canUseVipEarlyAccessFilter) {
+      return;
+    }
+
+    lastVipFilterCapabilityRef.current = canUseVipEarlyAccessFilter;
+
+    const sanitizedFilters = sanitizeFilters(filters, {
+      canUseVipEarlyAccessFilter,
+    });
+    const nextQueryString = serializeFilters(sanitizedFilters, false);
+    const currentQueryString = serializeFilters(filters, false);
+    const filtersChanged = nextQueryString !== currentQueryString;
+
+    void fetchLots(sanitizedFilters);
+    void fetchCatalogLots();
+
+    if (!filtersChanged) {
+      return;
+    }
+
+    setFilters(sanitizedFilters);
+
+    startTransition(() => {
+      router.replace(buildUrl(pathname, nextQueryString), { scroll: false });
+    });
+  }, [canUseVipEarlyAccessFilter, fetchCatalogLots, fetchLots, filters, pathname, router, startTransition]);
+
   const applyFilters = useCallback(
     (nextFilters: Filters) => {
-      const sanitizedFilters = sanitizeFilters(nextFilters);
+      const sanitizedFilters = sanitizeFilters(nextFilters, {
+        canUseVipEarlyAccessFilter,
+      });
 
       setFilters(sanitizedFilters);
       void fetchLots(sanitizedFilters);
@@ -378,7 +539,7 @@ export function AuctionsClient({
         router.replace(buildUrl(pathname, queryString), { scroll: false });
       });
     },
-    [fetchLots, pathname, router],
+    [canUseVipEarlyAccessFilter, fetchLots, pathname, router],
   );
 
   const updateFilter = useCallback(
@@ -439,6 +600,7 @@ export function AuctionsClient({
           filters={filters}
           brands={brandOptions}
           models={modelOptions}
+          canUseVipEarlyAccessFilter={canUseVipEarlyAccessFilter}
           onChange={(key, value) => updateFilter(key as keyof Filters, value)}
           onClearAll={clearAll}
           activeCount={activeCount}
@@ -492,6 +654,7 @@ export function AuctionsClient({
                 buyNowPrice={lot.buyNowPrice ?? undefined}
                 status={lot.state}
                 totalBids={lot.totalBids}
+                showVipEarlyAccessBadge={lot.showVipEarlyAccessBadge}
                 endTime={
                   isLiveAuctionState(lot.state)
                     ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()

@@ -30,6 +30,7 @@ type LotCardProps = {
   marketPrice?: number;
   buyNowPrice?: number | null;
   totalBids?: number;
+  showVipEarlyAccessBadge?: boolean;
   display?: DisplaySettings;
   showWishlistControl?: boolean;
   defaultWatchlisted?: boolean;
@@ -120,6 +121,7 @@ export function LotCard({
   endTime,
   marketPrice,
   buyNowPrice,
+  showVipEarlyAccessBadge = false,
   display = DEFAULT_DISPLAY,
   showWishlistControl,
   defaultWatchlisted = false,
@@ -213,14 +215,19 @@ export function LotCard({
             style={{ objectFit: "cover", transition: "transform 0.4s" }}
           />
           <div className={styles.pillTl}>
-            {isLive ? (
-              <span className="pill pill-live">
-                <span className="live-dot" />
-                LIVE
-              </span>
-            ) : (
-              <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
-            )}
+            <div className={styles.badgeStack}>
+              {isLive ? (
+                <span className="pill pill-live">
+                  <span className="live-dot" />
+                  LIVE
+                </span>
+              ) : (
+                <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
+              )}
+              {showVipEarlyAccessBadge ? (
+                <span className={styles.vipBadge}>{isRu ? "VIP ранний доступ" : "VIP early access"}</span>
+              ) : null}
+            </div>
           </div>
         </div>
 

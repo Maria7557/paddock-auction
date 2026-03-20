@@ -29,6 +29,7 @@ export default async function SellerDashboardPage() {
         currentPrice: number;
         startsAt: string;
         endsAt: string;
+        approvalStatusLabel?: string;
       }>;
   }>({ sort: "newest" }, requestOptions).catch((error) => {
     console.error("Failed to load seller auctions for dashboard", error);
@@ -78,7 +79,12 @@ export default async function SellerDashboardPage() {
                 <tr key={auction.id}>
                   <td>{auction.vehicleLabel}</td>
                   <td>
-                    <AuctionStatusBadge state={auction.state} />
+                    <div style={{ display: "grid", gap: "4px" }}>
+                      <AuctionStatusBadge state={auction.state} />
+                      {auction.approvalStatusLabel ? (
+                        <span className="text-muted">{auction.approvalStatusLabel}</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>{formatSellerAuctionBid(auction.currentPrice)}</td>
                   <td>{formatSellerDateTime(new Date(auction.startsAt))}</td>

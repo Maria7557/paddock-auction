@@ -21,6 +21,7 @@ type VehicleRow = {
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
+  approvalStatusLabel: string | null;
 };
 
 type EventOption = {
@@ -48,6 +49,7 @@ async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: Vehicle
         companyName?: string | null;
         latestAuctionId?: string | null;
         assignedEventId?: string | null;
+        approvalStatusLabel?: string | null;
       }>;
     }>({ status: "ALL" }, requestOptions),
     api.admin.events.list<{
@@ -93,6 +95,7 @@ async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: Vehicle
       auctionId: vehicle.latestAuctionId ?? null,
       assignedEventId: vehicle.assignedEventId ?? matchingEvent?.id ?? null,
       assignedEventLabel: matchingEvent?.label ?? null,
+      approvalStatusLabel: vehicle.approvalStatusLabel ?? null,
     };
   });
 

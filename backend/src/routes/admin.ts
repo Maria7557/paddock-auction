@@ -6,6 +6,11 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
 import { sendNewEventAnnouncementEmail } from "../lib/email";
+import {
+  evaluateVipAccess,
+  readTrustedCurrentTime,
+  type VipRequestActorBase,
+} from "../lib/vip-early-access";
 
 type DecimalLike =
   | number
@@ -44,6 +49,21 @@ type EventMeta = {
 
 type EventOrder = {
   vehicleIds?: string[];
+};
+
+type VipAccessPolicyValue = "NONE" | "VIP_EARLY_ACCESS_24H" | "UNDETERMINED_RESTRICTED";
+
+type VipApprovalWritesMode = "DISABLED" | "ENABLED" | "UNDETERMINED";
+
+type VipApprovalMetadata = {
+  approvedAt: Date;
+  vipAccessPolicy: VipAccessPolicyValue;
+  vipReleaseAt: Date | null;
+  vipPolicyReason: string | null;
+};
+
+type CurrentTimeRow = {
+  currentTime: Date;
 };
 
 const auctionStates = [
@@ -316,6 +336,69 @@ async function resolveVehicleStatus(state: string | null): Promise<"PENDING" | "
   return "APPROVED";
 }
 
+async function resolveVipApprovalWritesMode(): Promise<VipApprovalWritesMode> {
+  const rawValue = process.env.VIP_EARLY_ACCESS_APPROVAL_WRITES_ENABLED?.trim().toUpperCase();
+
+  if (rawValue === "TRUE" || rawValue === "1" || rawValue === "ENABLED") {
+    return "ENABLED";
+  }
+
+  if (rawValue === "UNDETERMINED" || rawValue === "RESTRICTED") {
+    return "UNDETERMINED";
+  }
+
+  return "DISABLED";
+}
+
+async function addHours(input: Date, hours: number): Promise<Date> {
+  return new Date(input.getTime() + hours * 60 * 60 * 1000);
+}
+
+async function createVipApprovalMetadata(approvalAt: Date): Promise<VipApprovalMetadata> {
+  const writesMode = await resolveVipApprovalWritesMode();
+
+  if (writesMode === "ENABLED") {
+    return {
+      approvedAt: approvalAt,
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: await addHours(approvalAt, 24),
+      vipPolicyReason: "feature_enabled",
+    };
+  }
+
+  if (writesMode === "UNDETERMINED") {
+    return {
+      approvedAt: approvalAt,
+      vipAccessPolicy: "UNDETERMINED_RESTRICTED",
+      vipReleaseAt: await addHours(approvalAt, 24),
+      vipPolicyReason: "rollout_undetermined_fail_closed",
+    };
+  }
+
+  return {
+    approvedAt: approvalAt,
+    vipAccessPolicy: "NONE",
+    vipReleaseAt: null,
+    vipPolicyReason: "approval_writes_disabled",
+  };
+}
+
+async function readDatabaseCurrentTime(tx: {
+  $queryRaw: <T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<T>;
+}): Promise<Date> {
+  const rows = await tx.$queryRaw<CurrentTimeRow[]>`SELECT CURRENT_TIMESTAMP as "currentTime"`;
+  const currentTime = rows[0]?.currentTime;
+
+  if (!(currentTime instanceof Date) || Number.isNaN(currentTime.getTime())) {
+    throw new Error("Unable to resolve authoritative database time");
+  }
+
+  return currentTime;
+}
+
 function isSchemaDriftPrismaError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -336,6 +419,9 @@ type AdminVehicleListRow = {
   latestAuctionId: string | null;
   latestAuctionState: string | null;
   sellerCompanyId: string | null;
+  latestAuctionApprovedAt: Date | null;
+  latestAuctionVipAccessPolicy: string | null;
+  latestAuctionVipReleaseAt: Date | null;
   latestEventAssignmentTransition: {
     trigger: string;
     reason: string | null;
@@ -376,6 +462,9 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
             id: true,
             state: true,
             sellerCompanyId: true,
+            approvedAt: true,
+            vipAccessPolicy: true,
+            vipReleaseAt: true,
             transitions: {
               where: {
                 trigger: {
@@ -408,6 +497,9 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
       sellerCompanyId: vehicle.auctions[0]?.sellerCompanyId ?? null,
+      latestAuctionApprovedAt: vehicle.auctions[0]?.approvedAt ?? null,
+      latestAuctionVipAccessPolicy: vehicle.auctions[0]?.vipAccessPolicy ?? null,
+      latestAuctionVipReleaseAt: vehicle.auctions[0]?.vipReleaseAt ?? null,
       latestEventAssignmentTransition: vehicle.auctions[0]?.transitions[0] ?? null,
     }));
   } catch (error) {
@@ -436,6 +528,9 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
             id: true,
             state: true,
             sellerCompanyId: true,
+            approvedAt: true,
+            vipAccessPolicy: true,
+            vipReleaseAt: true,
             transitions: {
               where: {
                 trigger: {
@@ -468,6 +563,9 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
       sellerCompanyId: vehicle.auctions[0]?.sellerCompanyId ?? null,
+      latestAuctionApprovedAt: null,
+      latestAuctionVipAccessPolicy: null,
+      latestAuctionVipReleaseAt: null,
       latestEventAssignmentTransition: vehicle.auctions[0]?.transitions[0] ?? null,
     }));
   }
@@ -539,6 +637,15 @@ function formatAdminStatus(value: string | null | undefined): string {
     .replaceAll("_", " ")
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function createAdminActorBase(userId: string | null | undefined): VipRequestActorBase {
+  return {
+    userId: userId?.trim() || null,
+    companyId: null,
+    role: "ADMIN",
+    buyerContext: null,
+  };
 }
 
 async function assignVehicleToEvent(input: {
@@ -738,7 +845,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       const status = parsedQuery.data.status ?? "ALL";
       const onlyUnassigned = parsedQuery.data.unassigned === "true";
-      const vehicles = await loadAdminVehicleListRows();
+      const [now, vehicles] = await Promise.all([
+        readTrustedCurrentTime(prisma),
+        loadAdminVehicleListRows(),
+      ]);
+      const actorBase = createAdminActorBase(request.auth?.userId);
 
       const sellerCompanyIds = Array.from(
         new Set(
@@ -791,6 +902,16 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           companyName:
             companyNameById.get(vehicle.sellerCompanyId ?? "") ?? "Fleet Operator",
           assignedEventId,
+          approvalStatusLabel: evaluateVipAccess({
+            actorBase,
+            snapshot: {
+              approvedAt: vehicle.latestAuctionApprovedAt,
+              vipAccessPolicy: vehicle.latestAuctionVipAccessPolicy,
+              vipReleaseAt: vehicle.latestAuctionVipReleaseAt,
+              sellerCompanyId: vehicle.sellerCompanyId,
+            },
+            now,
+          }).sellerAdminStatusText,
         });
       }
 
@@ -813,7 +934,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const vehicle = await prisma.vehicle.findUnique({
+      const [now, vehicle] = await Promise.all([
+        readTrustedCurrentTime(prisma),
+        prisma.vehicle.findUnique({
         where: {
           id: parsedParams.data.id,
         },
@@ -846,6 +969,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
               viewingEndsAt: true,
               auctionStartsAt: true,
               auctionEndsAt: true,
+              approvedAt: true,
+              vipAccessPolicy: true,
+              vipReleaseAt: true,
               currentPrice: true,
               startingPrice: true,
               buyNowPrice: true,
@@ -868,7 +994,8 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             },
           },
         },
-      });
+        }),
+      ]);
 
       if (!vehicle) {
         await reply.code(404).send({
@@ -969,6 +1096,16 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
                 viewingEndsAt: latestAuction.viewingEndsAt?.toISOString() ?? null,
                 auctionStartsAt: latestAuction.auctionStartsAt?.toISOString() ?? null,
                 auctionEndsAt: latestAuction.auctionEndsAt?.toISOString() ?? null,
+                approvalStatusLabel: evaluateVipAccess({
+                  actorBase: createAdminActorBase(request.auth?.userId),
+                  snapshot: {
+                    approvedAt: latestAuction.approvedAt,
+                    vipAccessPolicy: latestAuction.vipAccessPolicy,
+                    vipReleaseAt: latestAuction.vipReleaseAt,
+                    sellerCompanyId: latestAuction.sellerCompanyId,
+                  },
+                  now,
+                }).sellerAdminStatusText,
                 currentPriceAed: await toNumberValue(latestAuction.currentPrice),
                 startingPriceAed: await toNumberValue(latestAuction.startingPrice),
                 buyNowPriceAed:
@@ -1028,6 +1165,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             select: {
               id: true,
               state: true,
+              approvedAt: true,
+              vipAccessPolicy: true,
+              vipReleaseAt: true,
+              approvedByUserId: true,
+              vipPolicyReason: true,
             },
           },
         },
@@ -1042,13 +1184,33 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       const latestAuction = vehicle.auctions[0];
 
+      if (latestAuction.state !== "DRAFT" || latestAuction.approvedAt) {
+        await reply.code(200).send({
+          success: true,
+        });
+        return;
+      }
+
       await prisma.$transaction(async (tx) => {
+        const approvalTimestamp = await readDatabaseCurrentTime(tx as {
+          $queryRaw: <T = unknown>(
+            query: TemplateStringsArray,
+            ...values: unknown[]
+          ) => Promise<T>;
+        });
+        const vipApprovalMetadata = await createVipApprovalMetadata(approvalTimestamp);
+
         await tx.auction.update({
           where: {
             id: latestAuction.id,
           },
           data: {
             state: "SCHEDULED",
+            approvedAt: vipApprovalMetadata.approvedAt,
+            vipAccessPolicy: vipApprovalMetadata.vipAccessPolicy,
+            vipReleaseAt: vipApprovalMetadata.vipReleaseAt,
+            approvedByUserId: actorId,
+            vipPolicyReason: vipApprovalMetadata.vipPolicyReason,
           },
         });
 
@@ -1075,6 +1237,10 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             auctionId: latestAuction.id,
             previousState: latestAuction.state,
             nextState: "SCHEDULED",
+            approvedAt: vipApprovalMetadata.approvedAt.toISOString(),
+            vipAccessPolicy: vipApprovalMetadata.vipAccessPolicy,
+            vipReleaseAt: vipApprovalMetadata.vipReleaseAt?.toISOString() ?? null,
+            vipPolicyReason: vipApprovalMetadata.vipPolicyReason,
           },
         });
       });

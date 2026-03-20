@@ -105,6 +105,10 @@ function makeLiveAuctionRow(
     ends_at: Date;
     last_bid_sequence: number;
     version: number;
+    seller_company_id: string;
+    approved_at: Date | null;
+    vip_access_policy: string | null;
+    vip_release_at: Date | null;
   }> = {},
 ) {
   return {
@@ -116,6 +120,10 @@ function makeLiveAuctionRow(
     ends_at: overrides.ends_at ?? new Date(Date.now() + 30 * 60 * 1000),
     last_bid_sequence: overrides.last_bid_sequence ?? 5,
     version: overrides.version ?? 3,
+    seller_company_id: overrides.seller_company_id ?? "seller-company-1",
+    approved_at: overrides.approved_at ?? null,
+    vip_access_policy: overrides.vip_access_policy ?? null,
+    vip_release_at: overrides.vip_release_at ?? null,
   };
 }
 
@@ -154,6 +162,10 @@ function makeAuctionDetails() {
     endsAt: new Date("2026-03-14T10:00:00.000Z"),
     extensionCount: 0,
     highestBidId: bidId,
+    sellerCompanyId: "seller-company-1",
+    approvedAt: null,
+    vipAccessPolicy: null,
+    vipReleaseAt: null,
     vehicle: {
       id: randomUUID(),
       brand: "Toyota",
@@ -237,6 +249,13 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockPublishAuctionRealtimeSnapshot.mockResolvedValue(true);
+  mockPrisma.auction.findUnique.mockResolvedValue({
+    id: auctionId,
+    sellerCompanyId: "seller-company-1",
+    approvedAt: null,
+    vipAccessPolicy: null,
+    vipReleaseAt: null,
+  });
   mockPrisma.user.findUnique.mockResolvedValue({
     id: buyerId,
     role: "BUYER",
@@ -247,6 +266,7 @@ beforeEach(() => {
         companyId,
         company: {
           status: "ACTIVE",
+          buyerTier: "STANDARD",
         },
       },
     ],
@@ -580,7 +600,10 @@ describe("POST /api/bids", () => {
     mockPrisma.bidRequest.update.mockResolvedValue({});
 
     setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValueOnce([makeLiveAuctionRow()]).mockResolvedValueOnce([]);
+    mockTx.$queryRaw
+      .mockResolvedValueOnce([makeLiveAuctionRow()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     mockTx.depositLock.findFirst.mockResolvedValue(null);
 
     const res = await request
@@ -741,6 +764,42 @@ describe("POST /api/bids", () => {
     );
   });
 
+  it("returns 403 when a regular buyer tries to bid during VIP early access", async () => {
+    const now = new Date();
+
+    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
+    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-vip-blocked" });
+    mockPrisma.bidRequest.update.mockResolvedValue({});
+
+    setupTransactionSuccess();
+    mockTx.$queryRaw.mockResolvedValue([
+      makeLiveAuctionRow({
+        approved_at: new Date(now.getTime() - 60 * 60 * 1000),
+        vip_access_policy: "VIP_EARLY_ACCESS_24H",
+        vip_release_at: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+      }),
+    ]);
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send(validBody);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("Lot is unavailable right now");
+    expect(mockPrisma.bidRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "req-vip-blocked",
+        },
+        data: expect.objectContaining({
+          status: "REJECTED",
+          responseStatus: 403,
+        }),
+      }),
+    );
+  });
+
   it("marks BidRequest as FAILED for unexpected transaction errors", async () => {
     mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
     mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-16" });
@@ -815,6 +874,24 @@ describe("GET /api/auctions/:id", () => {
     mockPrisma.auction.findUnique.mockResolvedValue(null);
 
     const res = await request.get(`/api/auctions/${randomUUID()}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Auction not found");
+  });
+
+  it("returns 404 for a regular buyer during VIP early access", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      approvedAt: new Date(now.getTime() - 30 * 60 * 1000),
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+    });
+
+    const res = await request
+      .get(`/api/auctions/${auctionId}`)
+      .set("Authorization", `Bearer ${buyerToken}`);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("Auction not found");
@@ -939,6 +1016,399 @@ describe("GET /api/auctions", () => {
     expect(res.body.auctions).toHaveLength(1);
     expect(res.body.auctions[0].buyNowPrice).toBe(140000);
   });
+
+  it("does not return VIP early access lots for anonymous users", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+        _count: {
+          bids: 0,
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request.get("/api/auctions");
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toEqual([]);
+  });
+
+  it("does not return VIP early access lots for regular buyers", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+        _count: {
+          bids: 0,
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request
+      .get("/api/auctions")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toEqual([]);
+  });
+
+  it("returns VIP early access lots in the default list for VIP buyers", async () => {
+    const now = new Date();
+
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerId,
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: true,
+      companyUsers: [
+        {
+          companyId,
+          company: {
+            status: "ACTIVE",
+            buyerTier: "VIP",
+          },
+        },
+      ],
+    });
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+        _count: {
+          bids: 1,
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request
+      .get("/api/auctions")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toHaveLength(1);
+    expect(res.body.auctions[0]).toMatchObject({
+      id: auctionId,
+      showVipEarlyAccessBadge: true,
+    });
+  });
+
+  it("returns only active VIP early access lots for a VIP buyer when the filter is enabled", async () => {
+    const now = new Date();
+
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerId,
+      role: "BUYER",
+      status: "ACTIVE",
+      kycVerified: true,
+      companyUsers: [
+        {
+          companyId,
+          company: {
+            status: "ACTIVE",
+            buyerTier: "VIP",
+          },
+        },
+      ],
+    });
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+        _count: {
+          bids: 1,
+        },
+      },
+      {
+        id: "expired-auction",
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 98000,
+        minIncrement: 500,
+        startingPrice: 96000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-31T08:00:00.000Z"),
+        endsAt: new Date("2026-04-01T08:00:00.000Z"),
+        createdAt: new Date("2026-03-14T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 26 * 60 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-2",
+          brand: "Audi",
+          model: "RS6",
+          year: 2023,
+          mileage: 14000,
+          vin: "VIN67890",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Wagon",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Expired VIP window",
+          engine: "4.0L",
+          driveType: "AWD",
+          exteriorColor: "Gray",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test-2.jpg"],
+        },
+        _count: {
+          bids: 0,
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request
+      .get("/api/auctions?vipEarlyAccess=active")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toHaveLength(1);
+    expect(res.body.auctions[0]).toMatchObject({
+      id: auctionId,
+      showVipEarlyAccessBadge: true,
+    });
+  });
+
+  it("returns no lots for a regular buyer who manually requests the VIP early access filter", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: auctionId,
+        sellerCompanyId: companyId,
+        state: "SCHEDULED",
+        currentPrice: 125000,
+        minIncrement: 500,
+        startingPrice: 120000,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-29T08:00:00.000Z"),
+        endsAt: new Date("2026-03-30T08:00:00.000Z"),
+        createdAt: new Date("2026-03-15T08:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "vehicle-1",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 12000,
+          vin: "VIN12345",
+          marketPrice: null,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Coupe",
+          regionSpec: "GCC",
+          condition: "Excellent",
+          serviceHistory: "Dealer",
+          description: "Ready for sale",
+          engine: "3.0L",
+          driveType: "RWD",
+          exteriorColor: "Blue",
+          interiorColor: "Black",
+          airbags: "Intact",
+          damage: "None",
+          damageMap: null,
+          images: ["/uploads/test.jpg"],
+        },
+        _count: {
+          bids: 0,
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: companyId,
+        name: "Test Fleet",
+        country: "Dubai",
+      },
+    ]);
+
+    const res = await request
+      .get("/api/auctions?vipEarlyAccess=active")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions).toEqual([]);
+  });
 });
 
 describe("GET /api/auctions/:id/bids", () => {
@@ -1028,5 +1498,25 @@ describe("GET /api/auctions/:id/bids", () => {
     const res = await request.get(`/api/auctions/${auctionId}/bids`);
 
     expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for a regular buyer during VIP early access", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      id: auctionId,
+      sellerCompanyId: "seller-company-1",
+      approvedAt: new Date(now.getTime() - 15 * 60 * 1000),
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+    });
+
+    const res = await request
+      .get(`/api/auctions/${auctionId}/bids`)
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Auction not found");
+    expect(mockPrisma.bid.findMany).not.toHaveBeenCalled();
   });
 });

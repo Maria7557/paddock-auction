@@ -124,6 +124,7 @@ type VehicleDetailResponse = {
       viewingEndsAt: string | null;
       auctionStartsAt: string | null;
       auctionEndsAt: string | null;
+      approvalStatusLabel?: string | null;
       currentPriceAed: number;
       startingPriceAed: number;
       buyNowPriceAed: number | null;
@@ -480,6 +481,7 @@ function renderVehicleDetail(payload: VehicleDetailResponse, locale: SupportedLo
           />
           <Field label="Starts" value={formatDateTime(vehicle.latestAuction?.startsAt, locale)} />
           <Field label="Ends" value={formatDateTime(vehicle.latestAuction?.endsAt, locale)} />
+          <Field label="Approval" value={vehicle.latestAuction?.approvalStatusLabel || "-"} />
           <Field
             label="Inspection Drop-off"
             value={formatDateTime(vehicle.latestAuction?.inspectionDropoffDate, locale)}

@@ -10,7 +10,18 @@ import {
   ensureAuctionDepositLock,
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
-import { requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import {
+  hydrateAuthIfPresent,
+  requireActiveBuyerAccount,
+  requireAuth,
+  type BuyerAccessContext,
+} from "../lib/auth";
+import {
+  evaluateVipAccess,
+  loadVipRequestActorBase,
+  readTrustedCurrentTime,
+  type VipRequestActorBase,
+} from "../lib/vip-early-access";
 import { publishAuctionRealtimeSnapshot } from "./auction-ws";
 
 type DecimalLike =
@@ -35,6 +46,9 @@ type AuctionLockRow = {
   min_increment: DecimalLike;
   buy_now_price: DecimalLike | null;
   seller_company_id: string;
+  approved_at: Date | string | null;
+  vip_access_policy: string | null;
+  vip_release_at: Date | string | null;
   last_bid_sequence: number;
   ends_at: Date | string;
 };
@@ -49,6 +63,10 @@ const placeBidSchema = z.object({
 
 const auctionParamsSchema = z.object({
   id: z.string().trim().min(1),
+});
+
+const listAuctionsQuerySchema = z.object({
+  vipEarlyAccess: z.enum(["active"]).optional(),
 });
 
 const auctionBidsQuerySchema = z.object({
@@ -261,6 +279,16 @@ async function mapBidError(error: unknown): Promise<{
     };
   }
 
+  if (error instanceof Error && error.message === "VIP_EARLY_ACCESS_RESTRICTED") {
+    return {
+      statusCode: 403,
+      body: {
+        error: "Lot is unavailable right now",
+      },
+      bidRequestStatus: "REJECTED",
+    };
+  }
+
   return {
     statusCode: 500,
     body: {
@@ -340,34 +368,65 @@ async function serializeVehicle(vehicle: {
   };
 }
 
+function createBuyerActorBase(
+  buyerAccess: BuyerAccessContext,
+): VipRequestActorBase {
+  return {
+    userId: buyerAccess.userId,
+    companyId: buyerAccess.companyId,
+    role: "BUYER",
+    buyerContext: buyerAccess,
+  };
+}
+
 export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     "/auctions",
     async function listAuctionsHandler(
-      _request: FastifyRequest,
+      request: FastifyRequest<{ Querystring: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      const auctions = await prisma.auction.findMany({
-        where: {
-          state: {
-            in: ["SCHEDULED", "LIVE", "EXTENDED", "PAYMENT_PENDING", "PAID", "DEFAULTED", "ENDED", "CLOSED"],
-          },
-          transitions: {
-            none: {
-              trigger: "EVENT_META",
+      const parsedQuery = listAuctionsQuerySchema.safeParse(request.query);
+
+      if (!parsedQuery.success) {
+        await sendValidationError(
+          reply,
+          parsedQuery.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        );
+        return;
+      }
+
+      await hydrateAuthIfPresent(request);
+      const vipEarlyAccessOnly = parsedQuery.data.vipEarlyAccess === "active";
+
+      const [actorBase, now, auctions] = await Promise.all([
+        loadVipRequestActorBase(request),
+        readTrustedCurrentTime(prisma),
+        prisma.auction.findMany({
+          where: {
+            state: {
+              in: ["SCHEDULED", "LIVE", "EXTENDED", "PAYMENT_PENDING", "PAID", "DEFAULTED", "ENDED", "CLOSED"],
+            },
+            transitions: {
+              none: {
+                trigger: "EVENT_META",
+              },
             },
           },
-        },
-        include: {
-          vehicle: true,
-          _count: {
-            select: {
-              bids: true,
+          include: {
+            vehicle: true,
+            _count: {
+              select: {
+                bids: true,
+              },
             },
           },
-        },
-        orderBy: [{ startsAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
-      });
+          orderBy: [{ startsAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+        }),
+      ]);
       const sellerCompanyIds = Array.from(new Set(auctions.map((auction) => auction.sellerCompanyId)));
       const companies = sellerCompanyIds.length
         ? await prisma.company.findMany({
@@ -384,29 +443,56 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           })
         : [];
       const companyById = new Map(companies.map((company) => [company.id, company]));
+      const accessibleItems: JsonRecord[] = [];
+
+      for (const auction of auctions) {
+        const decision = evaluateVipAccess({
+          actorBase,
+          snapshot: {
+            approvedAt: auction.approvedAt,
+            vipAccessPolicy: auction.vipAccessPolicy,
+            vipReleaseAt: auction.vipReleaseAt,
+            sellerCompanyId: auction.sellerCompanyId,
+          },
+          now,
+        });
+
+        if (vipEarlyAccessOnly) {
+          if (
+            decision.actorCategory !== "vip_buyer" ||
+            decision.listingMode !== "FULL" ||
+            decision.showVipEarlyAccessBadge !== true
+          ) {
+            continue;
+          }
+        }
+
+        if (decision.listingMode !== "FULL") {
+          continue;
+        }
+
+        const company = companyById.get(auction.sellerCompanyId) ?? null;
+
+        accessibleItems.push({
+          id: auction.id,
+          state: auction.state,
+          currentPrice: await toNumberValue(auction.currentPrice),
+          minIncrement: await toNumberValue(auction.minIncrement),
+          startingPrice: await toNumberValue(auction.startingPrice),
+          buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
+          startsAt: await toIsoString(auction.startsAt),
+          endsAt: await toIsoString(auction.endsAt),
+          createdAt: await toIsoString(auction.createdAt),
+          sellerName: company?.name ?? "Verified Seller",
+          location: company?.country ?? "UAE",
+          totalBids: auction._count?.bids ?? 0,
+          showVipEarlyAccessBadge: decision.showVipEarlyAccessBadge,
+          vehicle: await serializeVehicle(auction.vehicle),
+        });
+      }
 
       await reply.code(200).send({
-        auctions: await Promise.all(
-          auctions.map(async (auction) => {
-            const company = companyById.get(auction.sellerCompanyId) ?? null;
-
-            return {
-              id: auction.id,
-              state: auction.state,
-              currentPrice: await toNumberValue(auction.currentPrice),
-              minIncrement: await toNumberValue(auction.minIncrement),
-              startingPrice: await toNumberValue(auction.startingPrice),
-              buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
-              startsAt: await toIsoString(auction.startsAt),
-              endsAt: await toIsoString(auction.endsAt),
-              createdAt: await toIsoString(auction.createdAt),
-              sellerName: company?.name ?? "Verified Seller",
-              location: company?.country ?? "UAE",
-              totalBids: auction._count?.bids ?? 0,
-              vehicle: await serializeVehicle(auction.vehicle),
-            };
-          }),
-        ),
+        auctions: accessibleItems,
       });
     },
   );
@@ -578,6 +664,9 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
                 min_increment,
                 buy_now_price,
                 seller_company_id,
+                approved_at,
+                vip_access_policy,
+                vip_release_at,
                 last_bid_sequence,
                 ends_at
               FROM auctions
@@ -588,6 +677,27 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
             if (!auction) {
               throw new Error("AUCTION_NOT_LIVE");
+            }
+
+            const now = await readTrustedCurrentTime(tx as {
+              $queryRaw: <T = unknown>(
+                query: TemplateStringsArray,
+                ...values: unknown[]
+              ) => Promise<T>;
+            });
+            const accessDecision = evaluateVipAccess({
+              actorBase: createBuyerActorBase(buyerAccess),
+              snapshot: {
+                approvedAt: auction.approved_at,
+                vipAccessPolicy: auction.vip_access_policy,
+                vipReleaseAt: auction.vip_release_at,
+                sellerCompanyId: auction.seller_company_id,
+              },
+              now,
+            });
+
+            if (!accessDecision.canBid) {
+              throw new Error("VIP_EARLY_ACCESS_RESTRICTED");
             }
 
             const currentPrice = await toNumberValue(auction.current_price);
@@ -603,7 +713,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             if (isScheduled) {
               const startsAt = await toDateValue(auction.starts_at);
 
-              if (new Date() >= startsAt) {
+              if (now >= startsAt) {
                 throw new Error("AUCTION_NOT_LIVE");
               }
 
@@ -624,7 +734,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               }
             }
 
-            if (new Date() > endsAt) {
+            if (now > endsAt) {
               throw new Error("AUCTION_ENDED");
             }
 
@@ -661,7 +771,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               throw new Error("AUCTION_VERSION_CONFLICT");
             }
 
-            const timeLeft = endsAt.getTime() - Date.now();
+            const timeLeft = endsAt.getTime() - now.getTime();
 
             if (isLive && timeLeft < 3 * 60 * 1000) {
               await tx.$executeRaw`
@@ -783,6 +893,50 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { id } = parsedParams.data;
       const { cursor, limit } = parsedQuery.data;
+      await hydrateAuthIfPresent(request);
+
+      const [actorBase, now, auctionAccess] = await Promise.all([
+        loadVipRequestActorBase(request),
+        readTrustedCurrentTime(prisma),
+        prisma.auction.findUnique({
+          where: {
+            id,
+          },
+          select: {
+            id: true,
+            sellerCompanyId: true,
+            approvedAt: true,
+            vipAccessPolicy: true,
+            vipReleaseAt: true,
+          },
+        }),
+      ]);
+
+      if (!auctionAccess) {
+        await reply.code(404).send({
+          error: "Auction not found",
+        });
+        return;
+      }
+
+      const bidHistoryDecision = evaluateVipAccess({
+        actorBase,
+        snapshot: {
+          approvedAt: auctionAccess.approvedAt,
+          vipAccessPolicy: auctionAccess.vipAccessPolicy,
+          vipReleaseAt: auctionAccess.vipReleaseAt,
+          sellerCompanyId: auctionAccess.sellerCompanyId,
+        },
+        now,
+      });
+
+      if (!bidHistoryDecision.canViewBidHistory) {
+        await reply.code(404).send({
+          error: "Auction not found",
+        });
+        return;
+      }
+
       const bids = await prisma.bid.findMany({
         where: {
           auctionId: id,
@@ -887,6 +1041,9 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
                 min_increment,
                 buy_now_price,
                 seller_company_id,
+                approved_at,
+                vip_access_policy,
+                vip_release_at,
                 last_bid_sequence,
                 ends_at
               FROM auctions
@@ -899,13 +1056,34 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               throw new Error("AUCTION_NOT_FOUND");
             }
 
+            const now = await readTrustedCurrentTime(tx as {
+              $queryRaw: <T = unknown>(
+                query: TemplateStringsArray,
+                ...values: unknown[]
+              ) => Promise<T>;
+            });
+            const accessDecision = evaluateVipAccess({
+              actorBase: createBuyerActorBase(buyerAccess),
+              snapshot: {
+                approvedAt: auction.approved_at,
+                vipAccessPolicy: auction.vip_access_policy,
+                vipReleaseAt: auction.vip_release_at,
+                sellerCompanyId: auction.seller_company_id,
+              },
+              now,
+            });
+
+            if (!accessDecision.canBuyNow) {
+              throw new Error("VIP_EARLY_ACCESS_RESTRICTED");
+            }
+
             if (auction.state !== "SCHEDULED") {
               throw new Error("BUY_NOW_UNAVAILABLE");
             }
 
             const startsAt = await toDateValue(auction.starts_at);
 
-            if (new Date() >= startsAt) {
+            if (now >= startsAt) {
               throw new Error("BUY_NOW_UNAVAILABLE");
             }
 
@@ -978,7 +1156,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               buyerCompanyId: buyerAccess.companyId,
               sellerCompanyId: auction.seller_company_id,
               subtotal: buyNowPrice,
-              dueAt: await addHours(new Date(), BUY_NOW_PAYMENT_WINDOW_HOURS),
+              dueAt: await addHours(now, BUY_NOW_PAYMENT_WINDOW_HOURS),
             });
 
             return {
@@ -1005,6 +1183,13 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         if (error instanceof Error && error.message === "BUY_NOW_UNAVAILABLE") {
           await reply.code(409).send({
             error: "Buy Now is unavailable for this lot",
+          });
+          return;
+        }
+
+        if (error instanceof Error && error.message === "VIP_EARLY_ACCESS_RESTRICTED") {
+          await reply.code(403).send({
+            error: "Lot is unavailable right now",
           });
           return;
         }
@@ -1052,20 +1237,44 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const auction = await prisma.auction.findUnique({
-        where: {
-          id: parsedParams.data.id,
-        },
-        include: {
-          vehicle: true,
-          bids: {
-            take: 10,
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      await hydrateAuthIfPresent(request);
+
+      const [actorBase, now, auction] = await Promise.all([
+        loadVipRequestActorBase(request),
+        readTrustedCurrentTime(prisma),
+        prisma.auction.findUnique({
+          where: {
+            id: parsedParams.data.id,
           },
-        },
-      });
+          include: {
+            vehicle: true,
+            bids: {
+              take: 10,
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            },
+          },
+        }),
+      ]);
 
       if (!auction) {
+        await reply.code(404).send({
+          error: "Auction not found",
+        });
+        return;
+      }
+
+      const detailDecision = evaluateVipAccess({
+        actorBase,
+        snapshot: {
+          approvedAt: auction.approvedAt,
+          vipAccessPolicy: auction.vipAccessPolicy,
+          vipReleaseAt: auction.vipReleaseAt,
+          sellerCompanyId: auction.sellerCompanyId,
+        },
+        now,
+      });
+
+      if (!detailDecision.canViewDetail) {
         await reply.code(404).send({
           error: "Auction not found",
         });
@@ -1085,6 +1294,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           endsAt: await toIsoString(auction.endsAt),
           extensionCount: auction.extensionCount,
           highestBidId: auction.highestBidId,
+          showVipEarlyAccessBadge: detailDecision.showVipEarlyAccessBadge,
           vehicle: await serializeVehicle(auction.vehicle),
           bids: await Promise.all(
             auction.bids.map(async (bid) =>
