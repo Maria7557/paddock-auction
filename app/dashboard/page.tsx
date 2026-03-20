@@ -4,8 +4,11 @@ import { RecommendedLots } from "@/components/buyer/RecommendedLots";
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { TierStatusCard } from "@/components/buyer/TierStatusCard";
 import { IconCheck } from "@/components/ui/icons";
+import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
+import { isLiveAuctionState, isScheduledAuctionState } from "@/src/lib/auction-display";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
+import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import { formatAed } from "@/src/lib/utils";
 
@@ -68,14 +71,30 @@ type AuctionsListResponse = {
     state?: string;
     endsAt?: string | null;
     startsAt?: string | null;
+    currentPrice?: number;
+    totalBids?: number;
+    vehicle?: {
+      brand?: string;
+      model?: string;
+      year?: number;
+    };
   }>;
   lots?: Array<{
     id?: string;
     state?: string;
     endsAt?: string | null;
     startsAt?: string | null;
+    currentPrice?: number;
+    totalBids?: number;
+    vehicle?: {
+      brand?: string;
+      model?: string;
+      year?: number;
+    };
   }>;
 };
+
+type DashboardAuction = NonNullable<AuctionsListResponse["auctions"]>[number];
 
 type CapabilitiesRow = {
   feature: string;
@@ -92,6 +111,51 @@ const CAPABILITIES: CapabilitiesRow[] = [
 
 function normalizeAuctionState(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
+}
+
+function getTimeValue(value: string | null | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getAuctionTitle(auction: DashboardAuction): string {
+  const year = Number(auction.vehicle?.year ?? 0);
+  const brand = String(auction.vehicle?.brand ?? "").trim();
+  const model = String(auction.vehicle?.model ?? "").trim();
+
+  return `${year > 0 ? `${year} ` : ""}${brand} ${model}`.trim() || `Lot ${String(auction.id ?? "").slice(0, 8).toUpperCase()}`;
+}
+
+function pickFeaturedLiveAuction(
+  auctions: DashboardAuction[],
+): { auction: DashboardAuction; mode: "live" | "scheduled" } | null {
+  const liveAuctions = auctions
+    .filter((auction) => isLiveAuctionState(auction.state))
+    .sort((left, right) => getTimeValue(left.endsAt, Number.MAX_SAFE_INTEGER) - getTimeValue(right.endsAt, Number.MAX_SAFE_INTEGER));
+
+  if (liveAuctions[0]) {
+    return {
+      auction: liveAuctions[0],
+      mode: "live",
+    };
+  }
+
+  const scheduledAuctions = auctions
+    .filter((auction) => isScheduledAuctionState(auction.state))
+    .sort((left, right) => getTimeValue(left.startsAt, Number.MAX_SAFE_INTEGER) - getTimeValue(right.startsAt, Number.MAX_SAFE_INTEGER));
+
+  if (scheduledAuctions[0]) {
+    return {
+      auction: scheduledAuctions[0],
+      mode: "scheduled",
+    };
+  }
+
+  return null;
 }
 
 function countAuctionState(
@@ -133,10 +197,11 @@ export default async function DashboardPage() {
   const session = await requireBuyerSession("/dashboard");
   const requestOptions = await withServerCookies({ cache: "no-store" });
 
-  const [dashboard, authResponse, auctionsResponse] = await Promise.all([
+  const [dashboard, authResponse, auctionsResponse, display] = await Promise.all([
     api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
     api.auth.me<BuyerAuthResponse>(requestOptions),
     api.auctions.list<AuctionsListResponse>(undefined, requestOptions),
+    getPublicDisplaySettings(),
   ]);
 
   const companyEmail = authResponse.user?.email?.trim() || "buyer@fleetbid.ae";
@@ -145,6 +210,26 @@ export default async function DashboardPage() {
   const auctionCounts = countAuctionState(allAuctions);
   const hasRequiredDeposit = dashboard.depositStatus.hasRequiredDeposit;
   const tier = dashboard.vipStatus.tier;
+  const featuredLiveAuction = pickFeaturedLiveAuction(allAuctions);
+  const liveRoomHref = featuredLiveAuction?.auction.id
+    ? withLocalePath(`/auctions/live/${featuredLiveAuction.auction.id}`, display.locale)
+    : null;
+  const featuredAuctionTitle = featuredLiveAuction ? getAuctionTitle(featuredLiveAuction.auction) : null;
+  const featuredAuctionStateLabel = featuredLiveAuction?.mode === "live" ? "LIVE" : "UP NEXT";
+  const featuredAuctionTimeLabel =
+    featuredLiveAuction?.mode === "live"
+      ? featuredLiveAuction.auction.endsAt
+        ? `Ends ${new Date(featuredLiveAuction.auction.endsAt).toLocaleTimeString("en-AE", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`
+        : "Bidding open now"
+      : featuredLiveAuction?.auction.startsAt
+        ? `Starts ${new Date(featuredLiveAuction.auction.startsAt).toLocaleTimeString("en-AE", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`
+        : "Session opening soon";
 
   return (
     <BuyerShell
@@ -155,6 +240,42 @@ export default async function DashboardPage() {
       tier={tier}
     >
       <div className={styles.page}>
+        {featuredLiveAuction && liveRoomHref ? (
+          <section className={styles.liveRoomCard}>
+            <div className={styles.liveRoomCardBody}>
+              <div className={styles.liveRoomCopy}>
+                <div className={styles.liveRoomEyebrow}>Live event access</div>
+                <h2>
+                  {featuredLiveAuction.mode === "live"
+                    ? "Current live auction is ready"
+                    : "Next live room is ready to preview"}
+                </h2>
+                <p>
+                  {featuredLiveAuction.mode === "live"
+                    ? "Open the active bidding room instantly and jump straight into the current live event."
+                    : "Open the upcoming live room now to see the lineup, countdown, and be ready before bidding starts."}
+                </p>
+                <div className={styles.liveRoomMeta}>
+                  <span className={`${styles.liveRoomPill} ${featuredLiveAuction.mode === "live" ? styles.liveRoomPillLive : styles.liveRoomPillScheduled}`}>
+                    {featuredAuctionStateLabel}
+                  </span>
+                  <span>{featuredAuctionTitle}</span>
+                  <span>{featuredAuctionTimeLabel}</span>
+                </div>
+              </div>
+
+              <Link
+                href={liveRoomHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${styles.liveRoomAction} btn ${featuredLiveAuction.mode === "live" ? "btn-white" : "btn-ghost-white"}`}
+              >
+                {featuredLiveAuction.mode === "live" ? "Open live room" : "Open coming soon room"}
+              </Link>
+            </div>
+          </section>
+        ) : null}
+
         {tier === "STANDARD" && dashboard.onboardingStep < 3 ? (
           <section className={styles.depositCard}>
             <div className={styles.depositTop} />
