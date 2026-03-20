@@ -3,27 +3,38 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { SignJWT } from "jose";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockPrisma = {
-  user: {
-    findUnique: vi.fn(),
+const { mockPrisma, mockStripe } = vi.hoisted(() => ({
+  mockPrisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
+    depositWallet: {
+      findUnique: vi.fn(),
+    },
+    invoice: {
+      findUnique: vi.fn(),
+    },
+    payment: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    $transaction: vi.fn(),
   },
-  idempotencyKey: {
-    findFirst: vi.fn(),
-    create: vi.fn(),
-    updateMany: vi.fn(),
+  mockStripe: {
+    paymentIntents: {
+      create: vi.fn(),
+    },
   },
-  invoice: {
-    count: vi.fn(),
-    findUnique: vi.fn(),
-  },
-  paymentDeadline: {
-    findFirst: vi.fn(),
-  },
-  $transaction: vi.fn(),
-};
+}));
 
 vi.mock("../../db", () => ({
   prisma: mockPrisma,
+}));
+
+vi.mock("../../lib/stripe", () => ({
+  stripe: mockStripe,
 }));
 
 async function signToken(payload: {
@@ -59,7 +70,7 @@ async function buildTestServer(): Promise<FastifyInstance> {
 
 beforeAll(() => {
   process.env.JWT_SECRET = "test-secret-32-chars-long-enough!!";
-  delete process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_SECRET_KEY = "sk_test_123";
 });
 
 beforeEach(() => {
@@ -78,7 +89,6 @@ beforeEach(() => {
       },
     ],
   });
-  mockPrisma.invoice.count.mockResolvedValue(0);
 });
 
 afterEach(async () => {
@@ -86,7 +96,7 @@ afterEach(async () => {
 });
 
 describe("walletRoutes", () => {
-  it("returns wallet balance and recent ledger entries", async () => {
+  it("returns zero balances when the deposit wallet does not exist", async () => {
     const server = await buildTestServer();
     const token = await signToken({
       userId: "user-1",
@@ -95,39 +105,12 @@ describe("walletRoutes", () => {
       email: "buyer@example.com",
       kycVerified: true,
     });
-    const txMock = {
-      user: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: "user-1",
-        }),
-      },
-      wallet: {
-        upsert: vi.fn().mockResolvedValue({
-          id: "wallet-1",
-          userId: "user-1",
-          balance: "150.00",
-          lockedBalance: "40.00",
-        }),
-      },
-      walletLedger: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: "ledger-1",
-            type: "DEPOSIT_TOPUP",
-            amount: "150.00",
-            reference: "deposit-1",
-            createdAt: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ]),
-      },
-      $queryRaw: vi.fn().mockResolvedValue([]),
-    };
 
-    mockPrisma.$transaction.mockImplementation(async (callback) => callback(txMock));
+    mockPrisma.depositWallet.findUnique.mockResolvedValue(null);
 
     const response = await server.inject({
       method: "GET",
-      url: "/wallet?limit=5",
+      url: "/wallet",
       headers: {
         authorization: `Bearer ${token}`,
       },
@@ -135,45 +118,16 @@ describe("walletRoutes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      wallet: {
-        id: "wallet-1",
-        userId: "user-1",
-        balance: 150,
-        lockedBalance: 40,
-        availableBalance: 110,
-      },
-      ledger: [
-        {
-          id: "ledger-1",
-          type: "DEPOSIT_TOPUP",
-          amount: 150,
-          reference: "deposit-1",
-          createdAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      transactions: [
-        {
-          id: "ledger-1",
-          type: "DEPOSIT_TOPUP",
-          amount: 150,
-          reference: "deposit-1",
-          createdAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      pendingWithdrawal: 0,
-      pendingWithdrawalAmount: 0,
-      withdrawalEligibility: {
-        noActiveAuctionLocks: false,
-        noOutstandingInvoices: true,
-        noComplianceHolds: true,
-        canWithdraw: false,
-      },
+      availableBalance: "0.00",
+      lockedBalance: "0.00",
+      pendingWithdrawalBalance: "0.00",
+      currency: "AED",
     });
 
     await server.close();
   });
 
-  it("tops up the wallet in a Serializable transaction and stores idempotency state", async () => {
+  it("returns deposit wallet balances as decimal strings", async () => {
     const server = await buildTestServer();
     const token = await signToken({
       userId: "user-1",
@@ -182,103 +136,34 @@ describe("walletRoutes", () => {
       email: "buyer@example.com",
       kycVerified: true,
     });
-    const txMock = {
-      user: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: "user-1",
-        }),
-      },
-      wallet: {
-        upsert: vi.fn().mockResolvedValue({
-          id: "wallet-1",
-          userId: "user-1",
-          balance: "20.00",
-          lockedBalance: "0.00",
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: "wallet-1",
-          userId: "user-1",
-          balance: "120.00",
-          lockedBalance: "0.00",
-        }),
-      },
-      walletLedger: {
-        create: vi.fn().mockResolvedValue({
-          id: "ledger-1",
-        }),
-      },
-    };
 
-    mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
-    mockPrisma.idempotencyKey.create.mockResolvedValue({
-      id: "idempotency-1",
-    });
-    mockPrisma.idempotencyKey.updateMany.mockResolvedValue({
-      count: 1,
-    });
-    mockPrisma.$transaction.mockImplementation(async (callback, options) => {
-      expect(options).toEqual({
-        isolationLevel: "Serializable",
-      });
-
-      return callback(txMock);
+    mockPrisma.depositWallet.findUnique.mockResolvedValue({
+      availableBalance: "38500.00",
+      lockedBalance: "5000.00",
+      pendingWithdrawalBalance: "0.00",
+      currency: "AED",
     });
 
     const response = await server.inject({
-      method: "POST",
-      url: "/wallet/deposit",
+      method: "GET",
+      url: "/wallet",
       headers: {
         authorization: `Bearer ${token}`,
-      },
-      payload: {
-        amount: 100,
-        idempotencyKey: "deposit-1",
       },
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      result: "accepted",
-      wallet_id: "wallet-1",
-      user_id: "user-1",
-      amount: 100,
-      balance: 120,
-      available_balance: 120,
-      ledger_id: "ledger-1",
-    });
-    expect(mockPrisma.idempotencyKey.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        actorId: "user-1",
-        endpoint: "/wallet/deposit",
-        idempotencyKey: "deposit-1",
-        status: "PENDING",
-      }),
-    });
-    expect(mockPrisma.idempotencyKey.updateMany).toHaveBeenCalledWith({
-      where: {
-        actorId: "user-1",
-        endpoint: "/wallet/deposit",
-        idempotencyKey: "deposit-1",
-      },
-      data: {
-        status: "COMPLETED",
-        responseStatus: 200,
-        responseBody: JSON.stringify({
-          result: "accepted",
-          wallet_id: "wallet-1",
-          user_id: "user-1",
-          amount: 100,
-          balance: 120,
-          available_balance: 120,
-          ledger_id: "ledger-1",
-        }),
-      },
+      availableBalance: "38500.00",
+      lockedBalance: "5000.00",
+      pendingWithdrawalBalance: "0.00",
+      currency: "AED",
     });
 
     await server.close();
   });
 
-  it("rejects withdraw when available balance would go negative", async () => {
+  it("creates a Stripe payment intent for wallet top-up using the header idempotency key", async () => {
     const server = await buildTestServer();
     const token = await signToken({
       userId: "user-1",
@@ -287,59 +172,80 @@ describe("walletRoutes", () => {
       email: "buyer@example.com",
       kycVerified: true,
     });
-    const txMock = {
-      user: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: "user-1",
-        }),
-      },
-      wallet: {
-        upsert: vi.fn().mockResolvedValue({
-          id: "wallet-1",
-          userId: "user-1",
-          balance: "100.00",
-          lockedBalance: "30.00",
-        }),
-        update: vi.fn(),
-      },
-      walletLedger: {
-        create: vi.fn(),
-      },
-      $queryRaw: vi.fn().mockResolvedValue([
-        {
-          id: "wallet-1",
-          user_id: "user-1",
-          balance: "100.00",
-          locked_balance: "30.00",
-        },
-      ]),
-    };
 
-    mockPrisma.$transaction.mockImplementation(async (callback) => callback(txMock));
+    mockStripe.paymentIntents.create.mockResolvedValue({
+      id: "pi_topup_1",
+      client_secret: "pi_topup_secret_1",
+    });
 
     const response = await server.inject({
       method: "POST",
-      url: "/wallet/withdraw",
+      url: "/wallet/topup",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "idempotency-key": "topup-1",
+      },
+      payload: {
+        amount: 5000,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      clientSecret: "pi_topup_secret_1",
+      paymentIntentId: "pi_topup_1",
+    });
+    expect(mockStripe.paymentIntents.create).toHaveBeenCalledWith(
+      {
+        amount: 500000,
+        currency: "aed",
+        metadata: {
+          companyId: "company-1",
+          userId: "user-1",
+          purpose: "deposit_topup",
+        },
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      },
+      {
+        idempotencyKey: "topup-1",
+      },
+    );
+
+    await server.close();
+  });
+
+  it("returns 400 when the top-up idempotency header is missing", async () => {
+    const server = await buildTestServer();
+    const token = await signToken({
+      userId: "user-1",
+      role: "BUYER",
+      companyId: "company-1",
+      email: "buyer@example.com",
+      kycVerified: true,
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/wallet/topup",
       headers: {
         authorization: `Bearer ${token}`,
       },
       payload: {
-        amount: 80,
+        amount: 5000,
       },
     });
 
-    expect(response.statusCode).toBe(409);
+    expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
-      error: "WALLET_INSUFFICIENT_BALANCE",
-      availableBalance: 70,
+      error: "MISSING_IDEMPOTENCY_KEY",
     });
-    expect(txMock.wallet.update).not.toHaveBeenCalled();
-    expect(txMock.walletLedger.create).not.toHaveBeenCalled();
 
     await server.close();
   });
 
-  it("creates a mock payment intent when Stripe is not configured", async () => {
+  it("returns 400 when the top-up amount is below the minimum", async () => {
     const server = await buildTestServer();
     const token = await signToken({
       userId: "user-1",
@@ -348,6 +254,80 @@ describe("walletRoutes", () => {
       email: "buyer@example.com",
       kycVerified: true,
     });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/wallet/topup",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "idempotency-key": "topup-too-small",
+      },
+      payload: {
+        amount: 4999,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe("INVALID_REQUEST");
+
+    await server.close();
+  });
+
+  it("returns 502 when Stripe payment intent creation fails", async () => {
+    const server = await buildTestServer();
+    const token = await signToken({
+      userId: "user-1",
+      role: "BUYER",
+      companyId: "company-1",
+      email: "buyer@example.com",
+      kycVerified: true,
+    });
+
+    mockStripe.paymentIntents.create.mockRejectedValue(new Error("stripe unavailable"));
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/wallet/topup",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "idempotency-key": "topup-failure",
+      },
+      payload: {
+        amount: 5000,
+      },
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: "payment_provider_error",
+    });
+
+    await server.close();
+  });
+
+  it("keeps invoice payment-intent creation working when Stripe is absent for that legacy path", async () => {
+    const server = await buildTestServer();
+    const token = await signToken({
+      userId: "user-1",
+      role: "BUYER",
+      companyId: "company-1",
+      email: "buyer@example.com",
+      kycVerified: true,
+    });
+
+    const previousStripeSecret = process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_SECRET_KEY;
+
+    mockPrisma.invoice.findUnique.mockResolvedValue({
+      id: "invoice-1",
+      auctionId: "auction-1",
+      buyerCompanyId: "company-1",
+      sellerCompanyId: "seller-1",
+      total: "250.00",
+      currency: "AED",
+      status: "ISSUED",
+    });
+
     const prepareTx = {
       invoice: {
         findUnique: vi.fn().mockResolvedValue({
@@ -385,15 +365,6 @@ describe("walletRoutes", () => {
       },
     };
 
-    mockPrisma.invoice.findUnique.mockResolvedValue({
-      id: "invoice-1",
-      auctionId: "auction-1",
-      buyerCompanyId: "company-1",
-      sellerCompanyId: "seller-1",
-      total: "250.00",
-      currency: "AED",
-      status: "ISSUED",
-    });
     mockPrisma.$transaction
       .mockImplementationOnce(async (callback, options) => {
         expect(options).toEqual({
@@ -434,6 +405,7 @@ describe("walletRoutes", () => {
       mock: true,
     });
 
+    process.env.STRIPE_SECRET_KEY = previousStripeSecret;
     await server.close();
   });
 });

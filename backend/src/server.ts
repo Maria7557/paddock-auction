@@ -147,6 +147,8 @@ export async function buildServer(): Promise<FastifyInstance> {
         };
       });
 
+      await api.register(stripeWebhookRoutes);
+
       await api.register(authRoutes, {
         prefix: "/auth",
       });
