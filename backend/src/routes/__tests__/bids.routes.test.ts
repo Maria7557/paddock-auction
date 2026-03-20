@@ -45,11 +45,24 @@ const { mockPublishAuctionRealtimeSnapshot } = vi.hoisted(() => ({
   mockPublishAuctionRealtimeSnapshot: vi.fn().mockResolvedValue(true),
 }));
 
+const { mockNotifyEventRuntime } = vi.hoisted(() => ({
+  mockNotifyEventRuntime: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
 vi.mock("../auction-ws", () => ({
   auctionWsRoutes: async () => {},
   publishAuctionRealtimeSnapshot: mockPublishAuctionRealtimeSnapshot,
   closeAuctionRealtime: vi.fn(),
+  getAuctionSnapshot: vi.fn(),
+}));
+
+vi.mock("../auction-events", () => ({
+  auctionEventsRoutes: async () => {},
+  notifyEventRuntime: mockNotifyEventRuntime,
+  closeEventRuntimeRealtime: vi.fn(),
+  getEventRuntimeSnapshot: vi.fn(),
+  createAuctionEventRecord: vi.fn(),
 }));
 
 import { buildServer } from "../../server";

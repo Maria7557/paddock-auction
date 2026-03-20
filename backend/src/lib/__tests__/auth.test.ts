@@ -197,7 +197,7 @@ describe("requireAdminAuth", () => {
     expect(req.auth?.role).toBe("ADMIN");
   });
 
-  it("rejects BUYER role with 401", async () => {
+  it("rejects BUYER role with 403", async () => {
     const token = await signToken({ userId: "buyer-1", role: "BUYER" });
     const req = makeMockRequest({ headers: { authorization: `Bearer ${token}` } });
     const reply = makeMockReply();
@@ -205,10 +205,10 @@ describe("requireAdminAuth", () => {
     await requireAdminAuth(req as never, reply as never);
 
     expect(reply.sent).toBe(true);
-    expect(reply._code).toBe(401);
+    expect(reply._code).toBe(403);
   });
 
-  it("rejects SELLER role with 401", async () => {
+  it("rejects SELLER role with 403", async () => {
     const token = await signToken({ userId: "seller-1", role: "SELLER", companyId: "co-1" });
     const req = makeMockRequest({ headers: { authorization: `Bearer ${token}` } });
     const reply = makeMockReply();
@@ -216,7 +216,7 @@ describe("requireAdminAuth", () => {
     await requireAdminAuth(req as never, reply as never);
 
     expect(reply.sent).toBe(true);
-    expect(reply._code).toBe(401);
+    expect(reply._code).toBe(403);
   });
 });
 

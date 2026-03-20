@@ -31,6 +31,10 @@ vi.mock("../../db", () => ({
   prisma: mockPrisma,
 }));
 
+vi.mock("../auction-events", () => ({
+  notifyEventRuntime: vi.fn().mockResolvedValue(true),
+}));
+
 async function signToken(payload: {
   userId: string;
   role: string;

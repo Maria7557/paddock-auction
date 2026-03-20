@@ -23,7 +23,7 @@ type DecimalLike =
       toString?: () => string;
     };
 
-type AuctionRealtimeSnapshot = {
+export type AuctionRealtimeSnapshot = {
   auctionId: string;
   state: string;
   currentPrice: number;
@@ -451,7 +451,7 @@ async function authenticateWebSocketRequest(
   }
 }
 
-async function getAuctionSnapshot(
+export async function getAuctionSnapshot(
   auctionId: string,
   db: typeof prisma,
 ): Promise<AuctionRealtimeSnapshot | null> {
