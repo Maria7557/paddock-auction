@@ -73,6 +73,11 @@ async function makeToken(payload: {
 
 function buildAdminTx(overrides: Record<string, unknown> = {}) {
   return {
+    $queryRaw: vi.fn().mockResolvedValue([
+      {
+        currentTime: new Date("2026-03-19T12:00:00.000Z"),
+      },
+    ]),
     auction: {
       update: vi.fn(),
       create: vi.fn(),
@@ -149,6 +154,12 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.$queryRaw.mockResolvedValue([
+    {
+      currentTime: new Date("2026-03-19T12:00:00.000Z"),
+    },
+  ]);
+  delete process.env.VIP_EARLY_ACCESS_APPROVAL_WRITES_ENABLED;
 });
 
 describe("admin auth guard", () => {
@@ -577,6 +588,40 @@ describe("GET /api/admin/vehicles", () => {
     expect(res.body.vehicles).toHaveLength(1);
     expect(res.body.vehicles[0].id).toBe("v2");
   });
+
+  it("surfaces VIP early-access approval status in the vehicle list", async () => {
+    mockPrisma.company.findMany.mockResolvedValue([{ id: "c1", name: "Fleet Operator LLC" }]);
+    mockPrisma.vehicle.findMany.mockResolvedValue([
+      {
+        id: "v1",
+        brand: "BMW",
+        model: "X5",
+        year: 2023,
+        vin: "VIN001",
+        marketPrice: 200000,
+        media: [{ url: "https://example.com/bmw.jpg" }],
+        images: [],
+        auctions: [
+          {
+            id: "a1",
+            state: "SCHEDULED",
+            sellerCompanyId: "c1",
+            approvedAt: new Date("2026-03-19T11:00:00.000Z"),
+            vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+            vipReleaseAt: new Date("2026-03-20T11:00:00.000Z"),
+            transitions: [],
+          },
+        ],
+      },
+    ]);
+
+    const res = await request
+      .get("/api/admin/vehicles")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vehicles[0].approvalStatusLabel).toBe("Approved – VIP Early Access");
+  });
 });
 
 describe("GET /api/admin/vehicles/:id", () => {
@@ -676,13 +721,85 @@ describe("GET /api/admin/vehicles/:id", () => {
       title: "March Event",
     });
   });
+
+  it("includes internal approval status in vehicle detail", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      brand: "BMW",
+      model: "M4",
+      year: 2024,
+      mileage: 46000,
+      vin: "VIN001",
+      marketPrice: { toNumber: () => 420000 },
+      fuelType: "Petrol",
+      transmission: "Automatic",
+      bodyType: "Convertible",
+      regionSpec: "USA",
+      condition: "Good",
+      serviceHistory: "Agency",
+      description: "Clean car",
+      engine: "3.0L",
+      driveType: "RWD",
+      exteriorColor: "Blue",
+      interiorColor: "Red",
+      airbags: "8",
+      damage: "Reported",
+      damageMap: { door_fr: "MINOR" },
+      images: [],
+      media: [],
+      auctions: [
+        {
+          id: "a1",
+          state: "SCHEDULED",
+          sellerCompanyId: "c1",
+          startsAt: new Date("2026-03-20T12:00:00.000Z"),
+          endsAt: new Date("2026-03-21T12:00:00.000Z"),
+          inspectionDropoffDate: null,
+          viewingEndsAt: null,
+          auctionStartsAt: new Date("2026-03-20T12:00:00.000Z"),
+          auctionEndsAt: new Date("2026-03-21T12:00:00.000Z"),
+          approvedAt: new Date("2026-03-19T11:00:00.000Z"),
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: new Date("2026-03-20T11:00:00.000Z"),
+          currentPrice: { toNumber: () => 250000 },
+          startingPrice: { toNumber: () => 250000 },
+          buyNowPrice: { toNumber: () => 290000 },
+          minIncrement: { toNumber: () => 500 },
+          transitions: [],
+        },
+      ],
+    });
+    mockPrisma.company.findUnique.mockResolvedValue({
+      id: "c1",
+      name: "Fleet Corp",
+      status: "ACTIVE",
+    });
+    mockPrisma.auction.findUnique.mockResolvedValue(null);
+
+    const res = await request
+      .get("/api/admin/vehicles/v1")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vehicle.latestAuction.approvalStatusLabel).toBe("Approved – VIP Early Access");
+  });
 });
 
 describe("POST /api/admin/vehicles/:id/approve", () => {
-  it("records approval without scheduling the auction", async () => {
+  it("records approval without scheduling the auction and writes dark-launch metadata by default", async () => {
     mockPrisma.vehicle.findUnique.mockResolvedValue({
       id: "v1",
-      auctions: [{ id: "a1", state: "DRAFT" }],
+      auctions: [
+        {
+          id: "a1",
+          state: "DRAFT",
+          approvedAt: null,
+          vipAccessPolicy: "NONE",
+          vipReleaseAt: null,
+          approvedByUserId: null,
+          vipPolicyReason: null,
+        },
+      ],
     });
 
     const tx = buildAdminTx();
@@ -694,7 +811,20 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(tx.auction.update).not.toHaveBeenCalled();
+    expect(tx.auction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "a1",
+        },
+        data: expect.objectContaining({
+          approvedAt: new Date("2026-03-19T12:00:00.000Z"),
+          vipAccessPolicy: "NONE",
+          vipReleaseAt: null,
+          approvedByUserId: adminUserId,
+          vipPolicyReason: "approval_writes_disabled",
+        }),
+      }),
+    );
     expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         auctionId: "a1",
@@ -703,6 +833,113 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
         trigger: "ADMIN_VEHICLE_APPROVED",
       }),
     });
+  });
+
+  it("writes active VIP metadata when approval writes are enabled", async () => {
+    process.env.VIP_EARLY_ACCESS_APPROVAL_WRITES_ENABLED = "true";
+
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [
+        {
+          id: "a1",
+          state: "DRAFT",
+          approvedAt: null,
+          vipAccessPolicy: "NONE",
+          vipReleaseAt: null,
+          approvedByUserId: null,
+          vipPolicyReason: null,
+        },
+      ],
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/approve")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(tx.auction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          approvedAt: new Date("2026-03-19T12:00:00.000Z"),
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: new Date("2026-03-20T12:00:00.000Z"),
+          vipPolicyReason: "feature_enabled",
+        }),
+      }),
+    );
+  });
+
+  it("fails closed when rollout applicability is undetermined", async () => {
+    process.env.VIP_EARLY_ACCESS_APPROVAL_WRITES_ENABLED = "undetermined";
+
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [
+        {
+          id: "a1",
+          state: "DRAFT",
+          approvedAt: null,
+          vipAccessPolicy: "NONE",
+          vipReleaseAt: null,
+          approvedByUserId: null,
+          vipPolicyReason: null,
+        },
+      ],
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/approve")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(tx.auction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          approvedAt: new Date("2026-03-19T12:00:00.000Z"),
+          vipAccessPolicy: "UNDETERMINED_RESTRICTED",
+          vipReleaseAt: new Date("2026-03-20T12:00:00.000Z"),
+          vipPolicyReason: "rollout_undetermined_fail_closed",
+        }),
+      }),
+    );
+  });
+
+  it("does not reset approval metadata for already approved inventory", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [
+        {
+          id: "a1",
+          state: "SCHEDULED",
+          approvedAt: new Date("2026-03-18T12:00:00.000Z"),
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: new Date("2026-03-19T12:00:00.000Z"),
+          approvedByUserId: adminUserId,
+          vipPolicyReason: "feature_enabled",
+        },
+      ],
+    });
+
+    const tx = buildAdminTx();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/approve")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.auction.update).not.toHaveBeenCalled();
   });
 
   it("returns 404 when vehicle is not found", async () => {

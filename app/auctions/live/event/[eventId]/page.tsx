@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { getLot } from "@/app/auctions/[auctionId]/page";
+import { getLot } from "@/app/auctions/[auctionId]/lot-data";
 import { EventLiveRoom, mapInitialLotToEventView } from "@/src/components/auction/EventLiveRoom";
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";

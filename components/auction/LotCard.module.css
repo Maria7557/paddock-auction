@@ -31,6 +31,36 @@
 
 .pillTl { position: absolute; top: 10px; left: 10px; }
 .pillTr { position: absolute; top: 10px; right: 10px; }
+.badgeStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.vipBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vip-early-access-gold-border);
+  background-image: var(--vip-early-access-badge-gold-bg);
+  background-size: var(--vip-early-access-badge-gold-bg-size);
+  background-position: var(--vip-early-access-badge-gold-bg-position);
+  background-repeat: var(--vip-early-access-badge-gold-bg-repeat);
+  color: #fdf2cc;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 10px 20px rgba(62, 39, 10, 0.18);
+  white-space: nowrap;
+}
+
+.vipBadgeIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
 
 .actionButtons {
   position: absolute;

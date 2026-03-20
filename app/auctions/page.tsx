@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
+import { getOptionalBuyerSession } from "@/src/lib/buyer_session";
 
 import { AuctionsClient } from "./AuctionsClient";
 import styles from "./page.module.css";
@@ -40,6 +41,7 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
   const display = await getPublicDisplaySettings();
   const resolvedParams = await searchParams;
   const initialParams = normalizeSearchParams(resolvedParams);
+  const viewerSession = await getOptionalBuyerSession();
 
   const copy =
     display.locale === "ru"
@@ -60,7 +62,11 @@ export default async function AuctionsPage({ searchParams }: PageProps) {
       </div>
 
       <Suspense fallback={<AuctionsSkeleton />}>
-        <AuctionsClient initialParams={initialParams} display={display} />
+        <AuctionsClient
+          initialParams={initialParams}
+          display={display}
+          viewerBuyerTier={viewerSession?.buyerTier ?? null}
+        />
       </Suspense>
     </main>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { Star } from "lucide-react";
+
 import type { DisplaySettings } from "@/src/lib/money";
 import { formatInteger } from "@/src/lib/money";
 
@@ -16,6 +18,7 @@ type Props = {
   filters: Record<string, string>;
   brands: string[];
   models: string[];
+  canUseVipEarlyAccessFilter?: boolean;
   onChange: (key: string, value: string) => void;
   onClearAll: () => void;
   activeCount: number;
@@ -30,7 +33,16 @@ function formatPriceOption(value: string, locale: DisplaySettings["locale"]): st
   return formatInteger(Number(value), locale);
 }
 
-export function FilterSidebar({ filters, brands, models, onChange, onClearAll, activeCount, display }: Props) {
+export function FilterSidebar({
+  filters,
+  brands,
+  models,
+  canUseVipEarlyAccessFilter = false,
+  onChange,
+  onClearAll,
+  activeCount,
+  display,
+}: Props) {
   const isRu = display.locale === "ru";
 
   return (
@@ -42,6 +54,39 @@ export function FilterSidebar({ filters, brands, models, onChange, onClearAll, a
             {isRu ? `Сбросить (${activeCount})` : `Clear all (${activeCount})`}
           </button>
         ) : null}
+      </div>
+
+      <div className={styles.group}>
+        <label className={styles.label}>{isRu ? "Все лоты" : "All Lots"}</label>
+        <div className={styles.toggleRow} role="group" aria-label={isRu ? "Переключатель списка лотов" : "Lot list toggle"}>
+          <button
+            type="button"
+            className={`${styles.toggleBtn} ${filters.vipEarlyAccess === "" ? styles.toggleBtnActive : ""}`}
+            onClick={() => onChange("vipEarlyAccess", "")}
+            aria-pressed={filters.vipEarlyAccess === ""}
+          >
+            {isRu ? "Все" : "All"}
+          </button>
+          <button
+            type="button"
+            className={`${styles.toggleBtn} ${styles.vipToggleBtn} ${filters.vipEarlyAccess === "active" ? styles.vipToggleBtnActive : ""} ${!canUseVipEarlyAccessFilter ? styles.toggleBtnDisabled : ""}`}
+            onClick={() => {
+              if (!canUseVipEarlyAccessFilter) {
+                return;
+              }
+
+              onChange("vipEarlyAccess", "active");
+            }}
+            aria-pressed={filters.vipEarlyAccess === "active"}
+            aria-disabled={!canUseVipEarlyAccessFilter}
+            disabled={!canUseVipEarlyAccessFilter}
+          >
+            <span className={styles.vipToggleContent}>
+              <Star size={14} className={styles.vipToggleIcon} fill="currentColor" aria-hidden="true" />
+              <span>VIP</span>
+            </span>
+          </button>
+        </div>
       </div>
 
       <div className={styles.group}>

@@ -25,6 +25,7 @@ type VehicleRow = {
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
+  approvalStatusLabel: string | null;
 };
 
 type EventOption = {
@@ -206,13 +207,18 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                   <td>{row.title}</td>
                   <td className={styles.mono}>{row.vin}</td>
                   <td>
-                    {row.status === "PENDING" ? (
-                      <span className="pill pill-sched">{t.status.pending}</span>
-                    ) : null}
-                    {row.status === "APPROVED" ? (
-                      <span className="pill pill-green">{t.status.approved}</span>
-                    ) : null}
-                    {row.status === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
+                    <div className={styles.statusStack}>
+                      {row.status === "PENDING" ? (
+                        <span className="pill pill-sched">{t.status.pending}</span>
+                      ) : null}
+                      {row.status === "APPROVED" ? (
+                        <span className="pill pill-green">{t.status.approved}</span>
+                      ) : null}
+                      {row.status === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
+                      {row.approvalStatusLabel ? (
+                        <span className={styles.metaText}>{row.approvalStatusLabel}</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>{row.companyName}</td>
                   <td>

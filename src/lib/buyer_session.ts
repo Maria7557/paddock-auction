@@ -23,12 +23,12 @@ function loginRedirect(nextPath: string): never {
   redirect(`/login/buyer?next=${encodeURIComponent(nextPath)}`);
 }
 
-export async function requireBuyerSession(nextPath: string): Promise<BuyerSession> {
+async function readBuyerSessionOrNull(): Promise<BuyerSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("token")?.value?.trim();
 
   if (!token) {
-    loginRedirect(nextPath);
+    return null;
   }
 
   const response = await api.auth.me<{
@@ -56,7 +56,7 @@ export async function requireBuyerSession(nextPath: string): Promise<BuyerSessio
   }>(await withServerCookies({ cache: "no-store" })).catch(() => null);
 
   if (response?.user?.role !== "BUYER") {
-    loginRedirect(nextPath);
+    return null;
   }
 
   const companyUser = response.user.companyUsers?.find(
@@ -75,7 +75,7 @@ export async function requireBuyerSession(nextPath: string): Promise<BuyerSessio
   const buyerTier = companyUser?.company?.buyerTier === "VIP" ? "VIP" : "STANDARD";
 
   if (!userId || !email || !userStatus) {
-    loginRedirect(nextPath);
+    return null;
   }
 
   return {
@@ -92,4 +92,18 @@ export async function requireBuyerSession(nextPath: string): Promise<BuyerSessio
     companyStatus,
     kycVerified: response.user.kycVerified === true,
   };
+}
+
+export async function getOptionalBuyerSession(): Promise<BuyerSession | null> {
+  return readBuyerSessionOrNull();
+}
+
+export async function requireBuyerSession(nextPath: string): Promise<BuyerSession> {
+  const session = await readBuyerSessionOrNull();
+
+  if (!session) {
+    loginRedirect(nextPath);
+  }
+
+  return session;
 }

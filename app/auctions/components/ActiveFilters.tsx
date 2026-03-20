@@ -6,6 +6,7 @@ import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
 import styles from "./ActiveFilters.module.css";
 
 const DEFAULT: Record<string, string> = {
+  vipEarlyAccess: "",
   brand: "",
   model: "",
   status: "",
@@ -21,6 +22,7 @@ const DEFAULT: Record<string, string> = {
 
 function getLabels(isRu: boolean): Record<string, string> {
   return {
+    vipEarlyAccess: isRu ? "Подборка" : "Inventory",
     brand: isRu ? "Бренд" : "Brand",
     model: isRu ? "Модель" : "Model",
     status: isRu ? "Статус" : "Status",
@@ -36,6 +38,10 @@ function getLabels(isRu: boolean): Record<string, string> {
 
 function formatValue(key: string, value: string, display: DisplaySettings): string {
   const isRu = display.locale === "ru";
+
+  if (key === "vipEarlyAccess") {
+    return "VIP";
+  }
 
   if (key === "status") {
     if (value === "LIVE") {
