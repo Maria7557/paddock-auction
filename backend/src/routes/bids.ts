@@ -735,26 +735,25 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             const endsAt = await toDateValue(auction.ends_at);
             const isScheduled = auction.state === "SCHEDULED";
             const isLive = auction.state === "LIVE" || auction.state === "EXTENDED";
+            const startsAt = isScheduled ? await toDateValue(auction.starts_at) : null;
+            const scheduledWindowStarted = isScheduled && startsAt !== null && new Date() >= startsAt;
+            const acceptsLiveBidding = isLive || scheduledWindowStarted;
 
             if (!isScheduled && !isLive) {
               throw new Error("AUCTION_NOT_LIVE");
             }
 
             if (isScheduled) {
-              const startsAt = await toDateValue(auction.starts_at);
-
-              if (new Date() >= startsAt) {
-                throw new Error("AUCTION_NOT_LIVE");
-              }
-
-              if (currentPrice > 0) {
+              if (!scheduledWindowStarted && currentPrice > 0) {
                 const nextScheduledBid = currentPrice + minIncrement;
 
                 if (payload.amount !== nextScheduledBid) {
                   throw new Error("BID_INCREMENT_VIOLATION");
                 }
               }
-            } else {
+            }
+
+            if (acceptsLiveBidding) {
               if (payload.amount <= currentPrice) {
                 throw new Error("BID_TOO_LOW");
               }
@@ -793,6 +792,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               SET current_price = ${payload.amount},
                   last_bid_sequence = ${nextSequenceNo},
                   highest_bid_id = ${bidRecord.id},
+                  state = ${scheduledWindowStarted ? "LIVE" : auction.state},
                   version = version + 1
               WHERE id = ${payload.auctionId} AND version = ${auction.version}
             `;
@@ -803,7 +803,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
             const timeLeft = endsAt.getTime() - Date.now();
 
-            if (isLive && timeLeft < 3 * 60 * 1000) {
+            if (acceptsLiveBidding && timeLeft < 3 * 60 * 1000) {
               await tx.$executeRaw`
                 UPDATE auctions
                 SET ends_at = NOW() + INTERVAL '3 minutes',

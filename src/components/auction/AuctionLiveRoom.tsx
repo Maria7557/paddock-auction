@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
@@ -18,6 +18,7 @@ import styles from "./AuctionLiveRoom.module.css";
 const FUSE_DURATION_SECONDS = 20;
 const FUSE_TICK_INTERVAL_MS = 50;
 const WINNER_MS = 3_500;
+const NEXT_LOT_LAUNCH_MS = 10_000;
 const DEFAULT_VIEWER_STATE: ViewerState = {
   checked: false,
   authenticated: false,
@@ -320,6 +321,28 @@ function formatCountdownParts(ms: number): CountdownParts {
     minutes: String(minutes).padStart(2, "0"),
     seconds: String(seconds).padStart(2, "0"),
   };
+}
+
+function parseLaunchAtParam(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function getLaunchRemainingMs(targetMs: number | null): number {
+  if (!targetMs) {
+    return 0;
+  }
+
+  return Math.max(0, targetMs - Date.now());
 }
 
 function buildStateCardConfig(
@@ -852,6 +875,7 @@ function WinnerOverlay({ lot, winner, heroImageUrl }: WinnerOverlayProps) {
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId);
   const snapshot = liveSnapshot ?? initialSnapshot;
   const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
@@ -885,9 +909,15 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const winnerTimerRef = useRef<number | null>(null);
   const outcomeTriggerRef = useRef<string | null>(null);
   const previousStateRef = useRef(snapshot.state);
+  const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams.get("launchAt")), [searchParams]);
+  const [launchCountdownMs, setLaunchCountdownMs] = useState(() => getLaunchRemainingMs(launchAtMs));
 
-  const isLive = snapshot.state === "LIVE" || snapshot.state === "EXTENDED";
-  const isScheduled = snapshot.state === "SCHEDULED";
+  const hasAutoLaunchWindow = snapshot.state === "SCHEDULED" && launchAtMs !== null;
+  const isAutoLaunchPending = hasAutoLaunchWindow && launchCountdownMs > 0;
+  const isAutoLaunchReady = hasAutoLaunchWindow && launchCountdownMs === 0;
+  const effectiveState = snapshot.state === "SCHEDULED" && isAutoLaunchReady ? "LIVE" : snapshot.state;
+  const isLive = effectiveState === "LIVE" || effectiveState === "EXTENDED";
+  const isScheduled = effectiveState === "SCHEDULED";
   const nextBidAmount = useMemo(
     () => snapshot.currentPrice + snapshot.minIncrement,
     [snapshot.currentPrice, snapshot.minIncrement],
@@ -911,7 +941,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
   const lotProgressLabel = `1 / ${Math.max(1, upcomingLots.length + 1)}`;
   const viewerCountLabel = "--";
-  const countdownParts = useMemo(() => formatCountdownParts(auctionRemainingMs), [auctionRemainingMs]);
+  const countdownMs = isAutoLaunchPending ? launchCountdownMs : auctionRemainingMs;
+  const countdownParts = useMemo(() => formatCountdownParts(countdownMs), [countdownMs]);
   const summaryFacts = useMemo(
     () =>
       [
@@ -968,8 +999,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     return upcomingLots.length > 0 ? "NEXT_LOT" : "SESSION_ENDED";
   }, [canBid, isLive, isScheduled, showWinnerOverlay, transitionState, upcomingLots.length, viewer, winnerData]);
   const stateCard = useMemo(
-    () => buildStateCardConfig(roomMode, viewer, auctionRemainingMs, nextBidAmount),
-    [auctionRemainingMs, nextBidAmount, roomMode, viewer],
+    () => buildStateCardConfig(roomMode, viewer, countdownMs, nextBidAmount),
+    [countdownMs, nextBidAmount, roomMode, viewer],
   );
 
   function triggerOutcome(variant: "won" | "sold" | "closed", reasonKey: string): void {
@@ -1013,7 +1044,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
       if (nextLot) {
         setTransitionState("nextLot");
-        router.replace(withLocalePath(`/auctions/live/${nextLot.id}`, locale));
+        router.replace(withLocalePath(`/auctions/live/${nextLot.id}?launchAt=${Date.now() + NEXT_LOT_LAUNCH_MS}`, locale));
         return;
       }
 
@@ -1118,7 +1149,10 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   useEffect(() => {
     const updateRemaining = () => {
-      const targetIso = snapshot.state === "SCHEDULED" ? snapshot.startsAt : snapshot.endsAt;
+      const targetIso =
+        snapshot.state === "SCHEDULED" && !isAutoLaunchPending
+          ? snapshot.startsAt
+          : snapshot.endsAt;
 
       setAuctionRemainingMs(getRemainingMs(targetIso));
     };
@@ -1127,7 +1161,23 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     const timer = window.setInterval(updateRemaining, 1_000);
 
     return () => window.clearInterval(timer);
-  }, [snapshot.endsAt, snapshot.startsAt, snapshot.state]);
+  }, [isAutoLaunchPending, snapshot.endsAt, snapshot.startsAt, snapshot.state]);
+
+  useEffect(() => {
+    if (!hasAutoLaunchWindow) {
+      setLaunchCountdownMs(0);
+      return undefined;
+    }
+
+    const updateLaunchCountdown = () => {
+      setLaunchCountdownMs(getLaunchRemainingMs(launchAtMs));
+    };
+
+    updateLaunchCountdown();
+    const timer = window.setInterval(updateLaunchCountdown, 250);
+
+    return () => window.clearInterval(timer);
+  }, [hasAutoLaunchWindow, launchAtMs]);
 
   useEffect(() => {
     if (fuseRef.current !== null) {
@@ -1377,9 +1427,9 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
           </div>
 
           <div className={styles.topBarRight}>
-            <div className={`${styles.livePill} ${getStatusClassName(snapshot.state)}`}>
+            <div className={`${styles.livePill} ${getStatusClassName(effectiveState)}`}>
               <span className={`${styles.connectionDot} ${getConnectionClassName(connectionState)}`} />
-              <span>{getStatusLabel(snapshot.state)}</span>
+              <span>{getStatusLabel(effectiveState)}</span>
             </div>
 
             <div className={styles.topMeta}>
@@ -1516,11 +1566,16 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 {roomMode === "PRELIVE" ? (
                   <div className={styles.prelivePanel}>
                     <div className={styles.preliveHero}>
-                      <div className={styles.preliveEyebrow}>Coming soon room</div>
-                      <div className={styles.preliveTitle}>Auction goes live shortly</div>
+                      <div className={styles.preliveEyebrow}>
+                        {isAutoLaunchPending ? "Next lot is loading" : "Coming soon room"}
+                      </div>
+                      <div className={styles.preliveTitle}>
+                        {isAutoLaunchPending ? "Bidding starts automatically in" : "Auction goes live shortly"}
+                      </div>
                       <p className={styles.preliveBody}>
-                        Watch the countdown, review the lot order, and stay ready for the opening bid. The room will
-                        switch into live bidding automatically.
+                        {isAutoLaunchPending
+                          ? "Stay in this room. As soon as the countdown reaches zero, bidding will open for the next lot automatically."
+                          : "Watch the countdown, review the lot order, and stay ready for the opening bid. The room will switch into live bidding automatically."}
                       </p>
                     </div>
 
@@ -1608,11 +1663,11 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                 <div className={styles.footerMeta}>
                   <div className={styles.footerMetaItem}>
                     <IconClock size={12} strokeWidth={2} />
-                    <span>{formatRemainingTime(auctionRemainingMs)}</span>
+                    <span>{formatRemainingTime(countdownMs)}</span>
                   </div>
                   <div className={styles.footerMetaItem}>
                     <IconTag size={12} strokeWidth={2} />
-                    <span>{snapshot.state}</span>
+                    <span>{effectiveState}</span>
                   </div>
                   <div className={styles.footerMetaItem}>
                     <IconZap size={12} strokeWidth={2} />

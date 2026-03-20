@@ -651,6 +651,39 @@ describe("POST /api/bids", () => {
     expect(res.body.error).toBe("Bid must meet the minimum increment");
   });
 
+  it("accepts bidding on a scheduled auction after its start time and promotes it to LIVE", async () => {
+    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
+    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-live-1" });
+    mockPrisma.bidRequest.update.mockResolvedValue({});
+
+    setupTransactionSuccess();
+    mockTx.$queryRaw.mockResolvedValue([
+      makeLiveAuctionRow({
+        state: "SCHEDULED",
+        current_price: 0,
+        starts_at: new Date(Date.now() - 10_000),
+        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      }),
+    ]);
+    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-live-1" });
+    mockTx.bid.create.mockResolvedValue(
+      makeBidRecord({
+        amount: 500,
+        sequenceNo: 6,
+      }),
+    );
+    mockTx.$executeRaw.mockResolvedValueOnce(1);
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({ ...validBody, amount: 500, idempotencyKey: "idem-scheduled-live-1" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.bid.amount).toBe(500);
+    expect(mockPublishAuctionRealtimeSnapshot).toHaveBeenCalledWith(auctionId, expect.anything());
+  });
+
   it("returns 409 when locked auction row is missing", async () => {
     mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
     mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-12" });
