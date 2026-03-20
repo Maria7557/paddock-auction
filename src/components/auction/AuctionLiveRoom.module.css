@@ -757,6 +757,22 @@
   box-shadow: 0 4px 20px rgba(17, 106, 67, 0.25);
 }
 
+.btnOrange {
+  background: #f97316;
+  box-shadow: 0 8px 28px rgba(249, 115, 22, 0.28);
+}
+
+.btnRed {
+  background: #ef4444;
+  box-shadow: 0 8px 28px rgba(239, 68, 68, 0.24);
+}
+
+.btnGrey {
+  background: #9ca3af;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .bidButton:disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -1219,9 +1235,35 @@
   opacity: 1;
 }
 
+.auctionClosedOverlay {
+  background: rgba(247, 249, 251, 0.9);
+}
+
 .winnerIcon {
   font-size: 60px;
   animation: winnerBounce 0.5s ease;
+}
+
+.auctionClosedSurface {
+  gap: 14px;
+}
+
+.auctionClosedIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  background: var(--green-100);
+}
+
+.auctionClosedIcon {
+  color: var(--green-600);
+  font-family: var(--font-body);
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .winnerKicker {
@@ -1303,6 +1345,57 @@
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
+}
+
+.auctionClosedDivider {
+  width: 100%;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.auctionClosedStats {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.auctionClosedStat {
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.auctionClosedStatValue {
+  margin-top: 8px;
+  color: var(--ink-primary);
+  font-family: var(--font-body);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.auctionClosedButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 180px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--green-600);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(17, 106, 67, 0.18);
+}
+
+.auctionClosedButton:hover {
+  background: var(--green-700);
 }
 
 .outcomePanel {
@@ -1445,6 +1538,14 @@
   .winnerSurface {
     width: calc(100% - 12px);
     padding: 24px 18px 22px;
+  }
+
+  .auctionClosedStats {
+    grid-template-columns: 1fr;
+  }
+
+  .auctionClosedButton {
+    width: 100%;
   }
 
   .winnerTitle,

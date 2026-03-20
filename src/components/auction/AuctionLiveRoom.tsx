@@ -16,6 +16,7 @@ import type { LotDetail } from "@/app/auctions/[auctionId]/page";
 import styles from "./AuctionLiveRoom.module.css";
 
 const FUSE_DURATION_SECONDS = 20;
+const LAST_CHANCE_DURATION_SECONDS = 10;
 const FUSE_TICK_INTERVAL_MS = 50;
 const WINNER_MS = 3_500;
 const NEXT_LOT_LAUNCH_MS = 10_000;
@@ -78,7 +79,7 @@ type UpcomingLot = {
 };
 
 type WinnerData = {
-  variant: "won" | "sold" | "closed";
+  variant: "won" | "sold" | "closed" | "timeout";
   amount: number;
   flag: string;
   isMine: boolean;
@@ -146,6 +147,7 @@ type FuseBidButtonProps = {
   bidStep: number;
   fuseProgress: number;
   fuseSeconds: number;
+  callRound: CallRound;
   isLeading: boolean;
   isLoading: boolean;
   disabled: boolean;
@@ -174,6 +176,11 @@ type WinnerOverlayProps = {
   heroImageUrl: string | null;
 };
 
+type AuctionClosedOverlayProps = {
+  heroImageUrl: string | null;
+  stats: SessionStats;
+};
+
 type AuctionPlanItem = {
   index: number;
   lotNumber: string;
@@ -195,7 +202,13 @@ type CountdownParts = {
   seconds: string;
 };
 
+type SessionStats = {
+  soldLots: number;
+  bidsPlaced: number;
+};
+
 type TransitionState = "idle" | "nextLot" | "sessionEnded";
+type CallRound = "normal" | "last_chance_1" | "last_chance_2" | "time_out";
 
 const API_MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? "";
 
@@ -343,6 +356,32 @@ function getLaunchRemainingMs(targetMs: number | null): number {
   }
 
   return Math.max(0, targetMs - Date.now());
+}
+
+function parseCountParam(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return Math.floor(parsed);
+}
+
+function getFuseDurationForRound(round: CallRound): number {
+  if (round === "last_chance_1" || round === "last_chance_2") {
+    return LAST_CHANCE_DURATION_SECONDS;
+  }
+
+  if (round === "time_out") {
+    return 0;
+  }
+
+  return FUSE_DURATION_SECONDS;
 }
 
 function buildStateCardConfig(
@@ -737,17 +776,84 @@ function FuseBidButton({
   bidStep,
   fuseProgress,
   fuseSeconds,
+  callRound,
   isLeading,
   isLoading,
   disabled,
   expired,
   hasBids,
 }: FuseBidButtonProps) {
-  const hasTimer = hasBids && fuseProgress > 0;
-  const urgent = fuseSeconds <= 5;
-  const warning = fuseSeconds <= 10;
-  const fuseColor = urgent ? "#ef4444" : warning ? "#f97316" : "#116a43";
-  const fuseGlow = urgent ? "rgba(239,68,68,.5)" : warning ? "rgba(249,115,22,.4)" : "rgba(17,106,67,.35)";
+  const hasTimer = callRound !== "time_out" && fuseProgress > 0;
+  const urgent = callRound === "last_chance_2" || (callRound === "normal" && fuseSeconds <= 5);
+  const warning = callRound === "last_chance_1" || (callRound === "normal" && fuseSeconds <= 10);
+  const fuseColor = callRound === "time_out" ? "#9ca3af" : urgent ? "#ef4444" : warning ? "#f97316" : "#116a43";
+  const fuseGlow =
+    callRound === "time_out"
+      ? "rgba(156,163,175,.35)"
+      : urgent
+        ? "rgba(239,68,68,.5)"
+        : warning
+          ? "rgba(249,115,22,.4)"
+          : "rgba(17,106,67,.35)";
+  const buttonClassName =
+    callRound === "time_out"
+      ? styles.btnGrey
+      : callRound === "last_chance_2"
+        ? styles.btnRed
+        : callRound === "last_chance_1"
+          ? styles.btnOrange
+          : "";
+  const showDisabledState = disabled || callRound === "time_out";
+  const mainLabel = (() => {
+    if (isLoading) {
+      return "Placing bid…";
+    }
+
+    if (disabled) {
+      return "Auction ended";
+    }
+
+    if (callRound === "time_out") {
+      return "No bids — lot closing";
+    }
+
+    if (expired) {
+      return "Going... Going... Gone!";
+    }
+
+    if (callRound === "last_chance_1") {
+      return `Last Chance — ${formatAed(nextAmount)}`;
+    }
+
+    if (callRound === "last_chance_2") {
+      return `Final Chance — ${formatAed(nextAmount)}`;
+    }
+
+    if (isLeading) {
+      return "✓ You're leading";
+    }
+
+    return `Bid ${formatAed(nextAmount)}`;
+  })();
+  const subLabel = (() => {
+    if (isLoading || showDisabledState || expired) {
+      return null;
+    }
+
+    if (callRound === "last_chance_1") {
+      return "Going once...";
+    }
+
+    if (callRound === "last_chance_2") {
+      return "Going twice...";
+    }
+
+    if (isLeading) {
+      return `next bid ${formatAed(nextAmount)}`;
+    }
+
+    return `+${formatAed(bidStep)} next step`;
+  })();
 
   return (
     <div className={styles.fuseButtonShell}>
@@ -774,8 +880,8 @@ function FuseBidButton({
       <button
         type="button"
         onClick={onBid}
-        disabled={disabled || isLoading || expired}
-        className={`${styles.bidButton} ${hasTimer ? styles.bidButtonWithTimer : styles.bidButtonIdle} ${isLeading ? styles.bidButtonLeading : ""}`}
+        disabled={showDisabledState || isLoading || expired}
+        className={`${styles.bidButton} ${hasTimer ? styles.bidButtonWithTimer : styles.bidButtonIdle} ${isLeading && callRound === "normal" ? styles.bidButtonLeading : ""} ${buttonClassName}`}
         style={
           {
             "--fuse-color": fuseColor,
@@ -787,31 +893,17 @@ function FuseBidButton({
         {hasTimer ? <div className={styles.bidButtonFuseGlow} /> : null}
 
         <div className={styles.bidButtonInner}>
-          <div className={styles.bidButtonMain}>
-            {isLoading
-              ? "Placing bid…"
-              : disabled
-                ? "Auction ended"
-                : expired
-                  ? "Going... Going... Gone!"
-                  : isLeading
-                    ? "✓ You're leading"
-                    : "Place Bid"}
-          </div>
+          <div className={styles.bidButtonMain}>{mainLabel}</div>
 
-          {!isLoading && !disabled && !expired && !isLeading ? (
-            <div className={styles.bidButtonSub}>
-              {formatAed(nextAmount)} · +{formatAed(bidStep)}
+          {subLabel ? (
+            <div className={isLeading && callRound === "normal" ? styles.bidButtonSubMuted : styles.bidButtonSub}>
+              {subLabel}
             </div>
-          ) : null}
-
-          {!isLoading && !disabled && !expired && isLeading ? (
-            <div className={styles.bidButtonSubMuted}>next bid {formatAed(nextAmount)}</div>
           ) : null}
         </div>
       </button>
 
-      {!hasBids ? (
+      {!hasBids && !hasTimer && callRound === "normal" ? (
         <div className={styles.fuseIdleLabel}>Place the first bid to start the timer</div>
       ) : null}
     </div>
@@ -872,11 +964,62 @@ function WinnerOverlay({ lot, winner, heroImageUrl }: WinnerOverlayProps) {
   );
 }
 
+function AuctionClosedOverlay({ heroImageUrl, stats }: AuctionClosedOverlayProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setVisible(true);
+    }, 40);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className={`${styles.winnerOverlay} ${styles.auctionClosedOverlay} ${visible ? styles.winnerOverlayVisible : ""}`}>
+      {heroImageUrl ? (
+        <div
+          className={styles.winnerBackdrop}
+          style={{ backgroundImage: `linear-gradient(rgba(247,249,251,0.66), rgba(247,249,251,0.95)), url(${heroImageUrl})` }}
+        />
+      ) : null}
+
+      <div className={`${styles.winnerSurface} ${styles.auctionClosedSurface}`}>
+        <div className={styles.auctionClosedIconWrap}>
+          <div className={styles.auctionClosedIcon}>✓</div>
+        </div>
+        <div className={styles.winnerTitle}>Auction Closed</div>
+        <div className={styles.winnerMeta}>All lots have been sold</div>
+
+        <div className={styles.auctionClosedDivider} />
+
+        <div className={styles.auctionClosedStats}>
+          <div className={styles.auctionClosedStat}>
+            <div className={styles.winnerKicker}>Total lots sold</div>
+            <div className={styles.auctionClosedStatValue}>{stats.soldLots}</div>
+          </div>
+          <div className={styles.auctionClosedStat}>
+            <div className={styles.winnerKicker}>Total bids placed</div>
+            <div className={styles.auctionClosedStatValue}>{stats.bidsPlaced}</div>
+          </div>
+        </div>
+
+        <div className={styles.winnerLoading}>Thank you for participating</div>
+
+        <Link href="/auctions" className={styles.auctionClosedButton}>
+          View Results →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId);
+  const [socketEnabled, setSocketEnabled] = useState(true);
+  const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId, socketEnabled);
   const snapshot = liveSnapshot ?? initialSnapshot;
   const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
   const [auctionRemainingMs, setAuctionRemainingMs] = useState(() =>
@@ -902,6 +1045,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [lastProcessedBidId, setLastProcessedBidId] = useState(initialSnapshot.lastBid?.id ?? null);
   const [pulseCurrentBid, setPulseCurrentBid] = useState(false);
+  const [callRound, setCallRound] = useState<CallRound>("normal");
   const [winnerData, setWinnerData] = useState<WinnerData | null>(null);
   const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
   const [transitionState, setTransitionState] = useState<TransitionState>("idle");
@@ -909,7 +1053,16 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const winnerTimerRef = useRef<number | null>(null);
   const outcomeTriggerRef = useRef<string | null>(null);
   const previousStateRef = useRef(snapshot.state);
+  const previousBidCountRef = useRef(initialSnapshot.totalBids);
   const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams.get("launchAt")), [searchParams]);
+  const initialSessionStats = useMemo<SessionStats>(
+    () => ({
+      soldLots: parseCountParam(searchParams.get("soldLots")),
+      bidsPlaced: parseCountParam(searchParams.get("placedBids")),
+    }),
+    [searchParams],
+  );
+  const [sessionStats, setSessionStats] = useState<SessionStats>(initialSessionStats);
   const [launchCountdownMs, setLaunchCountdownMs] = useState(() => getLaunchRemainingMs(launchAtMs));
 
   const hasAutoLaunchWindow = snapshot.state === "SCHEDULED" && launchAtMs !== null;
@@ -928,7 +1081,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const upcomingLots = useMemo(() => buildUpcomingLots(lot), [lot]);
   const auctionPlan = useMemo(() => buildAuctionPlan(lot, upcomingLots), [lot, upcomingLots]);
   const hasBids = snapshot.totalBids > 0;
-  const isFuseExpired = hasBids && fuseProgress <= 0 && fuseSeconds <= 0;
+  const isFuseExpired = fuseProgress <= 0 && fuseSeconds <= 0;
   const isLeading = bidFeed[0]?.isMine === true;
   const canBid =
     viewer.authenticated &&
@@ -1002,8 +1155,22 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     () => buildStateCardConfig(roomMode, viewer, countdownMs, nextBidAmount),
     [countdownMs, nextBidAmount, roomMode, viewer],
   );
+  const shouldShowAuctionClosedOverlay =
+    !showWinnerOverlay && (transitionState === "sessionEnded" || snapshot.state === "ENDED" || (snapshot.state === "CLOSED" && upcomingLots.length === 0));
+  const auctionClosedStats = useMemo<SessionStats>(() => {
+    if (transitionState === "sessionEnded") {
+      return sessionStats;
+    }
 
-  function triggerOutcome(variant: "won" | "sold" | "closed", reasonKey: string): void {
+    return {
+      soldLots:
+        sessionStats.soldLots +
+        (snapshot.currentPrice > 0 && (snapshot.state === "CLOSED" || snapshot.state === "PAYMENT_PENDING") ? 1 : 0),
+      bidsPlaced: sessionStats.bidsPlaced + snapshot.totalBids,
+    };
+  }, [sessionStats, snapshot.currentPrice, snapshot.state, snapshot.totalBids, transitionState]);
+
+  function triggerOutcome(variant: "won" | "sold" | "closed" | "timeout", reasonKey: string): void {
     if (outcomeTriggerRef.current === reasonKey) {
       return;
     }
@@ -1011,21 +1178,38 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     outcomeTriggerRef.current = reasonKey;
 
     const nextLot = upcomingLots[0] ?? null;
+    const nextSessionStats: SessionStats = {
+      soldLots: sessionStats.soldLots + (variant === "won" || variant === "sold" ? 1 : 0),
+      bidsPlaced: sessionStats.bidsPlaced + snapshot.totalBids,
+    };
+
+    setSessionStats(nextSessionStats);
 
     setWinnerData({
       variant,
       amount: snapshot.currentPrice,
-      flag: variant === "closed" ? "🕊️" : variant === "won" ? "🏆" : "🔨",
+      flag: variant === "timeout" ? "⏱" : variant === "closed" ? "🕊️" : variant === "won" ? "🏆" : "🔨",
       isMine: variant === "won",
-      title: variant === "closed" ? "Lot closed" : variant === "won" ? "You won this lot" : "Lot sold",
+      title:
+        variant === "timeout"
+          ? "Time is out"
+          : variant === "closed"
+            ? "Lot closed"
+            : variant === "won"
+              ? "You won this lot"
+              : "Lot sold",
       kicker:
-        variant === "closed"
+        variant === "timeout"
+          ? `Lot ${formatLotNumber(lot.lotNumber)} — Unsold`
+          : variant === "closed"
           ? `Lot ${formatLotNumber(lot.lotNumber)} — Closed`
           : variant === "won"
             ? `Lot ${formatLotNumber(lot.lotNumber)} — Won`
             : `Lot ${formatLotNumber(lot.lotNumber)} — Sold`,
       label:
-        variant === "closed"
+        variant === "timeout"
+          ? "No bids received — lot unsold."
+          : variant === "closed"
           ? "This lot finished without a winning bid."
           : variant === "won"
             ? "Winning bid confirmed. Get ready for payment and the next lot."
@@ -1044,7 +1228,19 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
       if (nextLot) {
         setTransitionState("nextLot");
-        router.replace(withLocalePath(`/auctions/live/${nextLot.id}?launchAt=${Date.now() + NEXT_LOT_LAUNCH_MS}`, locale));
+        const nextParams = new URLSearchParams();
+
+        nextParams.set("launchAt", String(Date.now() + NEXT_LOT_LAUNCH_MS));
+
+        if (nextSessionStats.soldLots > 0) {
+          nextParams.set("soldLots", String(nextSessionStats.soldLots));
+        }
+
+        if (nextSessionStats.bidsPlaced > 0) {
+          nextParams.set("placedBids", String(nextSessionStats.bidsPlaced));
+        }
+
+        router.replace(withLocalePath(`/auctions/live/${nextLot.id}?${nextParams.toString()}`, locale));
         return;
       }
 
@@ -1179,43 +1375,71 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     return () => window.clearInterval(timer);
   }, [hasAutoLaunchWindow, launchAtMs]);
 
-  useEffect(() => {
+  function clearFuseTimer(): void {
     if (fuseRef.current !== null) {
       window.clearInterval(fuseRef.current);
       fuseRef.current = null;
     }
+  }
 
-    if (snapshot.totalBids === 0) {
+  function startFuse(durationSeconds: number): void {
+    clearFuseTimer();
+
+    if (!isLive || durationSeconds <= 0) {
       setFuseProgress(0);
       setFuseSeconds(0);
-      return undefined;
+      return;
     }
 
     setFuseProgress(100);
-    setFuseSeconds(FUSE_DURATION_SECONDS);
+    setFuseSeconds(durationSeconds);
 
     const startedAt = Date.now();
 
     fuseRef.current = window.setInterval(() => {
       const elapsedSeconds = (Date.now() - startedAt) / 1_000;
-      const remainingSeconds = Math.max(0, FUSE_DURATION_SECONDS - elapsedSeconds);
+      const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
 
-      setFuseProgress((remainingSeconds / FUSE_DURATION_SECONDS) * 100);
+      setFuseProgress((remainingSeconds / durationSeconds) * 100);
       setFuseSeconds(Math.ceil(remainingSeconds));
 
-      if (remainingSeconds === 0 && fuseRef.current !== null) {
-        window.clearInterval(fuseRef.current);
-        fuseRef.current = null;
+      if (remainingSeconds === 0) {
+        clearFuseTimer();
       }
     }, FUSE_TICK_INTERVAL_MS);
+  }
+
+  useEffect(() => {
+    previousBidCountRef.current = snapshot.totalBids;
+    setCallRound("normal");
+
+    if (!isLive) {
+      clearFuseTimer();
+      setFuseProgress(0);
+      setFuseSeconds(0);
+      return undefined;
+    }
+
+    startFuse(FUSE_DURATION_SECONDS);
 
     return () => {
-      if (fuseRef.current !== null) {
-        window.clearInterval(fuseRef.current);
-        fuseRef.current = null;
-      }
+      clearFuseTimer();
     };
-  }, [snapshot.totalBids]);
+  }, [auctionId, isLive]);
+
+  useEffect(() => {
+    if (!isLive) {
+      previousBidCountRef.current = snapshot.totalBids;
+      return;
+    }
+
+    if (snapshot.totalBids > previousBidCountRef.current) {
+      setCallRound("normal");
+      startFuse(FUSE_DURATION_SECONDS);
+    }
+
+    previousBidCountRef.current = snapshot.totalBids;
+  }, [isLive, snapshot.totalBids]);
 
   useEffect(() => {
     if (!inlineError) {
@@ -1329,7 +1553,20 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     setShowWinnerOverlay(false);
     setWinnerData(null);
     setTransitionState("idle");
-  }, [auctionId]);
+    setCallRound("normal");
+    setSocketEnabled(true);
+    setSessionStats({
+      soldLots: initialSessionStats.soldLots,
+      bidsPlaced: initialSessionStats.bidsPlaced,
+    });
+    previousBidCountRef.current = snapshot.totalBids;
+  }, [auctionId, initialSessionStats.bidsPlaced, initialSessionStats.soldLots, snapshot.totalBids]);
+
+  useEffect(() => {
+    if (shouldShowAuctionClosedOverlay) {
+      setSocketEnabled(false);
+    }
+  }, [shouldShowAuctionClosedOverlay]);
 
   useEffect(() => {
     const nextState = snapshot.state;
@@ -1356,7 +1593,27 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   }, [auctionId, bidFeed, snapshot.currentPrice, snapshot.lastBid?.id, snapshot.state]);
 
   useEffect(() => {
-    if (!isLive || !hasBids || !isFuseExpired || showWinnerOverlay) {
+    if (!isLive || !isFuseExpired || showWinnerOverlay) {
+      return;
+    }
+
+    if (snapshot.totalBids === 0) {
+      if (callRound === "normal") {
+        setCallRound("last_chance_1");
+        startFuse(getFuseDurationForRound("last_chance_1"));
+        return;
+      }
+
+      if (callRound === "last_chance_1") {
+        setCallRound("last_chance_2");
+        startFuse(getFuseDurationForRound("last_chance_2"));
+        return;
+      }
+
+      if (callRound === "last_chance_2") {
+        setCallRound("time_out");
+      }
+
       return;
     }
 
@@ -1372,7 +1629,19 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     }, 550);
 
     return () => window.clearTimeout(timer);
-  }, [auctionId, bidFeed, hasBids, isFuseExpired, isLive, showWinnerOverlay]);
+  }, [auctionId, bidFeed, callRound, isFuseExpired, isLive, showWinnerOverlay, snapshot.totalBids]);
+
+  useEffect(() => {
+    if (callRound !== "time_out" || showWinnerOverlay) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      triggerOutcome("timeout", `timeout-${auctionId}-${snapshot.totalBids}`);
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [auctionId, callRound, showWinnerOverlay, snapshot.totalBids]);
 
   const handleBid = async () => {
     if (!isLive || !canBid) {
@@ -1413,6 +1682,10 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
     <>
       {showWinnerOverlay && winnerData ? (
         <WinnerOverlay lot={lot} winner={winnerData} heroImageUrl={primaryPhotoUrl} />
+      ) : null}
+
+      {shouldShowAuctionClosedOverlay ? (
+        <AuctionClosedOverlay heroImageUrl={primaryPhotoUrl} stats={auctionClosedStats} />
       ) : null}
 
       <div className={styles.page} data-live-auction-room="true">
@@ -1552,6 +1825,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
                       bidStep={snapshot.minIncrement}
                       fuseProgress={fuseProgress}
                       fuseSeconds={fuseSeconds}
+                      callRound={callRound}
                       isLeading={isLeading}
                       isLoading={isSubmittingBid}
                       disabled={!isLive || !canBid}
