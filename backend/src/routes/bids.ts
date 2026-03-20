@@ -52,6 +52,7 @@ type AuctionLockRow = {
 };
 
 const BUY_NOW_PAYMENT_WINDOW_HOURS = 48;
+const PUBLIC_AUCTION_STATES = ["SCHEDULED", "LIVE", "EXTENDED"] as const;
 
 const placeBidSchema = z.object({
   auctionId: z.string().trim().min(1),
@@ -216,6 +217,10 @@ async function sendValidationError(
     error: "Invalid request",
     issues,
   });
+}
+
+function isPublicAuctionState(state: string): state is (typeof PUBLIC_AUCTION_STATES)[number] {
+  return PUBLIC_AUCTION_STATES.includes(state as (typeof PUBLIC_AUCTION_STATES)[number]);
 }
 
 async function mapBidError(error: unknown): Promise<{
@@ -491,7 +496,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       const auctions = await prisma.auction.findMany({
         where: {
           state: {
-            in: ["SCHEDULED", "LIVE", "EXTENDED", "PAYMENT_PENDING", "PAID", "DEFAULTED", "ENDED", "CLOSED"],
+            in: [...PUBLIC_AUCTION_STATES],
           },
           transitions: {
             none: {
@@ -1255,6 +1260,13 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       if (!auction) {
+        await reply.code(404).send({
+          error: "Auction not found",
+        });
+        return;
+      }
+
+      if (!isPublicAuctionState(auction.state)) {
         await reply.code(404).send({
           error: "Auction not found",
         });
