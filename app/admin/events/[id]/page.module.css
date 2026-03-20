@@ -128,3 +128,402 @@
   text-align: center;
   color: var(--ink-muted);
 }
+
+.errorText {
+  margin: 0;
+  color: var(--red-600);
+  font-size: 14px;
+}
+
+.vehicleCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+}
+
+.vehicleMeta {
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusScheduled {
+  border-color: rgba(30, 79, 229, 0.18);
+  background: rgba(30, 79, 229, 0.08);
+  color: #1e4fe5;
+}
+
+.statusLive {
+  border-color: rgba(17, 106, 67, 0.18);
+  background: rgba(17, 106, 67, 0.1);
+  color: var(--green-700);
+}
+
+.statusSuccess {
+  border-color: rgba(17, 106, 67, 0.18);
+  background: rgba(17, 106, 67, 0.1);
+  color: var(--green-700);
+}
+
+.statusMuted {
+  border-color: var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+
+.statusDanger {
+  border-color: rgba(180, 61, 54, 0.18);
+  background: rgba(180, 61, 54, 0.08);
+  color: var(--red-600);
+}
+
+.consoleGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.95fr);
+  gap: 16px;
+}
+
+.consoleCard {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.consoleBody {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.currentLotHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.consoleImage,
+.consolePlaceholder {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 18px;
+}
+
+.consoleImage {
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--line-soft);
+}
+
+.consolePlaceholder {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricCard {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-subtle);
+}
+
+.metricLabel {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metricValue,
+.metricValueSmall {
+  color: var(--ink-primary);
+  letter-spacing: -0.03em;
+}
+
+.metricValue {
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 800;
+}
+
+.metricValueSmall {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.fuseWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.fuseMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.fuseTrack {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-soft);
+}
+
+.fuseFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #116a43 0%, #1b8a58 100%);
+  transition: width 0.2s linear;
+}
+
+.queueDetails {
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--bg-subtle);
+}
+
+.queueSummary {
+  cursor: pointer;
+  padding: 14px 16px;
+  color: var(--ink-primary);
+  font-weight: 700;
+  list-style: none;
+}
+
+.queueSummary::-webkit-details-marker {
+  display: none;
+}
+
+.queueSection {
+  display: grid;
+  gap: 10px;
+}
+
+.queueSectionLabel {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.queueList {
+  display: grid;
+  gap: 10px;
+}
+
+.queueRow,
+.queueRowMuted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-card);
+}
+
+.queueRowMuted {
+  color: var(--ink-muted);
+}
+
+.queueCurrent {
+  border-color: rgba(17, 106, 67, 0.2);
+  box-shadow: 0 0 0 1px rgba(17, 106, 67, 0.12) inset;
+}
+
+.queueIndex {
+  display: inline-block;
+  min-width: 54px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.queueOutcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.consoleFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--bg-card);
+  color: var(--ink-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.modalCard {
+  width: min(720px, 100%);
+  max-height: min(82vh, 860px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 16px;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ink-primary);
+}
+
+.modalSubtitle {
+  margin: 6px 0 0;
+  color: var(--ink-secondary);
+  font-size: 14px;
+}
+
+.searchInput {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-primary);
+  padding: 0 14px;
+}
+
+.modalList {
+  display: grid;
+  gap: 10px;
+}
+
+.modalOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+}
+
+.modalOption input {
+  margin-top: 4px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.emptyStateCard {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px dashed var(--line-soft);
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+
+.helperText {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.callRoundGreen {
+  border-color: rgba(17, 106, 67, 0.18);
+  background: rgba(17, 106, 67, 0.1);
+  color: var(--green-700);
+}
+
+.callRoundOrange {
+  border-color: rgba(249, 115, 22, 0.18);
+  background: rgba(249, 115, 22, 0.12);
+  color: #c25f16;
+}
+
+.callRoundRed {
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.1);
+  color: #cf3939;
+}
+
+@media (max-width: 1180px) {
+  .consoleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+}
