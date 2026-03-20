@@ -40,6 +40,10 @@ const depositSchema = z.object({
   idempotencyKey: z.string().trim().min(1),
 });
 
+const topupSchema = z.object({
+  amount: z.coerce.number().finite().positive().min(5000),
+});
+
 const withdrawSchema = z.object({
   amount: z.coerce.number().finite().positive(),
 });
@@ -49,6 +53,9 @@ const invoiceParamsSchema = z.object({
 });
 
 const emptyBodySchema = z.object({}).passthrough();
+
+const DEPOSIT_WALLET_CURRENCY = "AED";
+const DEPOSIT_TOPUP_PURPOSE = "deposit_topup";
 
 async function toNumberValue(value: DecimalLike): Promise<number> {
   if (typeof value === "number") {
@@ -100,6 +107,97 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
 
 async function normalizeMoney(value: number): Promise<number> {
   return Number(value.toFixed(2));
+}
+
+function formatDecimalString(rawValue: string): string {
+  const trimmedValue = rawValue.trim();
+
+  if (!/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
+    throw new Error("Unable to format decimal value");
+  }
+
+  const isNegative = trimmedValue.startsWith("-");
+  const unsignedValue = isNegative ? trimmedValue.slice(1) : trimmedValue;
+  const [wholePartRaw, fractionalPartRaw = ""] = unsignedValue.split(".");
+  const normalizedWholePart = wholePartRaw.replace(/^0+(?=\d)/, "") || "0";
+  const normalizedFractionalPart = fractionalPartRaw.padEnd(2, "0").slice(0, 2);
+
+  return `${isNegative ? "-" : ""}${normalizedWholePart}.${normalizedFractionalPart}`;
+}
+
+async function toDecimalStringValue(value: DecimalLike): Promise<string> {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Unable to convert value to decimal string");
+    }
+
+    return formatDecimalString(value.toFixed(2));
+  }
+
+  if (typeof value === "bigint") {
+    return `${value.toString()}.00`;
+  }
+
+  if (typeof value === "string") {
+    return formatDecimalString(value);
+  }
+
+  if (value && typeof value === "object" && typeof value.toString === "function") {
+    return formatDecimalString(value.toString());
+  }
+
+  if (value && typeof value === "object" && typeof value.valueOf === "function") {
+    const rawValue = value.valueOf();
+
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      return formatDecimalString(rawValue.toFixed(2));
+    }
+
+    if (typeof rawValue === "string") {
+      return formatDecimalString(rawValue);
+    }
+  }
+
+  throw new Error("Unable to convert value to decimal string");
+}
+
+async function loadBuyerContextOrReply(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<Awaited<ReturnType<typeof loadBuyerAccessContext>>> {
+  const buyerContext = await loadBuyerAccessContext(request);
+
+  if (!buyerContext) {
+    await reply.code(401).send({
+      error: "Unauthorized",
+    });
+    return null;
+  }
+
+  return buyerContext;
+}
+
+async function getRequiredIdempotencyKey(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
+
+  if (!idempotencyKey) {
+    await reply.code(400).send({
+      error: "MISSING_IDEMPOTENCY_KEY",
+    });
+    return null;
+  }
+
+  return idempotencyKey;
+}
+
+function convertAedAmountToFils(amount: number): number {
+  const normalizedAmount = amount.toFixed(2);
+  const [wholePart, fractionalPart = "00"] = normalizedAmount.split(".");
+
+  return Number.parseInt(`${wholePart}${fractionalPart.padEnd(2, "0").slice(0, 2)}`, 10);
 }
 
 function buildLotTitle(
@@ -631,131 +729,42 @@ async function createStripeIntent(input: {
 export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook("preHandler", requireAuth);
 
-  fastify.get<{ Querystring: { limit?: string } }>(
+  fastify.get(
     "/wallet",
     async function getWalletHandler(
-      request: FastifyRequest<{ Querystring: { limit?: string } }>,
+      request: FastifyRequest,
       reply: FastifyReply,
     ): Promise<void> {
-      const userId = await getAuthenticatedUserId(request, reply);
+      const buyerContext = await loadBuyerContextOrReply(request, reply);
 
-      if (!userId) {
+      if (!buyerContext) {
         return;
       }
 
-      const parsedQuery = walletQuerySchema.safeParse(request.query ?? {});
-
-      if (!parsedQuery.success) {
-        await sendValidationError(reply, await mapZodIssues(parsedQuery.error.issues));
-        return;
-      }
-
-      const buyerContext =
-        request.auth?.role === "BUYER" ? await loadBuyerAccessContext(request) : null;
-
-      const wallet = await prisma.$transaction(async (tx) => {
-        const ensuredWallet = await ensureWalletForUser(tx, userId);
-
-        if (!ensuredWallet) {
-          return null;
-        }
-
-        const ledger = await tx.walletLedger.findMany({
-          where: {
-            walletId: ensuredWallet.id,
+      const wallet = await prisma.depositWallet.findUnique({
+        where: {
+          companyId_currency: {
+            companyId: buyerContext.companyId,
+            currency: DEPOSIT_WALLET_CURRENCY,
           },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: parsedQuery.data.limit ?? 20,
-          select: {
-            id: true,
-            type: true,
-            amount: true,
-            reference: true,
-            createdAt: true,
-          },
-        });
-
-        const pendingWithdrawalRows = await tx.$queryRaw<PendingWithdrawalRow[]>`
-          SELECT req.amount AS amount
-          FROM "WalletLedger" AS req
-          LEFT JOIN "WalletLedger" AS appr
-            ON appr."walletId" = req."walletId"
-            AND appr.type = 'WITHDRAWAL_APPROVED'
-            AND appr.reference = req.reference
-          WHERE req."walletId" = ${ensuredWallet.id}
-            AND req.type = 'WITHDRAWAL_REQUESTED'
-            AND appr.id IS NULL
-        `;
-
-        return {
-          wallet: ensuredWallet,
-          ledger,
-          pendingWithdrawalRows,
-        };
+        },
+        select: {
+          availableBalance: true,
+          lockedBalance: true,
+          pendingWithdrawalBalance: true,
+          currency: true,
+        },
       });
 
-      if (!wallet) {
-        await reply.code(404).send({
-          error: "WALLET_USER_NOT_FOUND",
-        });
-        return;
-      }
-
-      const balance = await toNumberValue(wallet.wallet.balance);
-      const lockedBalance = await toNumberValue(wallet.wallet.lockedBalance);
-      const transactions = await Promise.all(
-        wallet.ledger.map(async (entry) => ({
-          id: entry.id,
-          type: entry.type,
-          amount: await toNumberValue(entry.amount),
-          reference: entry.reference,
-          createdAt: entry.createdAt.toISOString(),
-        })),
-      );
-      const pendingWithdrawal = await wallet.pendingWithdrawalRows.reduce<Promise<number>>(
-        async (runningTotalPromise, row) => {
-          const runningTotal = await runningTotalPromise;
-          return runningTotal + Math.abs(await toNumberValue(row.amount));
-        },
-        Promise.resolve(0),
-      );
-      const outstandingInvoices =
-        buyerContext?.companyId
-          ? await prisma.invoice.count({
-              where: {
-                buyerCompanyId: buyerContext.companyId,
-                status: {
-                  in: ["ISSUED", "DEFAULTED"],
-                },
-              },
-            })
-          : 0;
-      const noActiveAuctionLocks = lockedBalance <= 0;
-      const noOutstandingInvoices = outstandingInvoices === 0;
-      const noComplianceHolds = buyerContext
-        ? buyerContext.kycVerified === true &&
-          buyerContext.userStatus.toUpperCase() === "ACTIVE" &&
-          buyerContext.companyStatus.toUpperCase() === "ACTIVE"
-        : true;
-
       await reply.code(200).send({
-        wallet: {
-          id: wallet.wallet.id,
-          userId: wallet.wallet.userId,
-          balance,
-          lockedBalance,
-          availableBalance: await normalizeMoney(balance - lockedBalance),
-        },
-        ledger: transactions,
-        transactions,
-        pendingWithdrawal: await normalizeMoney(pendingWithdrawal),
-        pendingWithdrawalAmount: await normalizeMoney(pendingWithdrawal),
-        withdrawalEligibility: {
-          noActiveAuctionLocks,
-          noOutstandingInvoices,
-          noComplianceHolds,
-          canWithdraw: noActiveAuctionLocks && noOutstandingInvoices && noComplianceHolds,
-        },
+        availableBalance: wallet
+          ? await toDecimalStringValue(wallet.availableBalance)
+          : "0.00",
+        lockedBalance: wallet ? await toDecimalStringValue(wallet.lockedBalance) : "0.00",
+        pendingWithdrawalBalance: wallet
+          ? await toDecimalStringValue(wallet.pendingWithdrawalBalance)
+          : "0.00",
+        currency: wallet?.currency ?? DEPOSIT_WALLET_CURRENCY,
       });
     },
   );
@@ -776,7 +785,76 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       request: FastifyRequest<{ Body: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      await processWalletDeposit(request, reply, "/wallet/topup");
+      const buyerContext = await loadBuyerContextOrReply(request, reply);
+
+      if (!buyerContext) {
+        return;
+      }
+
+      const parsedBody = topupSchema.safeParse(request.body);
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const idempotencyKey = await getRequiredIdempotencyKey(request, reply);
+
+      if (!idempotencyKey) {
+        return;
+      }
+
+      try {
+        const { stripe } = await import("../lib/stripe");
+        const paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount: convertAedAmountToFils(parsedBody.data.amount),
+            currency: DEPOSIT_WALLET_CURRENCY.toLowerCase(),
+            metadata: {
+              companyId: buyerContext.companyId,
+              userId: buyerContext.userId,
+              purpose: DEPOSIT_TOPUP_PURPOSE,
+            },
+            automatic_payment_methods: {
+              enabled: true,
+            },
+          },
+          {
+            idempotencyKey,
+          },
+        );
+
+        if (!paymentIntent.client_secret) {
+          request.log.error(
+            {
+              paymentIntentId: paymentIntent.id,
+              companyId: buyerContext.companyId,
+            },
+            "Stripe payment intent did not include a client secret",
+          );
+          await reply.code(502).send({
+            error: "payment_provider_error",
+          });
+          return;
+        }
+
+        await reply.code(200).send({
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+        });
+      } catch (error) {
+        request.log.error(
+          {
+            err: error,
+            companyId: buyerContext.companyId,
+            userId: buyerContext.userId,
+          },
+          "Stripe payment intent creation failed",
+        );
+        await reply.code(502).send({
+          error: "payment_provider_error",
+        });
+      }
     },
   );
 
