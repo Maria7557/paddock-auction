@@ -856,6 +856,18 @@ describe("GET /api/auctions/:id", () => {
     expect(res.body.error).toBe("Auction not found");
   });
 
+  it("returns 404 when auction is sold and no longer public", async () => {
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      state: "PAYMENT_PENDING",
+    });
+
+    const res = await request.get(`/api/auctions/${auctionId}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Auction not found");
+  });
+
   it("does not require auth token", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue(makeAuctionDetails());
 
@@ -920,6 +932,15 @@ describe("GET /api/auctions", () => {
     expect(res.body.auctions[0].id).toBe(auctionId);
     expect(res.body.auctions[0].sellerName).toBe("Test Fleet");
     expect(res.body.auctions[0].vehicle.brand).toBe("BMW");
+    expect(mockPrisma.auction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          state: {
+            in: ["SCHEDULED", "LIVE", "EXTENDED"],
+          },
+        }),
+      }),
+    );
   });
 
   it("returns buy now price in public auction listings", async () => {
