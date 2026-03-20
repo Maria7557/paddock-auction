@@ -9,8 +9,8 @@ const SORT_OPTIONS = {
   en: [
     { value: "ending_soon", label: "Ending Soon" },
     { value: "newest", label: "Newest" },
-    { value: "price_asc", label: "Price: Low to High" },
-    { value: "price_desc", label: "Price: High to Low" },
+    { value: "price_asc", label: "Price Low to High" },
+    { value: "price_desc", label: "Price High to Low" },
   ],
   ru: [
     { value: "ending_soon", label: "Скоро завершатся" },
