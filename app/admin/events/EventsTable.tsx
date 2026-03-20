@@ -4,37 +4,47 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api } from "@/src/lib/api-client";
+import { type AdminEventListEntry, api, getApiErrorMessage } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
 import styles from "./page.module.css";
 
-type EventState = "DRAFT" | "SCHEDULED" | "LIVE" | "ENDED";
-
-type EventRow = {
-  id: string;
-  title: string;
-  startsAt: string;
-  status: EventState;
-  lotsCount: number;
-};
-
 type EventsTableProps = {
-  events: EventRow[];
+  events: AdminEventListEntry[];
   locale: SupportedLocale;
 };
+
+function getStateLabel(state: string, t: ReturnType<typeof getAdminCopy>): string {
+  if (state === "LIVE") {
+    return t.status.live;
+  }
+
+  if (state === "SCHEDULED") {
+    return t.status.scheduled;
+  }
+
+  if (state === "CLOSED") {
+    return "Closed";
+  }
+
+  return state;
+}
 
 export function EventsTable({ events, locale }: EventsTableProps) {
   const router = useRouter();
   const t = getAdminCopy(locale);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function deleteEvent(id: string): Promise<void> {
+  async function startEventNow(id: string): Promise<void> {
     setBusyId(id);
+    setError(null);
 
     try {
-      await api.admin.events.remove(id);
+      await api.admin.events.startEvent(id);
       router.refresh();
+    } catch (startError) {
+      setError(getApiErrorMessage(startError, "Unable to start the event right now."));
     } finally {
       setBusyId(null);
     }
@@ -67,7 +77,7 @@ export function EventsTable({ events, locale }: EventsTableProps) {
                 <tr key={event.id}>
                   <td>{event.title}</td>
                   <td>
-                    {new Date(event.startsAt).toLocaleString(toIntlLocale(locale), {
+                    {new Date(event.scheduledAt).toLocaleString(toIntlLocale(locale), {
                       day: "2-digit",
                       month: "short",
                       year: "numeric",
@@ -76,31 +86,42 @@ export function EventsTable({ events, locale }: EventsTableProps) {
                     })}
                   </td>
                   <td>
-                    {event.status === "DRAFT" ? <span className="pill">{t.status.draft}</span> : null}
-                    {event.status === "SCHEDULED" ? <span className="pill pill-sched">{t.status.scheduled}</span> : null}
-                    {event.status === "LIVE" ? (
+                    {event.state === "SCHEDULED" ? <span className="pill pill-sched">{getStateLabel(event.state, t)}</span> : null}
+                    {event.state === "LIVE" ? (
                       <span className="pill pill-live">
                         <span className="live-dot" aria-hidden />
-                        {t.status.live}
+                        {getStateLabel(event.state, t)}
                       </span>
                     ) : null}
-                    {event.status === "ENDED" ? <span className="pill">{t.status.ended}</span> : null}
+                    {event.state === "CLOSED" ? <span className="pill">{getStateLabel(event.state, t)}</span> : null}
                   </td>
                   <td>{event.lotsCount}</td>
                   <td>
                     <div className={styles.actions}>
-                      <Link href={`/admin/events/${event.id}`} className="btn btn-outline btn-sm">
-                        {t.events.actions.edit}
-                      </Link>
-                      {event.status === "DRAFT" ? (
+                      {event.state === "SCHEDULED" ? (
+                        <Link href={`/admin/events/${event.id}/lots`} className="btn btn-outline btn-sm">
+                          Add Lots
+                        </Link>
+                      ) : null}
+                      {event.state === "SCHEDULED" ? (
                         <button
                           type="button"
-                          className={`btn btn-outline btn-sm ${styles.deleteBtn}`}
+                          className="btn btn-primary btn-sm"
                           disabled={busyId === event.id}
-                          onClick={() => void deleteEvent(event.id)}
+                          onClick={() => void startEventNow(event.id)}
                         >
-                          {t.events.actions.delete}
+                          {busyId === event.id ? "Starting..." : "Start Now"}
                         </button>
+                      ) : null}
+                      {event.state === "LIVE" ? (
+                        <Link href={`/admin/events/${event.id}/console`} className="btn btn-outline btn-sm">
+                          View Console
+                        </Link>
+                      ) : null}
+                      {event.state === "CLOSED" ? (
+                        <Link href={`/admin/events/${event.id}/results`} className="btn btn-outline btn-sm">
+                          View Results
+                        </Link>
                       ) : null}
                     </div>
                   </td>
@@ -117,6 +138,8 @@ export function EventsTable({ events, locale }: EventsTableProps) {
           </table>
         </div>
       </section>
+
+      {error ? <p className={styles.errorText}>{error}</p> : null}
     </section>
   );
 }

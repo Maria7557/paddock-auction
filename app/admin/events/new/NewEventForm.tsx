@@ -45,7 +45,7 @@ export function NewEventForm({ locale }: NewEventFormProps) {
         return;
       }
 
-      router.push(`/admin/events/${payload.id}`);
+      router.push(`/admin/events/${payload.id}/lots`);
     } catch (error) {
       setError(getApiErrorMessage(error, t.newEvent.errors.createFailed));
     } finally {
