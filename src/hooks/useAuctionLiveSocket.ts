@@ -68,7 +68,10 @@ function isAuctionLiveMessage(value: unknown): value is AuctionLiveMessage {
   return Boolean(message.data && typeof message.data === "object");
 }
 
-export function useAuctionLiveSocket(auctionId: string): {
+export function useAuctionLiveSocket(
+  auctionId: string,
+  enabled = true,
+): {
   snapshot: AuctionLiveSnapshot | null;
   connectionState: ConnectionState;
 } {
@@ -76,6 +79,11 @@ export function useAuctionLiveSocket(auctionId: string): {
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
 
   useEffect(() => {
+    if (!enabled) {
+      setConnectionState("disconnected");
+      return undefined;
+    }
+
     let active = true;
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
@@ -208,7 +216,7 @@ export function useAuctionLiveSocket(auctionId: string): {
         socket.close();
       }
     };
-  }, [auctionId]);
+  }, [auctionId, enabled]);
 
   return {
     snapshot,
