@@ -28,6 +28,41 @@
   --amber-100: #f6ead4;
   --blue-600: #1d4ed8;
   --blue-100: #eff6ff;
+  --vip-early-access-gold-bg:
+    linear-gradient(
+      112deg,
+      rgba(255, 255, 255, 0) 18%,
+      rgba(255, 245, 204, 0.24) 38%,
+      rgba(255, 255, 255, 0.52) 50%,
+      rgba(255, 241, 191, 0.22) 62%,
+      rgba(255, 255, 255, 0) 82%
+    ),
+    linear-gradient(
+      112deg,
+      rgba(255, 255, 255, 0) 18%,
+      rgba(255, 245, 204, 0.24) 38%,
+      rgba(255, 255, 255, 0.52) 50%,
+      rgba(255, 241, 191, 0.22) 62%,
+      rgba(255, 255, 255, 0) 82%
+    ),
+    linear-gradient(180deg, #efc24b 0%, #d8a230 100%);
+  --vip-early-access-gold-bg-size: 50% 100%, 50% 100%, 100% 100%;
+  --vip-early-access-gold-bg-position: left top, right top, left top;
+  --vip-early-access-gold-bg-repeat: no-repeat;
+  --vip-early-access-badge-gold-bg:
+    linear-gradient(
+      112deg,
+      rgba(255, 255, 255, 0) 18%,
+      rgba(255, 245, 204, 0.24) 38%,
+      rgba(255, 255, 255, 0.52) 50%,
+      rgba(255, 241, 191, 0.22) 62%,
+      rgba(255, 255, 255, 0) 82%
+    ),
+    linear-gradient(180deg, #efc24b 0%, #d8a230 100%);
+  --vip-early-access-badge-gold-bg-size: 100% 100%, 100% 100%;
+  --vip-early-access-badge-gold-bg-position: center center, center center;
+  --vip-early-access-badge-gold-bg-repeat: no-repeat;
+  --vip-early-access-gold-border: color-mix(in srgb, var(--amber-600) 30%, white);
 
   --radius-card: 16px;
   --radius-control: 12px;

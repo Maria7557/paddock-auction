@@ -897,6 +897,29 @@ describe("GET /api/auctions/:id", () => {
     expect(res.body.error).toBe("Auction not found");
   });
 
+  it("includes vipReleaseAt on detail responses when VIP early access is active", async () => {
+    const releaseAt = new Date("2026-03-20T15:00:00.000Z");
+
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      state: "SCHEDULED",
+      approvedAt: new Date("2026-03-19T15:00:00.000Z"),
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: releaseAt,
+    });
+
+    const res = await request
+      .get(`/api/auctions/${auctionId}`)
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auction).toMatchObject({
+      id: auctionId,
+      showVipEarlyAccessBadge: true,
+      vipReleaseAt: releaseAt.toISOString(),
+    });
+  });
+
   it("does not require auth token", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue(makeAuctionDetails());
 

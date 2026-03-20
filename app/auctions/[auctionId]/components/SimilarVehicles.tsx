@@ -61,7 +61,12 @@ export function SimilarVehicles({ lots, display }: { lots: SimilarLot[]; display
                     )}
                   </div>
                   {lot.showVipEarlyAccessBadge ? (
-                    <div className={styles.vipBadge}>{isRu ? "VIP ранний доступ" : "VIP early access"}</div>
+                    <div className={styles.vipBadge}>
+                      <svg className={styles.vipBadgeIcon} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path d="M10 1.5l2.63 5.33 5.88.86-4.26 4.15 1 5.86L10 15l-5.25 2.7 1-5.86L1.5 7.69l5.88-.86L10 1.5z" />
+                      </svg>
+                      <span>{isRu ? "24ч ранний доступ" : "24h Early Access"}</span>
+                    </div>
                   ) : null}
                 </div>
               </div>

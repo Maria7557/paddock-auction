@@ -4,7 +4,7 @@ import { AuctionLiveRoom } from "@/src/components/auction/AuctionLiveRoom";
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import type { AuctionLiveSnapshot } from "@/src/types/auction";
-import { getLot } from "@/app/auctions/[auctionId]/page";
+import { getLot } from "@/app/auctions/[auctionId]/lot-data";
 
 type PageProps = {
   params: Promise<{

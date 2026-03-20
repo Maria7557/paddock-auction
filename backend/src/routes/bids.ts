@@ -1292,6 +1292,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
           startsAt: await toIsoString(auction.startsAt),
           endsAt: await toIsoString(auction.endsAt),
+          vipReleaseAt: await toIsoString(auction.vipReleaseAt),
           extensionCount: auction.extensionCount,
           highestBidId: auction.highestBidId,
           showVipEarlyAccessBadge: detailDecision.showVipEarlyAccessBadge,

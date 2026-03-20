@@ -216,6 +216,14 @@ export function LotCard({
           />
           <div className={styles.pillTl}>
             <div className={styles.badgeStack}>
+              {showVipEarlyAccessBadge ? (
+                <span className={styles.vipBadge}>
+                  <svg className={styles.vipBadgeIcon} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 1.5l2.63 5.33 5.88.86-4.26 4.15 1 5.86L10 15l-5.25 2.7 1-5.86L1.5 7.69l5.88-.86L10 1.5z" />
+                  </svg>
+                  <span>{isRu ? "24ч ранний доступ" : "24h Early Access"}</span>
+                </span>
+              ) : null}
               {isLive ? (
                 <span className="pill pill-live">
                   <span className="live-dot" />
@@ -224,9 +232,6 @@ export function LotCard({
               ) : (
                 <span className="pill pill-sched">{isRu ? "Скоро" : "Scheduled"}</span>
               )}
-              {showVipEarlyAccessBadge ? (
-                <span className={styles.vipBadge}>{isRu ? "VIP ранний доступ" : "VIP early access"}</span>
-              ) : null}
             </div>
           </div>
         </div>

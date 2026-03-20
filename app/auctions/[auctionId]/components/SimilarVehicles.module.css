@@ -63,15 +63,25 @@
 .vipBadge {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.22);
-  color: var(--green-700);
+  border: 1px solid var(--vip-early-access-gold-border);
+  background-image: var(--vip-early-access-badge-gold-bg);
+  background-size: var(--vip-early-access-badge-gold-bg-size);
+  background-position: var(--vip-early-access-badge-gold-bg-position);
+  background-repeat: var(--vip-early-access-badge-gold-bg-repeat);
+  color: #fdf2cc;
+}
+
+.vipBadgeIcon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
 }
 
 .dot {
