@@ -94,8 +94,10 @@ const { mockPrisma, MockRedis, resetMockRedis } = vi.hoisted(() => {
       auctionEventLot: {
         findFirst: vi.fn(),
         findUnique: vi.fn(),
+        findMany: vi.fn(),
         create: vi.fn(),
         delete: vi.fn(),
+        update: vi.fn(),
       },
       auctionEventRuntime: {
         update: vi.fn(),
@@ -103,6 +105,14 @@ const { mockPrisma, MockRedis, resetMockRedis } = vi.hoisted(() => {
       auction: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
+        findMany: vi.fn(),
+        update: vi.fn(),
+      },
+      auctionStateTransition: {
+        create: vi.fn(),
+      },
+      auditLog: {
+        create: vi.fn(),
       },
       user: {
         findMany: vi.fn(),
@@ -318,9 +328,11 @@ beforeEach(async () => {
     sellerCompanyId: "seller-company-1",
     minIncrement: 500,
   });
+  mockPrisma.auction.findMany.mockResolvedValue([]);
   mockPrisma.user.findMany.mockResolvedValue([{ email: "buyer@example.com" }]);
   mockPrisma.auctionEventLot.findFirst.mockResolvedValue(null);
   mockPrisma.auctionEventLot.findUnique.mockResolvedValue(null);
+  mockPrisma.auctionEventLot.findMany.mockResolvedValue([]);
   mockPrisma.auctionEventLot.create.mockResolvedValue({
     id: "event-lot-created",
     eventId,
@@ -332,7 +344,11 @@ beforeEach(async () => {
     closedAt: null,
   });
   mockPrisma.auctionEventLot.delete.mockResolvedValue({});
+  mockPrisma.auctionEventLot.update.mockResolvedValue({});
   mockPrisma.auctionEventRuntime.update.mockResolvedValue({});
+  mockPrisma.auction.update.mockResolvedValue({});
+  mockPrisma.auctionStateTransition.create.mockResolvedValue({});
+  mockPrisma.auditLog.create.mockResolvedValue({});
   mockStartEvent.mockResolvedValue(undefined);
 });
 
@@ -503,13 +519,36 @@ describe("auction event routes", () => {
   it("POST /api/admin/events/:id/lots adds lot to queue", async () => {
     mockPrisma.auctionEvent.findUnique.mockResolvedValue({
       id: eventId,
+      scheduledAt: new Date("2026-03-21T15:00:00.000Z"),
     });
     mockPrisma.auction.findUnique.mockResolvedValue({
       id: auctionId,
+      state: "DRAFT",
     });
     mockPrisma.auctionEventLot.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
+    const tx = {
+      auctionEventLot: {
+        create: vi.fn().mockResolvedValue({
+          id: "event-lot-created",
+          eventId,
+          auctionId,
+          position: 1,
+          state: "QUEUED",
+          callRound: 0,
+          onBlockAt: null,
+          closedAt: null,
+        }),
+      },
+      auction: {
+        update: vi.fn().mockResolvedValue({}),
+      },
+      auctionStateTransition: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    };
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     const response = await request
       .post(`/api/admin/events/${eventId}/lots`)
@@ -522,6 +561,129 @@ describe("auction event routes", () => {
     expect(response.status).toBe(201);
     expect(response.body.id).toBe("event-lot-created");
     expect(response.body.position).toBe(1);
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: auctionId,
+      },
+      data: {
+        state: "SCHEDULED",
+        startsAt: new Date("2026-03-21T15:00:00.000Z"),
+      },
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: {
+        auctionId,
+        fromState: "DRAFT",
+        toState: "SCHEDULED",
+        trigger: "EVENT_ASSIGNED",
+        actorId: adminUserId,
+        reason: JSON.stringify({ eventId }),
+      },
+    });
+  });
+
+  it("GET /api/admin/events/:id/lots includes DRAFT lots in available list", async () => {
+    mockPrisma.auctionEvent.findUnique.mockResolvedValue({
+      id: eventId,
+      title: "Test Event",
+      scheduledAt: new Date("2026-03-21T15:00:00.000Z"),
+      state: "SCHEDULED",
+      lots: [],
+    });
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "draft-auction-1",
+        startingPrice: 12_000,
+        vehicle: {
+          brand: "Land Rover",
+          model: "Range Rover Sport",
+          year: 2025,
+          images: ["/api/seller/vehicles/media/1/photo.jpg"],
+        },
+      },
+    ]);
+
+    const response = await request
+      .get(`/api/admin/events/${eventId}/lots`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.availableAuctions).toEqual([
+      {
+        auctionId: "draft-auction-1",
+        title: "2025 Land Rover Range Rover Sport",
+        startingPrice: 12000,
+        imageUrl: "/api/seller/vehicles/media/1/photo.jpg",
+      },
+    ]);
+  });
+
+  it("GET /api/admin/events/:id/lots deduplicates available lots by vehicle", async () => {
+    mockPrisma.auctionEvent.findUnique.mockResolvedValue({
+      id: eventId,
+      title: "Test Event",
+      scheduledAt: new Date("2026-03-21T15:00:00.000Z"),
+      state: "SCHEDULED",
+      lots: [],
+    });
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "auction-newer",
+        vehicleId: "vehicle-1",
+        startingPrice: 15_000,
+        startsAt: new Date("2026-03-22T09:00:00.000Z"),
+        vehicle: {
+          brand: "Mercedes",
+          model: "C 300",
+          year: 2024,
+          images: ["/api/seller/vehicles/media/newer.jpg"],
+        },
+      },
+      {
+        id: "auction-older",
+        vehicleId: "vehicle-1",
+        startingPrice: 14_000,
+        startsAt: new Date("2026-03-21T09:00:00.000Z"),
+        vehicle: {
+          brand: "Mercedes",
+          model: "C 300",
+          year: 2024,
+          images: ["/api/seller/vehicles/media/older.jpg"],
+        },
+      },
+      {
+        id: "auction-other-vehicle",
+        vehicleId: "vehicle-2",
+        startingPrice: 18_000,
+        startsAt: new Date("2026-03-23T09:00:00.000Z"),
+        vehicle: {
+          brand: "Land Rover",
+          model: "Range Rover Sport",
+          year: 2025,
+          images: ["/api/seller/vehicles/media/range-rover.jpg"],
+        },
+      },
+    ]);
+
+    const response = await request
+      .get(`/api/admin/events/${eventId}/lots`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.availableAuctions).toEqual([
+      {
+        auctionId: "auction-newer",
+        title: "2024 Mercedes C 300",
+        startingPrice: 15000,
+        imageUrl: "/api/seller/vehicles/media/newer.jpg",
+      },
+      {
+        auctionId: "auction-other-vehicle",
+        title: "2025 Land Rover Range Rover Sport",
+        startingPrice: 18000,
+        imageUrl: "/api/seller/vehicles/media/range-rover.jpg",
+      },
+    ]);
   });
 
   it("POST /api/admin/events/:id/lots rejects duplicate auctionId", async () => {
@@ -547,6 +709,95 @@ describe("auction event routes", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe("EVENT_LOT_DUPLICATE_AUCTION");
+  });
+
+  it("DELETE /api/admin/events/:id/lots/:lotId removes queued lot and unassigns auction", async () => {
+    mockPrisma.auctionEvent.findUnique.mockResolvedValue({
+      id: eventId,
+      state: "SCHEDULED",
+    });
+    mockPrisma.auctionEventLot.findUnique.mockResolvedValue({
+      id: "event-lot-1",
+      eventId,
+      state: "QUEUED",
+      position: 1,
+      auctionId,
+      auction: {
+        id: auctionId,
+        state: "SCHEDULED",
+        startsAt: new Date("2026-03-21T15:00:00.000Z"),
+        endsAt: new Date("2026-03-21T15:20:00.000Z"),
+        auctionStartsAt: new Date("2026-03-22T15:00:00.000Z"),
+        auctionEndsAt: new Date("2026-03-22T15:20:00.000Z"),
+        vehicleId: "vehicle-1",
+      },
+    });
+
+    const tx = {
+      auction: {
+        update: vi.fn().mockResolvedValue({}),
+      },
+      auctionStateTransition: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+      auctionEventLot: {
+        delete: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([
+          { id: "event-lot-2", position: 2 },
+          { id: "event-lot-3", position: 3 },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const response = await request
+      .delete(`/api/admin/events/${eventId}/lots/event-lot-1`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(204);
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: auctionId,
+      },
+      data: {
+        state: "DRAFT",
+        startsAt: new Date("2026-03-22T15:00:00.000Z"),
+        endsAt: new Date("2026-03-22T15:20:00.000Z"),
+      },
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: {
+        auctionId,
+        fromState: "SCHEDULED",
+        toState: "DRAFT",
+        trigger: "EVENT_UNASSIGNED",
+        actorId: adminUserId,
+        reason: JSON.stringify({
+          eventId: null,
+        }),
+      },
+    });
+    expect(tx.auctionEventLot.update).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "event-lot-2",
+      },
+      data: {
+        position: 1,
+      },
+    });
+    expect(tx.auctionEventLot.update).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "event-lot-3",
+      },
+      data: {
+        position: 2,
+      },
+    });
   });
 
   it("POST /api/admin/events/:id/start calls orchestrator startEvent", async () => {

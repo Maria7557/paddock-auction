@@ -73,6 +73,7 @@ export type AdminEventLotsResponse = {
     auctionId: string;
     title: string;
     startingPrice: number;
+    imageUrl: string | null;
   }>;
 };
 
@@ -658,12 +659,6 @@ export const api = {
       unblock: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/users/${id}/unblock`, payload, options),
     },
-    buyers: {
-      approveDeposit: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/buyers/${id}/approve-deposit`, undefined, options),
-      rejectDeposit: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/buyers/${id}/reject-deposit`, undefined, options),
-    },
   },
   buyer: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
@@ -695,11 +690,23 @@ export const api = {
     topup: async <T = unknown>(
       amount: number,
       options?: RequestInit,
-    ): Promise<T> =>
-      postJson<T>("/api/wallet/topup", {
-        amount,
-        idempotencyKey: createIdempotencyKey(),
-      }, options),
+    ): Promise<T> => {
+      const idempotencyKey = createIdempotencyKey();
+
+      return postJson<T>(
+        "/api/wallet/topup",
+        {
+          amount,
+        },
+        {
+          ...options,
+          headers: {
+            ...Object.fromEntries(new Headers(options?.headers).entries()),
+            "idempotency-key": idempotencyKey,
+          },
+        },
+      );
+    },
     deposit: async <T = unknown>(amount: number, idempotencyKey: string, options?: RequestInit): Promise<T> =>
       postJson<T>("/api/wallet/deposit", { amount, idempotencyKey }, options),
     withdraw: async <T = unknown>(amount: number, options?: RequestInit): Promise<T> =>
