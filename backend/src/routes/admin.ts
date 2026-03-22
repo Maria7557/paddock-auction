@@ -61,6 +61,8 @@ const auctionStates = [
   "ENDED",
 ] as const;
 
+const DEFAULT_ADMIN_APPROVAL_AUCTION_MIN_INCREMENT = 500;
+
 const adminVehicleQuerySchema = z.object({
   status: z.enum(["ALL", "PENDING", "APPROVED", "REJECTED"]).optional(),
   unassigned: z.enum(["true", "false"]).optional(),
@@ -370,6 +372,34 @@ function isSchemaDriftPrismaError(error: unknown): boolean {
 
   const code = (error as { code?: unknown }).code;
   return code === "P2021" || code === "P2022";
+}
+
+function readJsonRecord(value: Prisma.JsonValue | null | undefined): JsonRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as JsonRecord;
+}
+
+function readJsonString(record: JsonRecord | null, key: string): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readJsonNumber(record: JsonRecord | null, key: string): number | null {
+  const value = record?.[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 type AdminVehicleListRow = {
@@ -1096,14 +1126,87 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
-      if (!vehicle || vehicle.auctions.length === 0) {
+      if (!vehicle) {
         await reply.code(404).send({
           error: "VEHICLE_NOT_FOUND",
         });
         return;
       }
 
-      const latestAuction = vehicle.auctions[0];
+      let latestAuction = vehicle.auctions[0] ?? null;
+
+      if (!latestAuction) {
+        const vehicleCreatedLog = await prisma.auditLog.findFirst({
+          where: {
+            entityType: "Vehicle",
+            entityId: id,
+            action: "SELLER_VEHICLE_CREATED",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            payload: true,
+          },
+        });
+        const vehiclePayload = readJsonRecord(vehicleCreatedLog?.payload);
+        const sellerCompanyId = readJsonString(vehiclePayload, "companyId");
+
+        if (!sellerCompanyId) {
+          await reply.code(409).send({
+            error: "VEHICLE_OWNER_NOT_FOUND",
+          });
+          return;
+        }
+
+        const now = new Date();
+        const draftEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const startingPrice = readJsonNumber(vehiclePayload, "startingPrice") ?? 0;
+        const buyNowPrice = readJsonNumber(vehiclePayload, "buyNowPrice");
+        const inspectionDropoffDateValue = readJsonString(vehiclePayload, "inspectionDropoffDate");
+        const inspectionDropoffDate =
+          inspectionDropoffDateValue && !Number.isNaN(Date.parse(inspectionDropoffDateValue))
+            ? new Date(inspectionDropoffDateValue)
+            : null;
+
+        latestAuction = await prisma.$transaction(async (tx) => {
+          const auction = await tx.auction.create({
+            data: {
+              vehicleId: id,
+              sellerCompanyId,
+              state: "DRAFT",
+              startsAt: now,
+              endsAt: draftEndsAt,
+              inspectionDropoffDate,
+              viewingEndsAt: null,
+              auctionStartsAt: null,
+              auctionEndsAt: null,
+              startingPrice,
+              currentPrice: startingPrice,
+              buyNowPrice,
+              minIncrement: DEFAULT_ADMIN_APPROVAL_AUCTION_MIN_INCREMENT,
+            },
+          });
+
+          await tx.auctionStateTransition.create({
+            data: {
+              auctionId: auction.id,
+              fromState: "DRAFT",
+              toState: "DRAFT",
+              trigger: "AUCTION_CREATED",
+              actorId,
+              reason: JSON.stringify({
+                sellerCompanyId,
+                vehicleId: id,
+                source: "ADMIN_VEHICLE_APPROVE",
+              }),
+            },
+          });
+
+          return {
+            id: auction.id,
+            state: auction.state,
+          };
+        });
+      }
 
       await prisma.$transaction(async (tx) => {
         await tx.auctionStateTransition.create({

@@ -1,0 +1,337 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.overlayVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.card {
+  position: relative;
+  width: min(100%, 440px);
+  padding: 32px;
+  border: 1px solid #e5e9ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+  text-align: center;
+  overflow: hidden;
+}
+
+.confettiCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.brandLabel {
+  margin: 0 0 32px;
+  color: #9aa5b1;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.iconRing {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+  border-radius: 999px;
+  border: 1.5px solid #e5e9ef;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f5f7;
+}
+
+.iconRingWon {
+  border-color: #c5e0d1;
+  background: #e8f4ee;
+}
+
+.iconRingUnsold {
+  border-color: #f0d9a8;
+  background: #f6ead4;
+}
+
+.icon {
+  width: 30px;
+  height: 30px;
+  color: #9aa5b1;
+}
+
+.iconWon {
+  color: #116a43;
+}
+
+.iconUnsold {
+  color: #9b6914;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: #7b8794;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eyebrowWon {
+  color: #116a43;
+}
+
+.eyebrowUnsold {
+  color: #9b6914;
+}
+
+.title {
+  margin: 0;
+  color: #1f2933;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.titleEnded {
+  font-size: 32px;
+}
+
+.amount {
+  margin: 14px 0 0;
+  color: #116a43;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.amountMuted {
+  color: #556270;
+}
+
+.body {
+  margin: 14px 0 0;
+  color: #556270;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.bodyMuted {
+  color: #9aa5b1;
+  font-size: 14px;
+}
+
+.vehicleCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #e5e9ef;
+  border-radius: 12px;
+  background: #f8f9fb;
+  text-align: left;
+}
+
+.vehicleVisual {
+  width: 80px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #e8f4ee 0%, #cfe3d7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vehicleImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vehicleIllustration {
+  width: 64px;
+  height: 40px;
+  color: #116a43;
+}
+
+.vehicleContent {
+  min-width: 0;
+}
+
+.vehicleTitle {
+  color: #1f2933;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.vehicleMeta {
+  margin-top: 6px;
+  color: #7b8794;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.divider {
+  height: 1px;
+  margin: 24px 0 18px;
+  background: #e5e9ef;
+}
+
+.timerLabel {
+  color: #9aa5b1;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.timerWrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.timerSvg {
+  width: 64px;
+  height: 64px;
+}
+
+.timerTrack {
+  fill: none;
+  stroke: #e5e9ef;
+  stroke-width: 4;
+}
+
+.timerProgress {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transform-origin: 50% 50%;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.timerValue {
+  fill: #1f2933;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+  padding: 10px 16px;
+  border: 1px solid #e5e9ef;
+  border-radius: 999px;
+  background: #f3f5f7;
+  color: #556270;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin-top: 22px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #e5e9ef;
+}
+
+.statsCell {
+  padding: 16px 12px;
+  background: #fff;
+}
+
+.statsValue {
+  color: #1f2933;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.statsLabel {
+  margin-top: 8px;
+  color: #9aa5b1;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 12px 36px;
+  border-radius: 999px;
+  background: #116a43;
+  color: #fff;
+  font-family: "Space Grotesk", var(--font-body), sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 28px rgba(17, 106, 67, 0.22);
+}
+
+.cta:hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 24px 20px;
+  }
+
+  .title {
+    font-size: 30px;
+  }
+
+  .amount {
+    font-size: 40px;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

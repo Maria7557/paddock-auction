@@ -33,6 +33,9 @@ const { mockPrisma } = vi.hoisted(() => ({
     depositLock: {
       findFirst: vi.fn(),
     },
+    auditLog: {
+      findFirst: vi.fn(),
+    },
     $transaction: vi.fn(),
     $queryRaw: vi.fn(),
     $disconnect: vi.fn(),
@@ -714,6 +717,62 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("VEHICLE_NOT_FOUND");
+  });
+
+  it("recreates a draft auction from seller audit history when none exists", async () => {
+    mockPrisma.vehicle.findUnique.mockResolvedValue({
+      id: "v1",
+      auctions: [],
+    });
+    mockPrisma.auditLog.findFirst.mockResolvedValue({
+      payload: {
+        companyId: "company-1",
+        startingPrice: 250000,
+        buyNowPrice: 290000,
+        inspectionDropoffDate: "2026-03-27T00:00:00.000Z",
+      },
+    });
+
+    const tx = buildAdminTx();
+    tx.auction.create.mockResolvedValue({
+      id: "a-new",
+      state: "DRAFT",
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/vehicles/v1/approve")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(tx.auction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        vehicleId: "v1",
+        sellerCompanyId: "company-1",
+        state: "DRAFT",
+        startingPrice: 250000,
+        currentPrice: 250000,
+        buyNowPrice: 290000,
+      }),
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          auctionId: "a-new",
+          trigger: "AUCTION_CREATED",
+        }),
+      }),
+    );
+    expect(tx.auctionStateTransition.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          auctionId: "a-new",
+          trigger: "ADMIN_VEHICLE_APPROVED",
+        }),
+      }),
+    );
   });
 });
 

@@ -61,6 +61,30 @@
   }
 }
 
+@keyframes waitingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes waitingRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes bidPop {
   0% {
     color: var(--color-primary);
@@ -93,6 +117,12 @@
   top: 0;
   z-index: 50;
   flex-shrink: 0;
+}
+
+.topBarPrelive {
+  height: 60px;
+  padding: 0 24px;
+  border-bottom: 1px solid #e5e9ef;
 }
 
 .topBarLeft,
@@ -128,6 +158,13 @@
   font-weight: 700;
 }
 
+.brandMarkPrelive {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
 .brandText {
   white-space: nowrap;
 }
@@ -148,6 +185,30 @@
   color: #9aa3ae;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.preliveHeaderTitle {
+  color: #1f2933;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.preliveHeaderBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #f3f5f7;
+  color: #7b8794;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .livePill {
@@ -211,6 +272,512 @@
 .leftPane {
   overflow: visible;
   padding: 20px 24px 80px;
+}
+
+.waitingRoom {
+  width: 100%;
+}
+
+.waitingRoomGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid #e5e9ef;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+}
+
+.waitingRoomMain {
+  padding: 32px;
+  border-right: 1px solid #e5e9ef;
+}
+
+.waitingRoomSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: #fafbfc;
+}
+
+.waitingCountdownSection {
+  margin-bottom: 32px;
+  padding: 32px 0 40px;
+  border-bottom: 1px solid #e5e9ef;
+  text-align: center;
+}
+
+.waitingEyebrow,
+.waitingLineupLabel {
+  margin-bottom: 16px;
+  color: #9aa5b1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.waitingCountdownRow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.waitingTimeUnit {
+  min-width: 92px;
+}
+
+.waitingTimeValue {
+  color: #1f2933;
+  font-family: var(--font-body);
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.waitingTimeLabel {
+  margin-top: 10px;
+  color: #9aa5b1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.waitingTimeSeparator {
+  color: #d9dee6;
+  font-family: var(--font-body);
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.waitingDateLine {
+  margin-top: 16px;
+  color: #556270;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.waitingProgress {
+  width: 100%;
+  height: 3px;
+  margin-top: 24px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e9ef;
+}
+
+.waitingProgressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: #116a43;
+  transition: width 0.4s ease;
+}
+
+.waitingLineupSection {
+  min-width: 0;
+}
+
+.waitingLineupList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.waitingLotRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e5e9ef;
+  border-radius: 12px;
+  background: #ffffff;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: waitingRowIn 0.32s ease forwards;
+}
+
+.waitingLotRowFeatured {
+  border-color: #c5e0d1;
+  background: #f0f9f4;
+}
+
+.waitingLotPosition {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #f3f5f7;
+  color: #556270;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.waitingLotPositionFeatured {
+  background: #e8f4ee;
+  color: #116a43;
+}
+
+.waitingLotThumb {
+  width: 56px;
+  height: 40px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #f3f5f7;
+}
+
+.waitingLotThumbFeatured {
+  background: #e8f4ee;
+}
+
+.waitingLotImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.waitingLotPlaceholder {
+  color: #9aa5b1;
+}
+
+.waitingLotInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.waitingLotTitle {
+  color: #1f2933;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.waitingLotMeta {
+  margin-top: 4px;
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.waitingLotPrice {
+  min-width: 84px;
+  text-align: right;
+}
+
+.waitingLotPriceLabel {
+  color: #9aa5b1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.waitingLotPriceValue {
+  margin-top: 3px;
+  color: #1f2933;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.waitingLotBadge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e8f4ee;
+  color: #116a43;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.waitingStatusCard,
+.waitingUrgencyCard {
+  border: 1px solid #e5e9ef;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 14px 16px;
+}
+
+.waitingStatusCardFade {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: waitingFadeIn 0.3s ease forwards;
+}
+
+.waitingStatusCardReady {
+  border-color: #c5e0d1;
+  background: #f0f9f4;
+}
+
+.waitingStatusCardWarning,
+.waitingUrgencyCard {
+  border-color: #f0d9a8;
+  background: #f6ead4;
+}
+
+.waitingStatusCardNeutral {
+  background: #f8f9fb;
+}
+
+.waitingStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.waitingStatusIcon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.waitingStatusIconReady {
+  background: #e8f4ee;
+  color: #116a43;
+}
+
+.waitingStatusIconWarning {
+  background: #f6ead4;
+  color: #9b6914;
+}
+
+.waitingStatusTitle {
+  color: #116a43;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.waitingStatusTitleWarning {
+  color: #9b6914;
+}
+
+.waitingStatusSub {
+  margin-top: 4px;
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.waitingLoginCard {
+  text-align: center;
+}
+
+.waitingActionButton {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.waitingActionButtonGreen {
+  background: #116a43;
+  color: #ffffff;
+}
+
+.waitingActionButtonAmber {
+  background: #9b6914;
+  color: #ffffff;
+}
+
+.waitingTextLink {
+  display: inline-flex;
+  margin-top: 12px;
+  color: #116a43;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.waitingWalletLabel {
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.waitingWalletAmount {
+  margin-top: 6px;
+  color: #1f2933;
+  font-family: var(--font-body);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.waitingWalletAmountZero {
+  color: #b43d36;
+}
+
+.waitingWalletSub {
+  margin-top: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.waitingWalletSubSuccess {
+  color: #116a43;
+}
+
+.waitingWalletSubWarning {
+  color: #9b6914;
+}
+
+.waitingWalletTrack {
+  width: 100%;
+  height: 4px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e9ef;
+}
+
+.waitingWalletFill {
+  height: 100%;
+  border-radius: inherit;
+  background: #116a43;
+}
+
+.waitingParticipantsCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.waitingAvatarStack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.waitingAvatar {
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fafbfc;
+  border-radius: 50%;
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.waitingAvatar:first-child {
+  margin-left: 0;
+}
+
+.waitingAvatarOne {
+  background: #116a43;
+}
+
+.waitingAvatarTwo {
+  background: #7b8794;
+}
+
+.waitingAvatarThree {
+  background: #9b6914;
+}
+
+.waitingAvatarFour {
+  background: #1f2933;
+}
+
+.waitingParticipantsText {
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.waitingRulesList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.waitingRuleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.waitingRuleDot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #116a43;
+  flex-shrink: 0;
+}
+
+.waitingNote {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f3f5f7;
+  color: #9aa5b1;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.waitingUrgencyTitle {
+  color: #9b6914;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.waitingUrgencyBody {
+  margin-top: 6px;
+  color: #7b8794;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .heroRow {
@@ -702,8 +1269,8 @@
 .fuseFill {
   height: 100%;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--fuse-color) 60%, white), var(--fuse-color));
-  transition: width 0.07s linear, background 0.6s ease;
+  background-color: var(--fuse-color);
+  transition: width 1s linear, background-color 0.3s ease;
 }
 
 .fuseTip {
@@ -1487,6 +2054,15 @@
 }
 
 @media (max-width: 980px) {
+  .waitingRoomGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .waitingRoomMain {
+    border-right: 0;
+    border-bottom: 1px solid #e5e9ef;
+  }
+
   .heroRow {
     grid-template-columns: 1fr;
   }
@@ -1504,13 +2080,62 @@
     padding: 0 14px;
   }
 
+  .topBarPrelive {
+    height: auto;
+    min-height: 60px;
+    padding: 12px 14px;
+    align-items: flex-start;
+  }
+
   .brandText,
   .sessionId {
     display: none;
   }
 
+  .preliveHeaderTitle {
+    font-size: 13px;
+  }
+
   .leftPane {
     padding: 16px 14px 48px;
+  }
+
+  .waitingRoomMain,
+  .waitingRoomSidebar {
+    padding: 18px;
+  }
+
+  .waitingCountdownSection {
+    padding: 18px 0 24px;
+  }
+
+  .waitingCountdownRow {
+    gap: 10px;
+  }
+
+  .waitingTimeUnit {
+    min-width: 72px;
+  }
+
+  .waitingTimeValue {
+    font-size: 38px;
+  }
+
+  .waitingTimeSeparator {
+    font-size: 28px;
+  }
+
+  .waitingLotRow {
+    flex-wrap: wrap;
+  }
+
+  .waitingLotPrice {
+    min-width: 0;
+    margin-left: auto;
+  }
+
+  .waitingLotBadge {
+    order: 5;
   }
 
   .specGrid {
