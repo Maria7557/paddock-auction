@@ -515,7 +515,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
   const [pulseCurrentBid, setPulseCurrentBid] = useState(false);
   const [fuseProgress, setFuseProgress] = useState(0);
   const [fuseSeconds, setFuseSeconds] = useState(0);
-  const [countdownMs, setCountdownMs] = useState(() => Math.max(0, Date.parse(initialRuntime.scheduledAt) - Date.now()));
+  const [countdownMs, setCountdownMs] = useState(0);
   const [totalBidsPlaced, setTotalBidsPlaced] = useState(initialRuntime.currentLot?.snapshot.totalBids ?? 0);
   const fuseRef = useRef<number | null>(null);
   const countedLotsRef = useRef(new Set<string>());
@@ -637,9 +637,11 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
 
   useEffect(() => {
     if (!runtime.currentLot) {
-      if (previousLotRef.current && !countedLotsRef.current.has(previousLotRef.current.lotId)) {
-        countedLotsRef.current.add(previousLotRef.current.lotId);
-        setTotalBidsPlaced((current) => current + previousLotRef.current!.totalBids);
+      const previousLot = previousLotRef.current;
+
+      if (previousLot && !countedLotsRef.current.has(previousLot.lotId)) {
+        countedLotsRef.current.add(previousLot.lotId);
+        setTotalBidsPlaced((current) => current + previousLot.totalBids);
       }
 
       previousLotRef.current = null;

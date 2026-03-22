@@ -793,12 +793,13 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
                 sequenceNo: nextSequenceNo,
               },
             });
+            const nextAuctionState = scheduledWindowStarted ? "LIVE" : auction.state;
             const updatedRows = await tx.$executeRaw`
               UPDATE auctions
               SET current_price = ${payload.amount},
                   last_bid_sequence = ${nextSequenceNo},
                   highest_bid_id = ${bidRecord.id},
-                  state = ${scheduledWindowStarted ? "LIVE" : auction.state},
+                  state = ${nextAuctionState}::"AuctionState",
                   version = version + 1
               WHERE id = ${payload.auctionId} AND version = ${auction.version}
             `;
