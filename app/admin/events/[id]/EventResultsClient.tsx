@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import type { EventResultEntry } from "@/src/lib/api-client";
+import { api, type EventResultEntry } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
@@ -34,11 +35,39 @@ function getStatusClassName(status: EventResultEntry["status"]): string {
 }
 
 export function EventResultsClient({ eventTitle, scheduledAt, results }: EventResultsClientProps) {
+  const router = useRouter();
+  const [relistErrorByAuctionId, setRelistErrorByAuctionId] = useState<Record<string, string>>({});
+  const [relistingAuctionId, setRelistingAuctionId] = useState<string | null>(null);
   const soldCount = useMemo(
     () => results.filter((result) => result.status === "SOLD" || result.status === "SOLD_DEFAULTED").length,
     [results],
   );
   const unsoldCount = useMemo(() => results.filter((result) => result.status === "UNSOLD").length, [results]);
+
+  async function handleRelist(auctionId: string): Promise<void> {
+    setRelistingAuctionId(auctionId);
+    setRelistErrorByAuctionId((current) => {
+      if (!(auctionId in current)) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[auctionId];
+      return next;
+    });
+
+    try {
+      await api.admin.auctions.relist(auctionId);
+      router.refresh();
+    } catch {
+      setRelistErrorByAuctionId((current) => ({
+        ...current,
+        [auctionId]: "Failed to re-list",
+      }));
+    } finally {
+      setRelistingAuctionId((current) => (current === auctionId ? null : current));
+    }
+  }
 
   function downloadCsv(): void {
     const rows = [
@@ -113,9 +142,24 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
                   <td className={styles.mono}>#{result.position + 1}</td>
                   <td>{result.vehicle}</td>
                   <td>
-                    <span className={`${styles.statusBadge} ${getStatusClassName(result.status)}`}>
-                      {getStatusLabel(result.status)}
-                    </span>
+                    <div className={styles.statusActions}>
+                      <span className={`${styles.statusBadge} ${getStatusClassName(result.status)}`}>
+                        {getStatusLabel(result.status)}
+                      </span>
+                      {result.status === "UNSOLD" ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => handleRelist(result.auctionId)}
+                          disabled={relistingAuctionId === result.auctionId}
+                        >
+                          Re-list
+                        </button>
+                      ) : null}
+                      {relistErrorByAuctionId[result.auctionId] ? (
+                        <span className={styles.inlineErrorText}>{relistErrorByAuctionId[result.auctionId]}</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>{result.status === "UNSOLD" ? "—" : formatAed(result.winningBid)}</td>
                   <td>{result.bids}</td>

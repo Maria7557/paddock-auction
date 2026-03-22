@@ -1355,6 +1355,85 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/auctions/:id/relist",
+    async function relistAdminAuctionHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const auction = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!auction) {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (auction.state !== "ENDED") {
+        await reply.code(409).send({
+          error: "AUCTION_NOT_RELISTABLE",
+        });
+        return;
+      }
+
+      const startsAt = new Date();
+      const endsAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auctionEventLot.deleteMany({
+          where: {
+            auctionId: auction.id,
+          },
+        });
+
+        await tx.auction.update({
+          where: {
+            id: auction.id,
+          },
+          data: {
+            state: "DRAFT",
+            startsAt,
+            endsAt,
+            auctionStartsAt: null,
+            auctionEndsAt: null,
+            winnerCompanyId: null,
+            closedAt: null,
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: auction.id,
+            fromState: "ENDED",
+            toState: "DRAFT",
+            trigger: "RELISTED",
+            actorId: request.auth?.userId ?? "system",
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        success: true,
+      });
+    },
+  );
+
   fastify.get("/admin/companies", async function getCompaniesHandler(
     request: FastifyRequest,
     reply: FastifyReply,

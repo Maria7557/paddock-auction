@@ -195,6 +195,18 @@
   color: var(--red-600);
 }
 
+.statusActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inlineErrorText {
+  color: var(--red-600);
+  font-size: 13px;
+}
+
 .consoleGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.95fr);

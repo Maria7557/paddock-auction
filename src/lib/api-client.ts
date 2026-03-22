@@ -572,6 +572,10 @@ export const api = {
     },
   },
   admin: {
+    auctions: {
+      relist: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
+        patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+    },
     vehicles: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/admin/vehicles", query), options),
