@@ -55,22 +55,20 @@ type AdminLocaleCopy = {
       pending: string;
       all: string;
     };
-      table: {
-        name: string;
-        phone: string;
-        email: string;
-        accountStatus: string;
-        depositStatus: string;
-        registrationDate: string;
-        actions: string;
-      };
-      actions: {
-        view: string;
-        approve: string;
-        reject: string;
-        approveDeposit: string;
-        rejectDeposit: string;
-        noPendingAction: string;
+    table: {
+      name: string;
+      phone: string;
+      email: string;
+      accountStatus: string;
+      walletBalance: string;
+      registrationDate: string;
+      actions: string;
+    };
+    actions: {
+      view: string;
+      approve: string;
+      reject: string;
+      noPendingAction: string;
     };
     empty: string;
   };
@@ -226,7 +224,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         phone: "Phone",
         email: "Email",
         accountStatus: "Account Status",
-        depositStatus: "Deposit Status",
+        walletBalance: "Wallet Balance",
         registrationDate: "Registration Date",
         actions: "Actions",
       },
@@ -234,8 +232,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         view: "View",
         approve: "Approve",
         reject: "Reject",
-        approveDeposit: "Approve Deposit",
-        rejectDeposit: "Reject Deposit",
         noPendingAction: "No pending action",
       },
       empty: "No buyers found for this filter.",
@@ -390,7 +386,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         phone: "Телефон",
         email: "Email",
         accountStatus: "Статус аккаунта",
-        depositStatus: "Статус депозита",
+        walletBalance: "Баланс кошелька",
         registrationDate: "Дата регистрации",
         actions: "Действия",
       },
@@ -398,8 +394,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         view: "Открыть",
         approve: "Одобрить",
         reject: "Отклонить",
-        approveDeposit: "Одобрить депозит",
-        rejectDeposit: "Отклонить депозит",
         noPendingAction: "Нет ожидающих действий",
       },
       empty: "Для этого фильтра покупатели не найдены.",

@@ -7,7 +7,6 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
 import { sendNewEventAnnouncementEmail } from "../lib/email";
-import { createAuctionEventRecord } from "./auction-events";
 
 type DecimalLike =
   | number
@@ -2453,70 +2452,23 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const endsAt = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000);
-    const seedAuction = await prisma.auction.findFirst({
-      where: {
-        transitions: {
-          none: {
-            trigger: "EVENT_META",
-          },
-        },
-      },
-      select: {
-        vehicleId: true,
-        sellerCompanyId: true,
-        minIncrement: true,
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
 
-    if (!seedAuction) {
-      await reply.code(400).send({
-        error: "NO_BASE_VEHICLE",
-      });
-      return;
-    }
-
-    const createdAuction = await prisma.$transaction(async (tx) => {
-      const auction = await tx.auction.create({
+    const createdEvent = await prisma.$transaction(async (tx) => {
+      const event = await tx.auctionEvent.create({
         data: {
-          vehicleId: seedAuction.vehicleId,
-          sellerCompanyId: seedAuction.sellerCompanyId,
-          state: "DRAFT",
-          startsAt,
-          endsAt,
-          startingPrice: 0,
-          currentPrice: 0,
-          minIncrement: seedAuction.minIncrement,
+          title: parsedBody.data.title,
+          scheduledAt: startsAt,
+          state: "SCHEDULED",
         },
-      });
-
-      await tx.auctionStateTransition.create({
-        data: {
-          auctionId: auction.id,
-          fromState: "DRAFT",
-          toState: "DRAFT",
-          trigger: "EVENT_META",
-          reason: JSON.stringify({
-            title: parsedBody.data.title,
-            description: parsedBody.data.description ?? "",
-          }),
-          actorId,
-        },
-      });
-
-      await createAuctionEventRecord(tx, {
-        id: auction.id,
-        title: parsedBody.data.title,
-        scheduledAt: startsAt,
       });
 
       await createAuditLog(tx, {
         actorId,
         action: "EVENT_CREATED",
         entityType: "Event",
-        entityId: auction.id,
+        entityId: event.id,
         payload: {
-          eventId: auction.id,
+          eventId: event.id,
           title: parsedBody.data.title,
           date: parsedBody.data.date ?? startsAt.toISOString().slice(0, 10),
           time: startTime,
@@ -2524,7 +2476,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
-      return auction;
+      return event;
     });
 
     const activeUsers = await prisma.user.findMany({
@@ -2543,7 +2495,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       {
         description: parsedBody.data.description ?? "",
         endsAt,
-        eventId: createdAuction.id,
+        eventId: createdEvent.id,
         recipients: activeUsers.map((user) => user.email),
         startsAt,
         title: parsedBody.data.title,
@@ -2552,10 +2504,10 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     );
 
     await reply.code(201).send({
-      id: createdAuction.id,
+      id: createdEvent.id,
       success: true,
       event: {
-        id: createdAuction.id,
+        id: createdEvent.id,
         title: parsedBody.data.title,
         scheduledAt: startsAt.toISOString(),
         state: "SCHEDULED",

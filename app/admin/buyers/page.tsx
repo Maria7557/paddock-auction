@@ -6,7 +6,6 @@ import { BuyersTable } from "./BuyersTable";
 
 export const dynamic = "force-dynamic";
 
-type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
 type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
@@ -15,7 +14,6 @@ type BuyerRow = {
   phone: string;
   email: string;
   accountStatus: AccountStatus;
-  depositStatus: DepositStatus;
   amountAed: number;
   createdAt: string;
 };
@@ -26,26 +24,6 @@ function toNumber(value: { toString(): string } | null): number {
   }
 
   return Number(value.toString());
-}
-
-function resolveDepositStatus(
-  userStatus: string,
-  kycVerified: boolean,
-  walletBalanceAed: number,
-): DepositStatus {
-  if (userStatus === "REJECTED") {
-    return "REJECTED";
-  }
-
-  if (kycVerified) {
-    return "APPROVED";
-  }
-
-  if (walletBalanceAed > 0) {
-    return "PENDING";
-  }
-
-  return "NONE";
 }
 
 function inferName(email: string): string {
@@ -115,7 +93,6 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
       phone,
       email: user.email,
       accountStatus: user.status as AccountStatus,
-      depositStatus: resolveDepositStatus(user.status, user.kycVerified, amountAed),
       amountAed,
       createdAt: user.createdAt,
     };

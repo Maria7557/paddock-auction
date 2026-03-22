@@ -13,6 +13,7 @@ import { bidsRoutes } from "./routes/bids";
 import { buyerRoutes } from "./routes/buyer";
 import { financeRoutes } from "./routes/finance";
 import { sellerRoutes } from "./routes/seller";
+import { stripeWebhookRoutes } from "./routes/stripeWebhook";
 import { walletRoutes } from "./routes/wallet";
 
 let activeServer: FastifyInstance | null = null;
@@ -149,6 +150,8 @@ export async function buildServer(): Promise<FastifyInstance> {
       await api.register(authRoutes, {
         prefix: "/auth",
       });
+
+      await api.register(stripeWebhookRoutes);
 
       await api.register(auctionEventsRoutes);
       await api.register(auctionWsRoutes);

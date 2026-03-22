@@ -1,0 +1,376 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": [
+      {
+        "source": "/api/:path*",
+        "destination": "http://localhost:4000/api/:path*",
+        "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+      }
+    ]
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/admin/events/[id]",
+      "regex": "^/admin/events/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/events/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/admin/events/[id]/console",
+      "regex": "^/admin/events/([^/]+?)/console(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/events/(?<nxtPid>[^/]+?)/console(?:/)?$"
+    },
+    {
+      "page": "/admin/events/[id]/lots",
+      "regex": "^/admin/events/([^/]+?)/lots(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/events/(?<nxtPid>[^/]+?)/lots(?:/)?$"
+    },
+    {
+      "page": "/admin/events/[id]/results",
+      "regex": "^/admin/events/([^/]+?)/results(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/events/(?<nxtPid>[^/]+?)/results(?:/)?$"
+    },
+    {
+      "page": "/api/seller/vehicles/media/[batchId]/[fileName]",
+      "regex": "^/api/seller/vehicles/media/([^/]+?)/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPbatchId": "nxtPbatchId",
+        "nxtPfileName": "nxtPfileName"
+      },
+      "namedRegex": "^/api/seller/vehicles/media/(?<nxtPbatchId>[^/]+?)/(?<nxtPfileName>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/auctions/live/event/[eventId]",
+      "regex": "^/auctions/live/event/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPeventId": "nxtPeventId"
+      },
+      "namedRegex": "^/auctions/live/event/(?<nxtPeventId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/auctions/live/[auctionId]",
+      "regex": "^/auctions/live/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPauctionId": "nxtPauctionId"
+      },
+      "namedRegex": "^/auctions/live/(?<nxtPauctionId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/finance/invoices/[invoiceId]",
+      "regex": "^/finance/invoices/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPinvoiceId": "nxtPinvoiceId"
+      },
+      "namedRegex": "^/finance/invoices/(?<nxtPinvoiceId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/invoices/[id]",
+      "regex": "^/invoices/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/invoices/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/seller/auctions/[auctionId]",
+      "regex": "^/seller/auctions/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPauctionId": "nxtPauctionId"
+      },
+      "namedRegex": "^/seller/auctions/(?<nxtPauctionId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/seller/vehicles/[vehicleId]",
+      "regex": "^/seller/vehicles/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPvehicleId": "nxtPvehicleId"
+      },
+      "namedRegex": "^/seller/vehicles/(?<nxtPvehicleId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/uploads/[...segments]",
+      "regex": "^/uploads/(.+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsegments": "nxtPsegments"
+      },
+      "namedRegex": "^/uploads/(?<nxtPsegments>.+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/admin",
+      "regex": "^/admin(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin(?:/)?$"
+    },
+    {
+      "page": "/admin/buyers",
+      "regex": "^/admin/buyers(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/buyers(?:/)?$"
+    },
+    {
+      "page": "/admin/companies",
+      "regex": "^/admin/companies(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/companies(?:/)?$"
+    },
+    {
+      "page": "/admin/events",
+      "regex": "^/admin/events(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/events(?:/)?$"
+    },
+    {
+      "page": "/admin/events/new",
+      "regex": "^/admin/events/new(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/events/new(?:/)?$"
+    },
+    {
+      "page": "/admin/vehicles",
+      "regex": "^/admin/vehicles(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/vehicles(?:/)?$"
+    },
+    {
+      "page": "/api/auth/token",
+      "regex": "^/api/auth/token(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/auth/token(?:/)?$"
+    },
+    {
+      "page": "/api/seller/vehicles/upload-photos",
+      "regex": "^/api/seller/vehicles/upload\\-photos(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/seller/vehicles/upload\\-photos(?:/)?$"
+    },
+    {
+      "page": "/auctions",
+      "regex": "^/auctions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auctions(?:/)?$"
+    },
+    {
+      "page": "/buyer/wishlist",
+      "regex": "^/buyer/wishlist(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/buyer/wishlist(?:/)?$"
+    },
+    {
+      "page": "/dashboard",
+      "regex": "^/dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard(?:/)?$"
+    },
+    {
+      "page": "/favicon.ico",
+      "regex": "^/favicon\\.ico(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/favicon\\.ico(?:/)?$"
+    },
+    {
+      "page": "/finance",
+      "regex": "^/finance(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/finance(?:/)?$"
+    },
+    {
+      "page": "/forgot-password",
+      "regex": "^/forgot\\-password(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/forgot\\-password(?:/)?$"
+    },
+    {
+      "page": "/invoices",
+      "regex": "^/invoices(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/invoices(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/login/buyer",
+      "regex": "^/login/buyer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login/buyer(?:/)?$"
+    },
+    {
+      "page": "/login/seller",
+      "regex": "^/login/seller(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login/seller(?:/)?$"
+    },
+    {
+      "page": "/my-bids",
+      "regex": "^/my\\-bids(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/my\\-bids(?:/)?$"
+    },
+    {
+      "page": "/profile",
+      "regex": "^/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile(?:/)?$"
+    },
+    {
+      "page": "/register",
+      "regex": "^/register(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/register(?:/)?$"
+    },
+    {
+      "page": "/register/buyer",
+      "regex": "^/register/buyer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/register/buyer(?:/)?$"
+    },
+    {
+      "page": "/register/seller",
+      "regex": "^/register/seller(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/register/seller(?:/)?$"
+    },
+    {
+      "page": "/seller",
+      "regex": "^/seller(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller(?:/)?$"
+    },
+    {
+      "page": "/seller/auctions",
+      "regex": "^/seller/auctions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/auctions(?:/)?$"
+    },
+    {
+      "page": "/seller/dashboard",
+      "regex": "^/seller/dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/dashboard(?:/)?$"
+    },
+    {
+      "page": "/seller/settings",
+      "regex": "^/seller/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/settings(?:/)?$"
+    },
+    {
+      "page": "/seller/settings/company",
+      "regex": "^/seller/settings/company(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/settings/company(?:/)?$"
+    },
+    {
+      "page": "/seller/settings/documents",
+      "regex": "^/seller/settings/documents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/settings/documents(?:/)?$"
+    },
+    {
+      "page": "/seller/settings/notifications",
+      "regex": "^/seller/settings/notifications(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/settings/notifications(?:/)?$"
+    },
+    {
+      "page": "/seller/settings/team",
+      "regex": "^/seller/settings/team(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/settings/team(?:/)?$"
+    },
+    {
+      "page": "/seller/vehicles",
+      "regex": "^/seller/vehicles(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/vehicles(?:/)?$"
+    },
+    {
+      "page": "/seller/vehicles/new",
+      "regex": "^/seller/vehicles/new(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/seller/vehicles/new(?:/)?$"
+    },
+    {
+      "page": "/wallet",
+      "regex": "^/wallet(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/wallet(?:/)?$"
+    },
+    {
+      "page": "/watchlist",
+      "regex": "^/watchlist(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/watchlist(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

@@ -1,0 +1,3 @@
+{
+  "/api/seller/vehicles/media/[batchId]/[fileName]/route": "app/api/seller/vehicles/media/[batchId]/[fileName]/route.js"
+}

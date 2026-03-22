@@ -40,6 +40,10 @@ const depositSchema = z.object({
   idempotencyKey: z.string().trim().min(1),
 });
 
+const topupSchema = z.object({
+  amount: z.coerce.number().finite().positive().min(5000),
+});
+
 const withdrawSchema = z.object({
   amount: z.coerce.number().finite().positive(),
 });
@@ -49,6 +53,9 @@ const invoiceParamsSchema = z.object({
 });
 
 const emptyBodySchema = z.object({}).passthrough();
+
+const DEPOSIT_WALLET_CURRENCY = "AED";
+const DEPOSIT_TOPUP_PURPOSE = "deposit_topup";
 
 async function toNumberValue(value: DecimalLike): Promise<number> {
   if (typeof value === "number") {
@@ -238,6 +245,29 @@ async function getAuthenticatedUserId(
 
 async function getIdempotencyExpiry(): Promise<Date> {
   return new Date(Date.now() + 24 * 60 * 60 * 1000);
+}
+
+async function getRequiredIdempotencyKey(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
+
+  if (!idempotencyKey) {
+    await reply.code(400).send({
+      error: "MISSING_IDEMPOTENCY_KEY",
+    });
+    return null;
+  }
+
+  return idempotencyKey;
+}
+
+function convertAedAmountToFils(amount: number): number {
+  const normalizedAmount = amount.toFixed(2);
+  const [wholePart, fractionalPart = "00"] = normalizedAmount.split(".");
+
+  return Number.parseInt(`${wholePart}${fractionalPart.padEnd(2, "0").slice(0, 2)}`, 10);
 }
 
 async function readStoredIdempotencyBody(value: string | null): Promise<IdempotencyResponseBody | null> {
@@ -776,7 +806,85 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       request: FastifyRequest<{ Body: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      await processWalletDeposit(request, reply, "/wallet/topup");
+      const buyerAccess = await requireActiveBuyerAccount(request, reply);
+
+      if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
+        return;
+      }
+
+      const parsedBody = topupSchema.safeParse(request.body);
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const idempotencyKey = await getRequiredIdempotencyKey(request, reply);
+
+      if (!idempotencyKey) {
+        return;
+      }
+
+      try {
+        const { stripe } = await import("../lib/stripe");
+        const paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount: convertAedAmountToFils(parsedBody.data.amount),
+            currency: DEPOSIT_WALLET_CURRENCY.toLowerCase(),
+            metadata: {
+              companyId: buyerAccess.companyId,
+              userId: buyerAccess.userId,
+              purpose: DEPOSIT_TOPUP_PURPOSE,
+            },
+            automatic_payment_methods: {
+              enabled: true,
+            },
+          },
+          {
+            idempotencyKey,
+          },
+        );
+
+        if (!paymentIntent.client_secret) {
+          request.log.error(
+            {
+              paymentIntentId: paymentIntent.id,
+              companyId: buyerAccess.companyId,
+              userId: buyerAccess.userId,
+            },
+            "Stripe payment intent did not include a client secret",
+          );
+          await reply.code(502).send({
+            error: "payment_provider_error",
+          });
+          return;
+        }
+
+        await reply.code(200).send({
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+        });
+      } catch (error) {
+        request.log.error(
+          {
+            err: error,
+            companyId: buyerAccess.companyId,
+            userId: buyerAccess.userId,
+          },
+          "Stripe payment intent creation failed",
+        );
+        await reply.code(502).send({
+          error: "payment_provider_error",
+        });
+      }
     },
   );
 

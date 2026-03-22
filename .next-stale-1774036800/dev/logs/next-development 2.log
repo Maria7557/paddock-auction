@@ -1,0 +1,37 @@
+[01:59:54.782] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/server/middleware-manifest.json'
+[01:59:57.264] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:00.097] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/server/middleware-manifest.json'
+[02:00:00.148] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:00.171] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:00.759] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/server/middleware-manifest.json'
+[02:00:00.797] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:00.813] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:01.365] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/server/middleware-manifest.json'
+[02:00:01.421] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:00:01.445] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:14:12.247] Server  ERROR   ⨯ ./app/auctions/[auctionId]/page.tsx
+Error: 
+
+Caused by:
+    0: Failed to read source code from /Users/Caro/Documents/paddock-auction/app/auctions/[auctionId]/page.tsx
+    1: No such file or directory (os error 2)
+
+Import trace for requested module:
+./app/auctions/[auctionId]/page.tsx
+./app/auctions/live/[auctionId]/page.tsx
+[02:57:06.048] Server  LOG     ○ Compiling / ...
+[02:57:11.790] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:57:12.988] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:57:13.157] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:57:13.192] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[02:57:13.233] Server  ERROR   Error: ENOENT: no such file or directory, open '/Users/Caro/Documents/paddock-auction/.next/dev/routes-manifest.json'
+[03:15:37.096] Server  ERROR   ⨯ ./app/auctions/[auctionId]/page.tsx
+Error: 
+
+Caused by:
+    0: Failed to read source code from /Users/Caro/Documents/paddock-auction/app/auctions/[auctionId]/page.tsx
+    1: No such file or directory (os error 2)
+
+Import trace for requested module:
+./app/auctions/[auctionId]/page.tsx
+./app/auctions/live/[auctionId]/page.tsx

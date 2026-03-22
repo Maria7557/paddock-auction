@@ -1,0 +1,3 @@
+{
+  "/auctions/live/[auctionId]/page": "app/auctions/live/[auctionId]/page.js"
+}

@@ -5,7 +5,7 @@ import { SignJWT } from "jose";
 import supertest from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockPrisma } = vi.hoisted(() => ({
+const { mockPrisma, mockStripe } = vi.hoisted(() => ({
   mockPrisma: {
     user: {
       findUnique: vi.fn(),
@@ -25,9 +25,18 @@ const { mockPrisma } = vi.hoisted(() => ({
     $transaction: vi.fn(),
     $disconnect: vi.fn(),
   },
+  mockStripe: {
+    paymentIntents: {
+      create: vi.fn(),
+    },
+    webhooks: {
+      constructEvent: vi.fn(),
+    },
+  },
 }));
 
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../lib/stripe", () => ({ stripe: mockStripe }));
 
 import { buildServer } from "../../server";
 
@@ -92,6 +101,23 @@ function buildWalletTx(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildStripeWebhookTx(overrides: Record<string, unknown> = {}) {
+  return {
+    paymentWebhookEvent: {
+      create: vi.fn(),
+    },
+    depositWallet: {
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+    wallet: {
+      upsert: vi.fn(),
+    },
+    $queryRaw: vi.fn(),
+    ...overrides,
+  };
+}
+
 let server: FastifyInstance;
 let request: ReturnType<typeof supertest>;
 let buyerToken: string;
@@ -101,6 +127,7 @@ beforeAll(async () => {
   process.env.JWT_SECRET = jwtSecret;
   process.env.NODE_ENV = "test";
   delete process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
   server = await buildServer();
   await server.ready();
   request = supertest(server.server);
@@ -401,6 +428,156 @@ describe("POST /api/wallet/deposit", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("INVALID_REQUEST");
+  });
+});
+
+describe("POST /api/wallet/topup", () => {
+  it("returns 400 when the Idempotency-Key header is missing", async () => {
+    const res = await request
+      .post("/api/wallet/topup")
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
+      .send({
+        amount: 5000,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "MISSING_IDEMPOTENCY_KEY",
+    });
+  });
+
+  it("returns a Stripe client secret for a valid top-up request", async () => {
+    mockStripe.paymentIntents.create.mockResolvedValue({
+      id: "pi_topup_1",
+      client_secret: "pi_topup_secret_1",
+    });
+
+    const res = await request
+      .post("/api/wallet/topup")
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
+      .set("Idempotency-Key", "topup-key-1")
+      .send({
+        amount: 5000,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      clientSecret: "pi_topup_secret_1",
+      paymentIntentId: "pi_topup_1",
+    });
+    expect(mockStripe.paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 500000,
+        currency: "aed",
+        metadata: expect.objectContaining({
+          companyId: buyerCompanyId,
+          userId: buyerUserId,
+          purpose: "deposit_topup",
+        }),
+      }),
+      {
+        idempotencyKey: "topup-key-1",
+      },
+    );
+  });
+});
+
+describe("POST /api/stripe/webhook", () => {
+  it("rejects an invalid Stripe signature", async () => {
+    mockStripe.webhooks.constructEvent.mockImplementation(() => {
+      throw new Error("invalid signature");
+    });
+
+    const res = await request
+      .post("/api/stripe/webhook")
+      .set("stripe-signature", "bad-signature")
+      .set("content-type", "application/json")
+      .send(JSON.stringify({ id: "evt_invalid" }));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "invalid_signature",
+    });
+  });
+
+  it("credits both DepositWallet and legacy Wallet on successful top-up", async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue({
+      id: "evt_topup_1",
+      type: "payment_intent.succeeded",
+      data: {
+        object: {
+          id: "pi_topup_1",
+          amount: 500000,
+          amount_received: 500000,
+          metadata: {
+            companyId: buyerCompanyId,
+            userId: buyerUserId,
+            purpose: "deposit_topup",
+          },
+        },
+      },
+    });
+
+    const tx = buildStripeWebhookTx();
+    tx.paymentWebhookEvent.create.mockResolvedValue({ id: "pwe1" });
+    tx.depositWallet.upsert.mockResolvedValue({ id: "dw1" });
+    tx.$queryRaw.mockResolvedValue([{ id: "dw1" }]);
+    tx.depositWallet.update.mockResolvedValue({ id: "dw1" });
+    tx.wallet.upsert.mockResolvedValue({ id: "w1" });
+
+    mockPrisma.$transaction.mockImplementation(async (callback, options) => {
+      expect(options).toEqual({
+        isolationLevel: "Serializable",
+      });
+
+      return callback(tx);
+    });
+
+    const res = await request
+      .post("/api/stripe/webhook")
+      .set("stripe-signature", "sig_valid")
+      .set("content-type", "application/json")
+      .send(
+        JSON.stringify({
+          id: "evt_topup_1",
+          type: "payment_intent.succeeded",
+        }),
+      );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      received: true,
+    });
+    expect(tx.depositWallet.upsert).toHaveBeenCalledWith({
+      where: {
+        companyId_currency: {
+          companyId: buyerCompanyId,
+          currency: "AED",
+        },
+      },
+      update: {},
+      create: {
+        companyId: buyerCompanyId,
+        currency: "AED",
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(tx.wallet.upsert).toHaveBeenCalledWith({
+      where: {
+        userId: buyerUserId,
+      },
+      create: {
+        userId: buyerUserId,
+        balance: "5000.00",
+      },
+      update: {
+        balance: {
+          increment: "5000.00",
+        },
+      },
+    });
   });
 });
 

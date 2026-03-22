@@ -1,0 +1,6 @@
+{
+  "/api/seller/vehicles/media/[batchId]/[fileName]/route": "app/api/seller/vehicles/media/[batchId]/[fileName]/route.js",
+  "/api/auth/token/route": "app/api/auth/token/route.js",
+  "/auctions/live/[auctionId]/page": "app/auctions/live/[auctionId]/page.js",
+  "/login/page": "app/login/page.js"
+}

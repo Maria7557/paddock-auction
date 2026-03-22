@@ -8,10 +8,10 @@ import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
 import { api } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import type { SupportedLocale } from "@/src/i18n/routing";
+import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
 
-type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
 type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
@@ -20,7 +20,6 @@ type BuyerRow = {
   phone: string;
   email: string;
   accountStatus: AccountStatus;
-  depositStatus: DepositStatus;
   amountAed: number;
   createdAt: string;
 };
@@ -42,23 +41,17 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
       return buyers;
     }
 
-    return buyers.filter(
-      (buyer) => buyer.accountStatus === "PENDING_APPROVAL" || buyer.depositStatus === "PENDING",
-    );
+    return buyers.filter((buyer) => buyer.accountStatus === "PENDING_APPROVAL");
   }, [buyers, tab]);
 
-  async function mutateBuyer(id: string, action: "approve" | "reject" | "approve-deposit" | "reject-deposit"): Promise<void> {
+  async function mutateBuyer(id: string, action: "approve" | "reject"): Promise<void> {
     setBusyId(id);
 
     try {
       if (action === "approve") {
         await api.admin.users.approve(id);
-      } else if (action === "reject") {
-        await api.admin.users.reject(id);
-      } else if (action === "approve-deposit") {
-        await api.admin.buyers.approveDeposit(id);
       } else {
-        await api.admin.buyers.rejectDeposit(id);
+        await api.admin.users.reject(id);
       }
 
       router.refresh();
@@ -92,7 +85,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                 <th>{t.buyers.table.phone}</th>
                 <th>{t.buyers.table.email}</th>
                 <th>{t.buyers.table.accountStatus}</th>
-                <th>{t.buyers.table.depositStatus}</th>
+                <th>{t.buyers.table.walletBalance}</th>
                 <th>{t.buyers.table.registrationDate}</th>
                 <th>{t.buyers.table.actions}</th>
               </tr>
@@ -113,16 +106,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                     {buyer.accountStatus === "BLOCKED" ? <span className="pill">{t.status.blocked}</span> : null}
                     {buyer.accountStatus === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
                   </td>
-                  <td>
-                    {buyer.depositStatus === "NONE" ? <span className="pill">{t.status.none}</span> : null}
-                    {buyer.depositStatus === "PENDING" ? (
-                      <span className="pill pill-sched">{t.status.pending}</span>
-                    ) : null}
-                    {buyer.depositStatus === "APPROVED" ? (
-                      <span className="pill pill-green">{t.status.approved}</span>
-                    ) : null}
-                    {buyer.depositStatus === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
-                  </td>
+                  <td>{formatAed(buyer.amountAed)}</td>
                   <td>{new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(buyer.createdAt))}</td>
                   <td>
                     <div className={styles.actions}>
@@ -150,25 +134,6 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                           onClick={() => void mutateBuyer(buyer.id, "reject")}
                         >
                           {t.buyers.actions.reject}
-                        </button>
-                      </>
-                    ) : buyer.depositStatus === "PENDING" ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "approve-deposit")}
-                        >
-                          {t.buyers.actions.approveDeposit}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "reject-deposit")}
-                        >
-                          {t.buyers.actions.rejectDeposit}
                         </button>
                       </>
                     ) : (

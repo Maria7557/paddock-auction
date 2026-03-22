@@ -448,6 +448,7 @@ function toAuctionLot({
     startsAt: auction.startsAt.toISOString(),
     listedAt: auction.createdAt.toISOString(),
     depositRequiredAed: 5000,
+    // TODO: dead code until the public lot detail flow is wired to real buyer deposit status.
     depositReady: true,
     watchlisted: false,
     images: deriveLotImages(vehicle, index),
