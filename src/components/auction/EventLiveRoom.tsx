@@ -1218,7 +1218,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                         const queueMeta = buildQueueMeta(lot);
                         const rowTitle = [lot.year || null, lot.make, lot.model].filter(Boolean).join(" ") || lot.title;
                         const isNext = index === 0;
-                        const displayStartPrice = lot.totalBids > 0 ? lot.currentPrice : lot.startingPrice;
+                        const displayStartPrice = lot.currentPrice > 0 ? lot.currentPrice : lot.startingPrice;
 
                         return (
                           <div

@@ -1281,7 +1281,7 @@
   border-radius: 50%;
   background: var(--fuse-color);
   box-shadow: 0 0 0 4px var(--fuse-glow), 0 0 14px var(--fuse-color);
-  transition: left 0.07s linear, background 0.6s ease;
+  transition: left 1s linear, background 0.3s ease;
   animation: fuseFlicker 0.22s ease-in-out infinite alternate;
   z-index: 2;
 }

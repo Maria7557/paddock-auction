@@ -280,6 +280,9 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
         ? (data.bids as Array<Record<string, unknown>>)
         : [];
     const damageItems = getDamageItems(vehicle.damageMap);
+    const latestBidAmount =
+      bidsSource.length > 0 ? Number(bidsSource[0]?.amountAed ?? bidsSource[0]?.amount ?? 0) : 0;
+    const currentBidAed = Math.max(Number(auction.currentPrice ?? auction.currentBidAed ?? 0), latestBidAmount);
 
     return {
       id: String(auction.id ?? auctionId),
@@ -319,7 +322,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       location: String(auction.location ?? vehicle.location ?? NOT_SPECIFIED),
       auctionAt: String(auction.startsAt ?? auction.endsAt ?? new Date().toISOString()),
       actualCashValue: Number(auction.actualCashValue ?? vehicle.marketPrice ?? 0),
-      currentBidAed: Number(auction.currentPrice ?? auction.currentBidAed ?? 0),
+      currentBidAed,
       buyNowAed: Number(auction.buyNowPrice ?? auction.buyNowAed ?? 0),
       minStepAed: Number(auction.minIncrement ?? auction.minStepAed ?? 500),
       totalBids: Number(auction.totalBids ?? bidsSource.length),
