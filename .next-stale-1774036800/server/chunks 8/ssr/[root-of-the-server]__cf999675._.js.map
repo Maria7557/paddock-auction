@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../../../app/admin/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function AdminRootPage() {\n  redirect(\"/admin/companies\");\n}\n"],"names":[],"mappings":"gWAAA,EAAA,CAAA,CAAA,OAAA,IAAA,EAAA,EAAA,CAAA,CAAA,OAEe,SAAS,IACtB,CAAA,EAAA,EAAA,QAAA,AAAQ,EAAC,mBACX"}

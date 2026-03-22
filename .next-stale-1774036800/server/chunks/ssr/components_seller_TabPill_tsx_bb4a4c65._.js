@@ -1,3 +1,0 @@
-module.exports=[67431,a=>{"use strict";var b=a.i(87924),c=a.i(50944),d=a.i(12738);function e({href:a,label:e,variant:f="default"}){let g=(0,c.usePathname)()===a,h=["seller-tab","primary"===f?"primary":"",g&&"default"===f?"active":""].filter(Boolean).join(" ");return(0,b.jsx)(d.GuardedLink,{href:a,className:h,"aria-current":g?"page":void 0,children:e})}a.s(["TabPill",()=>e])}];
-
-//# sourceMappingURL=components_seller_TabPill_tsx_bb4a4c65._.js.map
