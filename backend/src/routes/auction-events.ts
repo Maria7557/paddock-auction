@@ -55,6 +55,8 @@ type EventRuntimeSnapshot = {
     auctionId: string;
     title: string;
     startingPrice: number;
+    currentPrice: number;
+    totalBids: number;
   }>;
 };
 
@@ -634,7 +636,13 @@ export async function getEventRuntimeSnapshot(
           onBlockAt: true,
           auction: {
             select: {
+              currentPrice: true,
               startingPrice: true,
+              _count: {
+                select: {
+                  bids: true,
+                },
+              },
               vehicle: {
                 select: {
                   brand: true,
@@ -674,6 +682,8 @@ export async function getEventRuntimeSnapshot(
           model: lot.auction.vehicle.model,
         }),
         startingPrice: await toNumberValue(lot.auction.startingPrice),
+        currentPrice: await toNumberValue(lot.auction.currentPrice),
+        totalBids: lot.auction._count.bids,
       })),
   );
 

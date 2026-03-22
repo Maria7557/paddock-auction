@@ -409,15 +409,26 @@ export async function runEventAutoStartJob(): Promise<void> {
   let processed = 0;
 
   for (const event of dueEvents) {
-    await startEvent(event.id);
-    processed += 1;
-    schedulerLogger.info(
-      {
-        job: "runEventAutoStartJob",
-        eventId: event.id,
-      },
-      "Event auto-started",
-    );
+    try {
+      await startEvent(event.id);
+      processed += 1;
+      schedulerLogger.info(
+        {
+          job: "runEventAutoStartJob",
+          eventId: event.id,
+        },
+        "Event auto-started",
+      );
+    } catch (error) {
+      schedulerLogger.error(
+        {
+          job: "runEventAutoStartJob",
+          eventId: event.id,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to auto-start event",
+      );
+    }
   }
 
   schedulerLogger.info(

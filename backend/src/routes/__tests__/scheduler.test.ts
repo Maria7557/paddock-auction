@@ -331,6 +331,39 @@ describe("scheduler", () => {
     );
   });
 
+  it("runEventAutoStartJob continues when one due event fails", async () => {
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+
+    mockPrisma.auctionEvent.findMany.mockResolvedValue([{ id: "event-1" }, { id: "event-2" }]);
+    mockStartEvent.mockRejectedValueOnce(new Error("Auction event event-1 has no first lot"));
+
+    const { runEventAutoStartJob, setSchedulerLogger } = await import("../../scheduler");
+
+    await setSchedulerLogger(logger);
+    await runEventAutoStartJob();
+
+    expect(mockStartEvent).toHaveBeenNthCalledWith(1, "event-1");
+    expect(mockStartEvent).toHaveBeenNthCalledWith(2, "event-2");
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        job: "runEventAutoStartJob",
+        eventId: "event-1",
+        err: "Auction event event-1 has no first lot",
+      },
+      "Failed to auto-start event",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        job: "runEventAutoStartJob",
+        processed: 1,
+      },
+      "Scheduler job completed",
+    );
+  });
+
   it("runEventTickJob calls checkAndTick for each LIVE event", async () => {
     const logger = {
       info: vi.fn(),

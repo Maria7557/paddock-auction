@@ -117,6 +117,8 @@ type QueuedLotCard = {
   position: number;
   title: string;
   startingPrice: number;
+  currentPrice: number;
+  totalBids: number;
   imageUrl: string | null;
   make: string;
   model: string;
@@ -619,7 +621,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
   const pathname = usePathname();
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
   const [socketEnabled, setSocketEnabled] = useState(initialRuntime.state !== "CLOSED");
-  const { runtime: liveRuntime, connectionState } = useEventLiveSocket(eventId, socketEnabled);
+  const { runtime: liveRuntime, connectionState, refreshRuntime } = useEventLiveSocket(eventId, socketEnabled);
   const runtime = liveRuntime ?? initialRuntime;
   const currentAuctionId = runtime.currentLot?.auctionId ?? null;
   const currentSnapshot = runtime.currentLot?.snapshot ?? null;
@@ -884,6 +886,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
           position: lot.position,
           title: detail?.title ?? lot.title,
           startingPrice: lot.startingPrice,
+          currentPrice: lot.currentPrice,
+          totalBids: lot.totalBids,
           imageUrl: detail?.images[0] ? normalizeGalleryUrl(detail.images[0]) : null,
           make: detail?.make ?? "",
           model: detail?.model ?? lot.title,
@@ -1107,7 +1111,17 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
     try {
       await api.bids.placeBid(runtime.currentLot.auctionId, nextBidAmount, crypto.randomUUID?.() ?? `${Date.now()}`);
     } catch (error) {
-      setInlineError(getApiErrorMessage(error, "Bid failed — please try again"));
+      const message = getApiErrorMessage(error, "Bid failed — please try again");
+      if (
+        message === "Bid must be higher than current price" ||
+        message === "Auction is not active" ||
+        message === "Auction has ended"
+      ) {
+        void refreshRuntime().catch(() => {
+          // Best-effort refresh keeps the live room in sync after stale bid attempts.
+        });
+      }
+      setInlineError(message);
     } finally {
       setIsSubmittingBid(false);
     }
@@ -1191,6 +1205,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                         position: lot.position,
                         title: lot.title,
                         startingPrice: lot.startingPrice,
+                        currentPrice: lot.currentPrice,
+                        totalBids: lot.totalBids,
                         imageUrl: null,
                         make: "",
                         model: lot.title,
@@ -1202,6 +1218,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                         const queueMeta = buildQueueMeta(lot);
                         const rowTitle = [lot.year || null, lot.make, lot.model].filter(Boolean).join(" ") || lot.title;
                         const isNext = index === 0;
+                        const displayStartPrice = lot.totalBids > 0 ? lot.currentPrice : lot.startingPrice;
 
                         return (
                           <div
@@ -1225,7 +1242,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                             </div>
                             <div className={styles.waitingLotPrice}>
                               <div className={styles.waitingLotPriceLabel}>Start</div>
-                              <div className={styles.waitingLotPriceValue}>{formatAed(lot.startingPrice)}</div>
+                              <div className={styles.waitingLotPriceValue}>{formatAed(displayStartPrice)}</div>
                             </div>
                             {isNext ? <div className={styles.waitingLotBadge}>UP NEXT</div> : null}
                           </div>

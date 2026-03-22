@@ -80,6 +80,8 @@ export interface EventUpcomingLot {
   auctionId: string;
   title: string;
   startingPrice: number;
+  currentPrice: number;
+  totalBids: number;
 }
 
 export interface EventCurrentLot {
