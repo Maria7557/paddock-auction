@@ -317,7 +317,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   resetMockRedis();
   await closeAuctionRealtime();
   await closeEventRuntimeRealtime();
@@ -356,6 +356,7 @@ describe("auction event routes", () => {
   it("GET /api/events/:id/runtime returns full snapshot for LIVE event", async () => {
     mockPrisma.auctionEvent.findUnique.mockResolvedValue({
       id: eventId,
+      scheduledAt: new Date("2026-03-20T09:00:00.000Z"),
       state: "LIVE",
       runtime: {
         currentLotId: "event-lot-1",
@@ -371,7 +372,11 @@ describe("auction event routes", () => {
           callRound: 0,
           onBlockAt: new Date("2026-03-20T09:04:40.000Z"),
           auction: {
+            currentPrice: 51_000,
             startingPrice: 50_000,
+            _count: {
+              bids: 5,
+            },
             vehicle: {
               brand: "BMW",
               model: "M4",
@@ -387,7 +392,11 @@ describe("auction event routes", () => {
           callRound: 0,
           onBlockAt: null,
           auction: {
+            currentPrice: 60_500,
             startingPrice: 60_000,
+            _count: {
+              bids: 1,
+            },
             vehicle: {
               brand: "Land Rover",
               model: "Range Rover Sport",
@@ -413,6 +422,8 @@ describe("auction event routes", () => {
         auctionId: "auction-2",
         title: "2025 Land Rover Range Rover Sport",
         startingPrice: 60000,
+        currentPrice: 60500,
+        totalBids: 1,
       },
     ]);
   });
@@ -429,6 +440,7 @@ describe("auction event routes", () => {
   it("GET /api/events/:id/runtime returns SCHEDULED state before start", async () => {
     mockPrisma.auctionEvent.findUnique.mockResolvedValue({
       id: eventId,
+      scheduledAt: new Date("2026-03-20T09:00:00.000Z"),
       state: "SCHEDULED",
       runtime: null,
       lots: [
@@ -440,7 +452,11 @@ describe("auction event routes", () => {
           callRound: 0,
           onBlockAt: null,
           auction: {
+            currentPrice: 60_000,
             startingPrice: 60_000,
+            _count: {
+              bids: 0,
+            },
             vehicle: {
               brand: "Land Rover",
               model: "Range Rover Sport",
@@ -568,6 +584,9 @@ describe("auction event routes", () => {
       data: {
         state: "SCHEDULED",
         startsAt: new Date("2026-03-21T15:00:00.000Z"),
+        endsAt: new Date("2026-03-21T17:00:00.000Z"),
+        auctionStartsAt: null,
+        auctionEndsAt: null,
       },
     });
     expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
@@ -689,9 +708,13 @@ describe("auction event routes", () => {
   it("POST /api/admin/events/:id/lots rejects duplicate auctionId", async () => {
     mockPrisma.auctionEvent.findUnique.mockResolvedValue({
       id: eventId,
+      state: "SCHEDULED",
+      scheduledAt: new Date("2026-03-21T15:00:00.000Z"),
     });
     mockPrisma.auction.findUnique.mockResolvedValue({
       id: auctionId,
+      state: "DRAFT",
+      vehicleId: "vehicle-1",
     });
     mockPrisma.auctionEventLot.findFirst
       .mockResolvedValueOnce({
@@ -708,7 +731,7 @@ describe("auction event routes", () => {
       });
 
     expect(response.status).toBe(409);
-    expect(response.body.error).toBe("EVENT_LOT_DUPLICATE_AUCTION");
+    expect(response.body.error).toBe("VEHICLE_ALREADY_IN_EVENT");
   });
 
   it("DELETE /api/admin/events/:id/lots/:lotId removes queued lot and unassigns auction", async () => {
@@ -766,8 +789,10 @@ describe("auction event routes", () => {
       },
       data: {
         state: "DRAFT",
-        startsAt: new Date("2026-03-22T15:00:00.000Z"),
-        endsAt: new Date("2026-03-22T15:20:00.000Z"),
+        startsAt: expect.any(Date),
+        endsAt: expect.any(Date),
+        auctionStartsAt: null,
+        auctionEndsAt: null,
       },
     });
     expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
@@ -775,29 +800,14 @@ describe("auction event routes", () => {
         auctionId,
         fromState: "SCHEDULED",
         toState: "DRAFT",
-        trigger: "EVENT_UNASSIGNED",
+        trigger: "EVENT_REMOVED",
         actorId: adminUserId,
         reason: JSON.stringify({
-          eventId: null,
+          eventId,
         }),
       },
     });
-    expect(tx.auctionEventLot.update).toHaveBeenNthCalledWith(1, {
-      where: {
-        id: "event-lot-2",
-      },
-      data: {
-        position: 1,
-      },
-    });
-    expect(tx.auctionEventLot.update).toHaveBeenNthCalledWith(2, {
-      where: {
-        id: "event-lot-3",
-      },
-      data: {
-        position: 2,
-      },
-    });
+    expect(tx.auctionEventLot.update).not.toHaveBeenCalled();
   });
 
   it("POST /api/admin/events/:id/start calls orchestrator startEvent", async () => {

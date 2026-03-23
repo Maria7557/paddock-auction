@@ -7,10 +7,10 @@ import MarketHeader from "@/components/shell/MarketHeader";
 import { DEFAULT_LOCALE, isSupportedLocale } from "@/src/i18n/routing";
 import "./globals.css";
 
-const localFontVariables: CSSProperties = {
-  ["--font-space-grotesk" as "--font-space-grotesk"]: "\"Segoe UI\", sans-serif",
-  ["--font-ibm-plex-mono" as "--font-ibm-plex-mono"]: "\"SF Mono\", monospace",
-};
+const localFontVariables = {
+  "--font-space-grotesk": "\"Segoe UI\", sans-serif",
+  "--font-ibm-plex-mono": "\"SF Mono\", monospace",
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: {
