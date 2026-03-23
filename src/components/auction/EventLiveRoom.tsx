@@ -2,8 +2,8 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LotDetail } from "@/app/auctions/[auctionId]/page";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
@@ -24,7 +24,7 @@ import { LotResultOverlay, type LotResultOverlayScenario } from "./LotResultOver
 const NORMAL_FUSE_DURATION_MS = 20_000;
 const LAST_CHANCE_FUSE_DURATION_MS = 10_000;
 const FUSE_TICK_INTERVAL_MS = 50;
-const DEFAULT_INTERMISSION_SECONDS = 5;
+const DEFAULT_INTERMISSION_SECONDS = 10;
 const PLACEHOLDER_PHOTOS = [
   { id: "placeholder-1", label: "Front 3/4", bg: "linear-gradient(135deg,#e8edf2 0%,#cdd5df 100%)" },
   { id: "placeholder-2", label: "Rear 3/4", bg: "linear-gradient(135deg,#dde3ea 0%,#bec8d4 100%)" },
@@ -619,6 +619,7 @@ async function loadLotView(auctionId: string): Promise<EventLotView | null> {
 
 export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
   const [socketEnabled, setSocketEnabled] = useState(initialRuntime.state !== "CLOSED");
   const { runtime: liveRuntime, connectionState, refreshRuntime } = useEventLiveSocket(eventId, socketEnabled);
@@ -652,6 +653,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
   const countedLotsRef = useRef(new Set<string>());
   const shownLotResultRef = useRef(new Set<string>());
   const previousLotResultRef = useRef<PreviousLotResult | null>(null);
+  const completedLotResultRef = useRef<PreviousLotResult | null>(null);
+  const previousActiveLotIdRef = useRef<string | null>(initialRuntime.currentLot?.lotId ?? null);
   const previousLotRef = useRef<{ lotId: string; totalBids: number } | null>(
     initialRuntime.currentLot
       ? {
@@ -913,6 +916,10 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
       return;
     }
 
+    if (previousLotResultRef.current && previousLotResultRef.current.lotId !== runtime.currentLot.lotId) {
+      completedLotResultRef.current = previousLotResultRef.current;
+    }
+
     previousLotResultRef.current = {
       lotId: runtime.currentLot.lotId,
       totalBids: currentSnapshot.totalBids,
@@ -970,24 +977,37 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
   }, [runtime.currentLot]);
 
   useEffect(() => {
-    if (runtime.currentLot) {
-      setResultOverlay((current) => (current?.scenario === "ended" ? current : null));
+    const currentLotId = runtime.currentLot?.lotId ?? null;
+    const previousActiveLotId = previousActiveLotIdRef.current;
+
+    if (!previousActiveLotId) {
+      previousActiveLotIdRef.current = currentLotId;
       return;
     }
 
-    const previousLotResult = previousLotResultRef.current;
+    if (currentLotId === null && runtime.state !== "CLOSED") {
+      return;
+    }
+
+    if (currentLotId === previousActiveLotId && runtime.state !== "CLOSED") {
+      return;
+    }
+
+    const previousLotResult =
+      completedLotResultRef.current?.lotId === previousActiveLotId
+        ? completedLotResultRef.current
+        : previousLotResultRef.current?.lotId === previousActiveLotId
+          ? previousLotResultRef.current
+          : null;
 
     if (!previousLotResult || shownLotResultRef.current.has(previousLotResult.lotId)) {
-      return;
-    }
-
-    const isIntermission = (runtime.state as string) === "INTERMISSION" || runtime.state !== "CLOSED";
-
-    if (!isIntermission && runtime.state !== "CLOSED") {
+      previousActiveLotIdRef.current = currentLotId;
       return;
     }
 
     shownLotResultRef.current.add(previousLotResult.lotId);
+    previousActiveLotIdRef.current = currentLotId;
+    completedLotResultRef.current = null;
 
     const nextSoldLotsTotal = soldLotsTotal + (previousLotResult.totalBids > 0 ? 1 : 0);
     const nextLotsWonTotal = lotsWonTotal + (previousLotResult.viewerWon ? 1 : 0);
@@ -1024,7 +1044,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
       userBidCount: previousLotResult.userBidCount,
       countdownSeconds: DEFAULT_INTERMISSION_SECONDS,
     });
-  }, [lotsWonTotal, runtime.currentLot, runtime.state, runtime.totalLots, soldLotsTotal, userBidsPlacedTotal]);
+  }, [lotsWonTotal, runtime.currentLot?.lotId, runtime.state, runtime.totalLots, soldLotsTotal, userBidsPlacedTotal]);
 
   useEffect(() => {
     if (!runtime.currentLot) {
@@ -1099,6 +1119,11 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
 
     return () => window.clearTimeout(timer);
   }, [inlineError]);
+
+  const handleOverlayComplete = useCallback(() => {
+    setResultOverlay(null);
+    router.refresh();
+  }, [router]);
 
   const handleBid = async () => {
     if (!currentSnapshot || !runtime.currentLot || isSubmittingBid) {
@@ -1575,11 +1600,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
             vehicleImage={resultOverlay.vehicleImage}
             userBidCount={resultOverlay.userBidCount}
             countdownSeconds={resultOverlay.countdownSeconds}
-            onComplete={() => {
-              if (resultOverlay.scenario !== "ended") {
-                setResultOverlay(null);
-              }
-            }}
+            onComplete={handleOverlayComplete}
             ctaHref={withLocalePath("/my-bids", locale)}
             stats={resultOverlay.stats}
           />
@@ -1594,9 +1615,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
           vehicleImage={resultOverlay.vehicleImage}
           userBidCount={resultOverlay.userBidCount}
           countdownSeconds={resultOverlay.countdownSeconds}
-          onComplete={() => {
-            setResultOverlay(null);
-          }}
+          onComplete={handleOverlayComplete}
         />
       ) : null}
     </div>
