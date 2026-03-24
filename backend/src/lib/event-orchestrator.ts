@@ -23,6 +23,7 @@ type AuctionStateValue =
   | "LIVE"
   | "EXTENDED"
   | "CLOSED"
+  | "AWAITING_SELLER_DECISION"
   | "PAYMENT_PENDING"
   | "PAID"
   | "DEFAULTED"

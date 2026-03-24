@@ -103,3 +103,62 @@ export interface EventRuntime {
   completedLots: number;
   upcomingLots: EventUpcomingLot[];
 }
+
+export type MyBidAuctionStatus =
+  | "LIVE"
+  | "EXTENDED"
+  | "SCHEDULED"
+  | "AWAITING_SELLER_DECISION"
+  | "ENDED"
+  | "CLOSED"
+  | "PAYMENT_PENDING"
+  | "PAID"
+  | "DEFAULTED"
+  | "CANCELED"
+  | "RELISTED";
+
+export interface LiveBidItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  currentHighestBid: number;
+  isLeading: boolean;
+  auctionEndIso: string;
+  auctionStatus: "LIVE" | "EXTENDED";
+}
+
+export interface ScheduledBidItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStartIso: string;
+  auctionStatus: "SCHEDULED";
+  isLeading: boolean;
+}
+
+export interface WonPendingItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStatus: "AWAITING_SELLER_DECISION";
+  sellerDecisionDeadlineIso: string;
+}
+
+export interface EndedBidItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStatus: string;
+  isLeading: boolean;
+}
+
+export interface MyBidsResponse {
+  live: LiveBidItem[];
+  scheduled: ScheduledBidItem[];
+  wonPending: WonPendingItem[];
+  ended: EndedBidItem[];
+}

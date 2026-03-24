@@ -114,23 +114,50 @@ type BuyerWatchlistResponse = {
   nextCursor: string | null;
 };
 
-type BuyerBidItemStatus = "WINNING" | "OUTBID" | "WON_PAYMENT_DUE" | "PAID";
-
-type BuyerBidItem = {
+type LiveBidItem = {
   auctionId: string;
-  lotNumber: string;
   lotTitle: string;
-  city: string;
-  startsAt: string | null;
-  endsAt: string | null;
-  currentBid: number;
-  myBid: number;
-  status: BuyerBidItemStatus;
-  invoiceId: string | null;
+  imageUrl: string | null;
+  myBidAmount: number;
+  currentHighestBid: number;
+  isLeading: boolean;
+  auctionEndIso: string;
+  auctionStatus: "LIVE" | "EXTENDED";
+};
+
+type ScheduledBidItem = {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStartIso: string;
+  auctionStatus: "SCHEDULED";
+  isLeading: boolean;
+};
+
+type WonPendingItem = {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStatus: "AWAITING_SELLER_DECISION";
+  sellerDecisionDeadlineIso: string;
+};
+
+type EndedBidItem = {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStatus: string;
+  isLeading: boolean;
 };
 
 type BuyerMyBidsResponse = {
-  items: BuyerBidItem[];
+  live: LiveBidItem[];
+  scheduled: ScheduledBidItem[];
+  wonPending: WonPendingItem[];
+  ended: EndedBidItem[];
 };
 
 const watchlistQuerySchema = z
@@ -846,7 +873,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       const bids = await prisma.bid.findMany({
         where: {
-          userId: buyerContext.userId,
+          companyId: buyerContext.companyId,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: {
@@ -860,13 +887,15 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
               state: true,
               highestBidId: true,
               currentPrice: true,
-              sellerCompanyId: true,
+              winnerCompanyId: true,
+              decisionDeadlineAt: true,
               startsAt: true,
               endsAt: true,
               vehicle: {
                 select: {
                   brand: true,
                   model: true,
+                  images: true,
                 },
               },
             },
@@ -876,7 +905,10 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (bids.length === 0) {
         const emptyResponse: BuyerMyBidsResponse = {
-          items: [],
+          live: [],
+          scheduled: [],
+          wonPending: [],
+          ended: [],
         };
 
         await reply.code(200).send(emptyResponse);
@@ -889,12 +921,14 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           auctionId: string;
           lotTitle: string;
           state: string;
+          imageUrl: string | null;
           highestBidId: string | null;
-          currentBid: number;
-          myBid: number;
-          sellerCompanyId: string;
-          startsAt: Date;
-          endsAt: Date;
+          currentHighestBid: number;
+          myBidAmount: number;
+          winnerCompanyId: string | null;
+          decisionDeadlineAt: Date | string | null;
+          startsAt: Date | string;
+          endsAt: Date | string;
           bidIds: Set<string>;
         }
       >();
@@ -907,17 +941,20 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           bid.auction.vehicle?.model,
           bid.auction.id,
         );
+        const imageUrl = bid.auction.vehicle?.images?.[0] ?? null;
         const existing = groupedBids.get(bid.auctionId);
 
         if (!existing) {
           groupedBids.set(bid.auctionId, {
             auctionId: bid.auctionId,
             lotTitle,
+            imageUrl,
             state: bid.auction.state,
             highestBidId: bid.auction.highestBidId,
-            currentBid,
-            myBid: bidAmount,
-            sellerCompanyId: bid.auction.sellerCompanyId,
+            currentHighestBid: currentBid,
+            myBidAmount: bidAmount,
+            winnerCompanyId: bid.auction.winnerCompanyId,
+            decisionDeadlineAt: bid.auction.decisionDeadlineAt,
             startsAt: bid.auction.startsAt,
             endsAt: bid.auction.endsAt,
             bidIds: new Set([bid.id]),
@@ -925,100 +962,141 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           continue;
         }
 
-        existing.myBid = Math.max(existing.myBid, bidAmount);
-        existing.currentBid = currentBid;
+        existing.myBidAmount = Math.max(existing.myBidAmount, bidAmount);
+        existing.currentHighestBid = currentBid;
         existing.state = bid.auction.state;
         existing.highestBidId = bid.auction.highestBidId;
+        existing.winnerCompanyId = bid.auction.winnerCompanyId;
+        existing.decisionDeadlineAt = bid.auction.decisionDeadlineAt;
+        existing.imageUrl = existing.imageUrl ?? imageUrl;
         existing.bidIds.add(bid.id);
       }
 
-      const auctionIds = Array.from(groupedBids.keys());
-      const companyLookup = await loadSellerCompanyLookup(
-        Array.from(new Set(Array.from(groupedBids.values()).map((entry) => entry.sellerCompanyId))),
-      );
-      const invoices = await prisma.invoice.findMany({
-        where: {
-          buyerCompanyId: buyerContext.companyId,
-          auctionId: {
-            in: auctionIds,
-          },
-          status: {
-            in: ["ISSUED", "PAID", "DEFAULTED"],
-          },
-        },
-        select: {
-          id: true,
-          auctionId: true,
-          status: true,
-          dueAt: true,
-        },
-      });
-      const invoiceByAuctionId = new Map(invoices.map((invoice) => [invoice.auctionId, invoice]));
+      const endedAuctionStates = new Set([
+        "ENDED",
+        "CLOSED",
+        "PAYMENT_PENDING",
+        "PAID",
+        "DEFAULTED",
+        "CANCELED",
+        "RELISTED",
+      ]);
 
-      const items = Array.from(groupedBids.values())
-        .map<BuyerBidItem | null>((entry) => {
-          const invoice = invoiceByAuctionId.get(entry.auctionId);
-          const isWinning = entry.highestBidId ? entry.bidIds.has(entry.highestBidId) : false;
-          const city = companyLookup.get(entry.sellerCompanyId)?.country ?? "UAE";
-          let status: BuyerBidItemStatus | null = null;
+      const liveEntries: Array<{ sortValue: string; item: LiveBidItem }> = [];
+      const scheduledEntries: Array<{ sortValue: string; item: ScheduledBidItem }> = [];
+      const wonPendingEntries: Array<{ sortValue: string; item: WonPendingItem }> = [];
+      const endedEntries: Array<{ sortValue: string; item: EndedBidItem }> = [];
 
-          if (invoice?.status === "PAID") {
-            status = "PAID";
-          } else if (invoice && (invoice.status === "ISSUED" || invoice.status === "DEFAULTED")) {
-            status = "WON_PAYMENT_DUE";
-          } else if (isLiveAuctionState(entry.state)) {
-            status = isWinning ? "WINNING" : "OUTBID";
+      for (const entry of groupedBids.values()) {
+        const auctionStatus = normalizeStatusValue(entry.state);
+        const isLeading =
+          entry.highestBidId !== null && entry.bidIds.has(entry.highestBidId);
+
+        if (
+          auctionStatus === "AWAITING_SELLER_DECISION" &&
+          entry.winnerCompanyId === buyerContext.companyId
+        ) {
+          const sellerDecisionDeadlineIso = await toIsoString(entry.decisionDeadlineAt);
+
+          if (!sellerDecisionDeadlineIso) {
+            continue;
           }
 
-          if (!status) {
-            return null;
+          wonPendingEntries.push({
+            sortValue: sellerDecisionDeadlineIso,
+            item: {
+              auctionId: entry.auctionId,
+              lotTitle: entry.lotTitle,
+              imageUrl: entry.imageUrl,
+              myBidAmount: entry.myBidAmount,
+              auctionStatus: "AWAITING_SELLER_DECISION",
+              sellerDecisionDeadlineIso,
+            },
+          });
+          continue;
+        }
+
+        if (auctionStatus === "SCHEDULED") {
+          const auctionStartIso = await toIsoString(entry.startsAt);
+
+          if (!auctionStartIso) {
+            continue;
           }
 
-          return {
+          scheduledEntries.push({
+            sortValue: auctionStartIso,
+            item: {
+              auctionId: entry.auctionId,
+              lotTitle: entry.lotTitle,
+              imageUrl: entry.imageUrl,
+              myBidAmount: entry.myBidAmount,
+              auctionStartIso,
+              auctionStatus: "SCHEDULED",
+              isLeading,
+            },
+          });
+          continue;
+        }
+
+        if (auctionStatus === "LIVE" || auctionStatus === "EXTENDED") {
+          const auctionEndIso = await toIsoString(entry.endsAt);
+
+          if (!auctionEndIso) {
+            continue;
+          }
+
+          liveEntries.push({
+            sortValue: auctionEndIso,
+            item: {
+              auctionId: entry.auctionId,
+              lotTitle: entry.lotTitle,
+              imageUrl: entry.imageUrl,
+              myBidAmount: entry.myBidAmount,
+              currentHighestBid: entry.currentHighestBid,
+              isLeading,
+              auctionEndIso,
+              auctionStatus,
+            },
+          });
+          continue;
+        }
+
+        if (!endedAuctionStates.has(auctionStatus)) {
+          continue;
+        }
+
+        const endedSortIso = await toIsoString(entry.endsAt);
+
+        if (!endedSortIso) {
+          continue;
+        }
+
+        endedEntries.push({
+          sortValue: endedSortIso,
+          item: {
             auctionId: entry.auctionId,
-            lotNumber: buildLotNumber(entry.auctionId),
             lotTitle: entry.lotTitle,
-            city,
-            startsAt: entry.startsAt.toISOString(),
-            endsAt: entry.endsAt.toISOString(),
-            currentBid: entry.currentBid,
-            myBid: entry.myBid,
-            status,
-            invoiceId: invoice?.id ?? null,
-          };
-        })
-        .filter((item): item is BuyerBidItem => item !== null)
-        .sort((left, right) => {
-          const priority = (value: BuyerBidItemStatus): number => {
-            if (value === "WON_PAYMENT_DUE") {
-              return 0;
-            }
-
-            if (value === "OUTBID") {
-              return 1;
-            }
-
-            if (value === "WINNING") {
-              return 2;
-            }
-
-            return 3;
-          };
-
-          const priorityDelta = priority(left.status) - priority(right.status);
-
-          if (priorityDelta !== 0) {
-            return priorityDelta;
-          }
-
-          return (
-            new Date(left.endsAt ?? left.startsAt ?? 0).getTime() -
-            new Date(right.endsAt ?? right.startsAt ?? 0).getTime()
-          );
+            imageUrl: entry.imageUrl,
+            myBidAmount: entry.myBidAmount,
+            auctionStatus,
+            isLeading,
+          },
         });
+      }
 
       const responseBody: BuyerMyBidsResponse = {
-        items,
+        live: liveEntries
+          .sort((left, right) => left.sortValue.localeCompare(right.sortValue))
+          .map((entry) => entry.item),
+        scheduled: scheduledEntries
+          .sort((left, right) => left.sortValue.localeCompare(right.sortValue))
+          .map((entry) => entry.item),
+        wonPending: wonPendingEntries
+          .sort((left, right) => left.sortValue.localeCompare(right.sortValue))
+          .map((entry) => entry.item),
+        ended: endedEntries
+          .sort((left, right) => right.sortValue.localeCompare(left.sortValue))
+          .map((entry) => entry.item),
       };
 
       await reply.code(200).send(responseBody);
