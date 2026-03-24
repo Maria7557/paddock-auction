@@ -1,0 +1,9 @@
+ALTER TABLE "Vehicle"
+ADD COLUMN IF NOT EXISTS "images" TEXT[];
+
+UPDATE "Vehicle"
+SET "images" = COALESCE("images", ARRAY[]::TEXT[]);
+
+ALTER TABLE "Vehicle"
+ALTER COLUMN "images" SET DEFAULT ARRAY[]::TEXT[],
+ALTER COLUMN "images" SET NOT NULL;
