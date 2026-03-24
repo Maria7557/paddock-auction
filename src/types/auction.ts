@@ -147,6 +147,16 @@ export interface WonPendingItem {
   sellerDecisionDeadlineIso: string;
 }
 
+export interface WonInvoiceItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  myBidAmount: number;
+  auctionStatus: "PAYMENT_PENDING";
+  invoiceId: string | null;
+  invoiceDueAt: string | null;
+}
+
 export interface EndedBidItem {
   auctionId: string;
   lotTitle: string;
@@ -160,6 +170,7 @@ export interface MyBidsResponse {
   live: LiveBidItem[];
   scheduled: ScheduledBidItem[];
   wonPending: WonPendingItem[];
+  wonInvoice: WonInvoiceItem[];
   ended: EndedBidItem[];
 }
 

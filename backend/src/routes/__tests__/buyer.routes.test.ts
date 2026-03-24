@@ -24,6 +24,7 @@ const { mockPrisma } = vi.hoisted(() => ({
     },
     invoice: {
       count: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
     },
     auction: {
@@ -125,6 +126,7 @@ beforeEach(() => {
     lockedBalance: 0,
   });
   mockPrisma.invoice.count.mockResolvedValue(0);
+  mockPrisma.invoice.findFirst.mockResolvedValue(null);
   mockPrisma.invoice.findMany.mockResolvedValue([]);
   mockPrisma.auction.findMany.mockResolvedValue([]);
   mockPrisma.auction.findUnique.mockResolvedValue(null);
@@ -423,6 +425,7 @@ describe("GET /api/buyer/my-bids", () => {
             model: "A6",
             images: ["https://cdn.example.com/audi-a6.jpg"],
           },
+          invoice: null,
         },
       },
       {
@@ -432,7 +435,7 @@ describe("GET /api/buyer/my-bids", () => {
         createdAt: new Date("2026-03-17T11:00:00.000Z"),
         auction: {
           id: "auction-4",
-          state: "PAID",
+          state: "PAYMENT_PENDING",
           highestBidId: "bid-4",
           currentPrice: 420000,
           winnerCompanyId: buyerCompanyId,
@@ -443,6 +446,10 @@ describe("GET /api/buyer/my-bids", () => {
             brand: "Mercedes-Benz",
             model: "C-Class",
             images: ["https://cdn.example.com/mercedes-c-class.jpg"],
+          },
+          invoice: {
+            id: "invoice-4",
+            dueAt: new Date("2026-03-19T08:00:00.000Z"),
           },
         },
       },
@@ -465,9 +472,61 @@ describe("GET /api/buyer/my-bids", () => {
             model: "Patrol",
             images: ["https://cdn.example.com/nissan-patrol.jpg"],
           },
+          invoice: null,
+        },
+      },
+      {
+        id: "bid-6",
+        auctionId: "auction-6",
+        amount: 455000,
+        createdAt: new Date("2026-03-17T13:00:00.000Z"),
+        auction: {
+          id: "auction-6",
+          state: "RELISTED",
+          highestBidId: "bid-6",
+          currentPrice: 455000,
+          winnerCompanyId: buyerCompanyId,
+          decisionDeadlineAt: null,
+          startsAt: new Date("2026-03-14T08:00:00.000Z"),
+          endsAt: new Date("2026-03-15T08:00:00.000Z"),
+          vehicle: {
+            brand: "Porsche",
+            model: "Cayenne",
+            images: ["https://cdn.example.com/porsche-cayenne.jpg"],
+          },
+          invoice: {
+            id: "invoice-6",
+            dueAt: new Date("2026-03-18T08:00:00.000Z"),
+          },
+        },
+      },
+      {
+        id: "bid-7",
+        auctionId: "auction-7",
+        amount: 287000,
+        createdAt: new Date("2026-03-17T14:00:00.000Z"),
+        auction: {
+          id: "auction-7",
+          state: "DEFAULTED",
+          highestBidId: "bid-7",
+          currentPrice: 287000,
+          winnerCompanyId: buyerCompanyId,
+          decisionDeadlineAt: null,
+          startsAt: new Date("2026-03-13T08:00:00.000Z"),
+          endsAt: new Date("2026-03-14T08:00:00.000Z"),
+          vehicle: {
+            brand: "Lexus",
+            model: "ES",
+            images: ["https://cdn.example.com/lexus-es.jpg"],
+          },
+          invoice: null,
         },
       },
     ]);
+    mockPrisma.invoice.findFirst.mockResolvedValueOnce({
+      id: "invoice-4",
+      dueAt: new Date("2026-03-19T08:00:00.000Z"),
+    });
 
     const res = await request
       .get("/api/buyer/my-bids")
@@ -507,17 +566,47 @@ describe("GET /api/buyer/my-bids", () => {
         sellerDecisionDeadlineIso: "2026-03-20T08:00:00.000Z",
       },
     ]);
-    expect(res.body.ended).toEqual([
+    expect(res.body.wonInvoice).toEqual([
       {
         auctionId: "auction-4",
         lotTitle: "Mercedes-Benz C-Class",
         imageUrl: "https://cdn.example.com/mercedes-c-class.jpg",
         myBidAmount: 420000,
-        auctionStatus: "PAID",
+        auctionStatus: "PAYMENT_PENDING",
+        invoiceId: "invoice-4",
+        invoiceDueAt: "2026-03-19T08:00:00.000Z",
+      },
+    ]);
+    expect(res.body.ended).toEqual([
+      {
+        auctionId: "auction-6",
+        lotTitle: "Porsche Cayenne",
+        imageUrl: "https://cdn.example.com/porsche-cayenne.jpg",
+        myBidAmount: 455000,
+        auctionStatus: "RELISTED",
+        isLeading: true,
+      },
+      {
+        auctionId: "auction-7",
+        lotTitle: "Lexus ES",
+        imageUrl: "https://cdn.example.com/lexus-es.jpg",
+        myBidAmount: 287000,
+        auctionStatus: "DEFAULTED",
         isLeading: true,
       },
     ]);
+    expect(res.body.ended.find((item: { auctionId: string }) => item.auctionId === "auction-4")).toBeUndefined();
     expect(res.body.ended.find((item: { auctionId: string }) => item.auctionId === "auction-5")).toBeUndefined();
+    expect(mockPrisma.invoice.findFirst).toHaveBeenCalledWith({
+      where: {
+        auctionId: "auction-4",
+        buyerCompanyId,
+      },
+      select: {
+        id: true,
+        dueAt: true,
+      },
+    });
     expect(res.body.live[0]).toMatchObject({
       auctionId: "auction-1",
       isLeading: false,

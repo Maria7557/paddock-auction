@@ -47,6 +47,7 @@ const EMPTY_BIDS: MyBidsResponse = {
   live: [],
   scheduled: [],
   wonPending: [],
+  wonInvoice: [],
   ended: [],
 };
 
@@ -62,6 +63,7 @@ function normalizeMyBidsResponse(payload: Partial<MyBidsResponse> | null | undef
     live: Array.isArray(payload?.live) ? payload.live : [],
     scheduled: Array.isArray(payload?.scheduled) ? payload.scheduled : [],
     wonPending: Array.isArray(payload?.wonPending) ? payload.wonPending : [],
+    wonInvoice: Array.isArray(payload?.wonInvoice) ? payload.wonInvoice : [],
     ended: Array.isArray(payload?.ended) ? payload.ended : [],
   };
 }
@@ -170,6 +172,7 @@ export default function MyBidsPage() {
     bids.live.length > 0 ||
     bids.scheduled.length > 0 ||
     bids.wonPending.length > 0 ||
+    bids.wonInvoice.length > 0 ||
     bids.ended.length > 0;
 
   return (
@@ -249,6 +252,17 @@ export default function MyBidsPage() {
                 <div className={styles.cardGrid}>
                   {bids.wonPending.map((item) => (
                     <BidWatchCard key={item.auctionId} mode="won-pending" item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {bids.wonInvoice.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Won · Pay Now</h2>
+                <div className={styles.cardGrid}>
+                  {bids.wonInvoice.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="won-invoice" item={item} />
                   ))}
                 </div>
               </section>

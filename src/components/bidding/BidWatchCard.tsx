@@ -14,6 +14,7 @@ import type {
   LiveBidItem,
   MyBidAuctionStatus,
   ScheduledBidItem,
+  WonInvoiceItem,
   WonPendingItem,
 } from "@/src/types/auction";
 
@@ -31,6 +32,10 @@ type BidWatchCardProps =
   | {
       mode: "won-pending";
       item: WonPendingItem;
+    }
+  | {
+      mode: "won-invoice";
+      item: WonInvoiceItem;
     }
   | {
       mode: "ended";
@@ -106,6 +111,24 @@ function formatDateTimeLabel(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+  }).format(parsed);
+}
+
+function formatDateLabel(value: string | null): string {
+  if (!value) {
+    return "Date unavailable";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "Date unavailable";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   }).format(parsed);
 }
 
@@ -312,6 +335,57 @@ export function BidWatchCard({ mode, item }: BidWatchCardProps) {
     );
   }
 
+  if (mode === "won-invoice") {
+    return (
+      <article className={styles.bidCard}>
+        <CardImage title={item.lotTitle} imageUrl={item.imageUrl} />
+
+        <div className={styles.cardBody}>
+          <div className={styles.cardHeader}>
+            <h3 className={styles.cardTitle}>{item.lotTitle}</h3>
+
+            <div className={styles.badgeRow}>
+              <span className={`${styles.statePill} ${styles.wonBadge}`}>You Won 🏆</span>
+              <span className={`${styles.statePill} ${styles.awaitingBadge}`}>
+                Invoice Issued · Pay within 48h
+              </span>
+            </div>
+          </div>
+
+          <div className={styles.metaList}>
+            <MetaRow
+              icon={<IconTag size={16} strokeWidth={2} />}
+              label="Winning Bid"
+              value={formatAed(item.myBidAmount)}
+            />
+            {item.invoiceDueAt ? (
+              <MetaRow
+                icon={<IconCalendar size={16} strokeWidth={2} />}
+                label="Pay Before"
+                value={
+                  <div className={styles.metaValueStack}>
+                    <span>{formatDateLabel(item.invoiceDueAt)}</span>
+                    <LiveCountdown
+                      targetIso={item.invoiceDueAt}
+                      prefix="Pay within"
+                      className={styles.countdown}
+                    />
+                  </div>
+                }
+              />
+            ) : null}
+          </div>
+
+          <div className={styles.cardFooter}>
+            <Link href="/invoices" className={`btn btn-primary ${styles.actionButton}`}>
+              View Invoice
+            </Link>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article className={styles.bidCard}>
       <CardImage title={item.lotTitle} imageUrl={item.imageUrl} ended />
@@ -322,7 +396,17 @@ export function BidWatchCard({ mode, item }: BidWatchCardProps) {
 
           <div className={styles.badgeRow}>
             <AuctionStatusBadge status={item.auctionStatus} />
-            <span className={`${styles.statePill} ${styles.endedPill}`}>Not Won</span>
+            <span
+              className={`${styles.statePill} ${
+                item.auctionStatus === "DEFAULTED" ? styles.defaultedPill : styles.endedPill
+              }`}
+            >
+              {item.auctionStatus === "RELISTED"
+                ? "Seller Cancelled Deal"
+                : item.auctionStatus === "DEFAULTED"
+                  ? "Defaulted"
+                  : "Not Won"}
+            </span>
           </div>
         </div>
 

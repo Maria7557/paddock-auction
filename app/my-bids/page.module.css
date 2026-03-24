@@ -150,6 +150,11 @@
   color: var(--ink-muted);
 }
 
+.defaultedPill {
+  background: var(--red-lt);
+  color: var(--red);
+}
+
 .metaList {
   display: grid;
   gap: 12px;
@@ -187,6 +192,11 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--ink-primary);
+}
+
+.metaValueStack {
+  display: grid;
+  gap: 4px;
 }
 
 .countdown {

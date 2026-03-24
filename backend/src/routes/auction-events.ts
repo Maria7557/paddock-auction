@@ -1317,6 +1317,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
               model: lot.auction.vehicle.model,
             }),
             sellerCompany: companyNameById.get(lot.auction.sellerCompanyId) ?? "Unknown seller",
+            auctionState: lot.auction.state,
             status: normalizeResultStatus(lot.state, lot.auction.state),
             winningBid: await toNumberValue(lot.auction.currentPrice),
             bids: lot.auction._count.bids,

@@ -531,6 +531,7 @@ describe("auction event routes", () => {
         auctionId: "auction-1",
         vehicle: "2024 Toyota Camry",
         sellerCompany: "Seller Fleet LLC",
+        auctionState: "PAYMENT_PENDING",
         buyerCompany: "Buyer Motors LLC",
       }),
     ]);
