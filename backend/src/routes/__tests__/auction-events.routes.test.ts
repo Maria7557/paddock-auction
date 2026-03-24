@@ -108,6 +108,9 @@ const { mockPrisma, MockRedis, resetMockRedis } = vi.hoisted(() => {
         findMany: vi.fn(),
         update: vi.fn(),
       },
+      company: {
+        findMany: vi.fn(),
+      },
       auctionStateTransition: {
         create: vi.fn(),
       },
@@ -329,6 +332,7 @@ beforeEach(async () => {
     minIncrement: 500,
   });
   mockPrisma.auction.findMany.mockResolvedValue([]);
+  mockPrisma.company.findMany.mockResolvedValue([]);
   mockPrisma.user.findMany.mockResolvedValue([{ email: "buyer@example.com" }]);
   mockPrisma.auctionEventLot.findFirst.mockResolvedValue(null);
   mockPrisma.auctionEventLot.findUnique.mockResolvedValue(null);
@@ -473,6 +477,63 @@ describe("auction event routes", () => {
     expect(response.body.state).toBe("SCHEDULED");
     expect(response.body.currentLot).toBeNull();
     expect(response.body.totalLots).toBe(1);
+  });
+
+  it("GET /api/admin/events/:eventId/results includes seller company", async () => {
+    mockPrisma.auctionEvent.findUnique.mockResolvedValue({
+      id: eventId,
+      title: "Prime Time Event",
+      state: "CLOSED",
+      scheduledAt: new Date("2026-03-20T09:00:00.000Z"),
+      lots: [
+        {
+          id: "event-lot-1",
+          auctionId: "auction-1",
+          position: 0,
+          state: "SOLD",
+          auction: {
+            id: "auction-1",
+            state: "PAYMENT_PENDING",
+            currentPrice: 125000,
+            startingPrice: 110000,
+            sellerCompanyId: "seller-company-1",
+            winnerCompanyId: "buyer-company-1",
+            vehicle: {
+              brand: "Toyota",
+              model: "Camry",
+              year: 2024,
+            },
+            _count: {
+              bids: 8,
+            },
+          },
+        },
+      ],
+    });
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: "seller-company-1",
+        name: "Seller Fleet LLC",
+      },
+      {
+        id: "buyer-company-1",
+        name: "Buyer Motors LLC",
+      },
+    ]);
+
+    const response = await request
+      .get(`/api/admin/events/${eventId}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.results).toEqual([
+      expect.objectContaining({
+        auctionId: "auction-1",
+        vehicle: "2024 Toyota Camry",
+        sellerCompany: "Seller Fleet LLC",
+        buyerCompany: "Buyer Motors LLC",
+      }),
+    ]);
   });
 
   it("POST /api/admin/events creates event (admin auth)", async () => {

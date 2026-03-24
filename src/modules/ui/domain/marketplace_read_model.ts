@@ -57,6 +57,7 @@ export type AuctionLot = {
   status: AuctionStatus;
   currentBidAed: number;
   marketPriceAed?: number | null;
+  buyNowPriceAed?: number | null;
   minimumStepAed: number;
   endsAt: string;
   startsAt: string;
@@ -105,7 +106,7 @@ export type WalletReadModel = {
   transactions: WalletTransactionReadModel[];
 };
 
-export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED" | "CANCELED";
+export type InvoiceStatus = "ISSUED" | "PAID_PENDING_CONFIRMATION" | "PAID" | "DEFAULTED" | "CANCELED";
 
 export type InvoiceReadModel = {
   id: string;
@@ -443,6 +444,7 @@ function toAuctionLot({
     status,
     currentBidAed,
     marketPriceAed: vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : null,
+    buyNowPriceAed: auction.buyNowPrice === null ? null : Number(auction.buyNowPrice.toString()),
     minimumStepAed,
     endsAt: auction.endsAt.toISOString(),
     startsAt: auction.startsAt.toISOString(),

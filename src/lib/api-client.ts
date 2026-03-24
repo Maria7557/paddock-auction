@@ -82,6 +82,7 @@ export type EventResultEntry = {
   position: number;
   auctionId: string;
   vehicle: string;
+  sellerCompany: string | null;
   status: "QUEUED" | "ON_BLOCK" | "SOLD" | "UNSOLD" | "SOLD_DEFAULTED";
   winningBid: number;
   bids: number;

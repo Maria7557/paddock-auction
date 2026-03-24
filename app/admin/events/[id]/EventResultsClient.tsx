@@ -71,10 +71,11 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
 
   function downloadCsv(): void {
     const rows = [
-      ["#", "Vehicle", "Status", "Winning Bid", "Bids", "Buyer Company", "Payment"],
+      ["#", "Vehicle", "Seller Company", "Status", "Winning Bid", "Bids", "Buyer Company", "Payment"],
       ...results.map((result) => [
         String(result.position + 1),
         result.vehicle,
+        result.sellerCompany ?? "",
         getStatusLabel(result.status),
         String(result.winningBid),
         String(result.bids),
@@ -129,6 +130,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               <tr>
                 <th>#</th>
                 <th>Vehicle</th>
+                <th>Seller Company</th>
                 <th>Status</th>
                 <th>Winning Bid</th>
                 <th>Bids</th>
@@ -141,6 +143,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
                 <tr key={result.lotId}>
                   <td className={styles.mono}>#{result.position + 1}</td>
                   <td>{result.vehicle}</td>
+                  <td>{result.sellerCompany ?? "—"}</td>
                   <td>
                     <div className={styles.statusActions}>
                       <span className={`${styles.statusBadge} ${getStatusClassName(result.status)}`}>
@@ -169,7 +172,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               ))}
               {results.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     No results yet.
                   </td>
                 </tr>

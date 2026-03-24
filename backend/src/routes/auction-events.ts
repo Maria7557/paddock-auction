@@ -483,7 +483,6 @@ async function getWebSocketToken(request: AuctionEventWsRequest): Promise<string
 
 async function authenticateWebSocketRequest(
   request: AuctionEventWsRequest,
-  _reply: FastifyReply,
 ): Promise<void> {
   try {
     const token = await getWebSocketToken(request);
@@ -1250,6 +1249,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
                   state: true,
                   currentPrice: true,
                   startingPrice: true,
+                  sellerCompanyId: true,
                   winnerCompanyId: true,
                   vehicle: {
                     select: {
@@ -1277,18 +1277,18 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const winnerCompanyIds = Array.from(
+      const companyIds = Array.from(
         new Set(
           event.lots
-            .map((lot) => lot.auction.winnerCompanyId)
+            .flatMap((lot) => [lot.auction.sellerCompanyId, lot.auction.winnerCompanyId])
             .filter((companyId): companyId is string => typeof companyId === "string" && companyId.length > 0),
         ),
       );
-      const companies = winnerCompanyIds.length
+      const companies = companyIds.length
         ? await prisma.company.findMany({
             where: {
               id: {
-                in: winnerCompanyIds,
+                in: companyIds,
               },
             },
             select: {
@@ -1316,6 +1316,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
               brand: lot.auction.vehicle.brand,
               model: lot.auction.vehicle.model,
             }),
+            sellerCompany: companyNameById.get(lot.auction.sellerCompanyId) ?? "Unknown seller",
             status: normalizeResultStatus(lot.state, lot.auction.state),
             winningBid: await toNumberValue(lot.auction.currentPrice),
             bids: lot.auction._count.bids,
