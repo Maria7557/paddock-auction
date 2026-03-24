@@ -541,6 +541,26 @@ export const api = {
         getRequest<T>(`/api/seller/auctions/${id}`, options),
       update: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         patchJson<T>(`/api/seller/auctions/${id}`, payload, options),
+      decision: async <T = unknown>(
+        id: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(
+          `/api/seller/auctions/${id}/decision`,
+          payload,
+          {
+            ...options,
+            headers: {
+              ...Object.fromEntries(new Headers(options?.headers).entries()),
+              "idempotency-key": createIdempotencyKey(),
+            },
+          },
+        ),
+    },
+    decisions: {
+      pending: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/seller/decisions/pending", options),
     },
     company: {
       get: async <T = unknown>(options?: RequestInit): Promise<T> =>
@@ -575,6 +595,12 @@ export const api = {
     auctions: {
       relist: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
         patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+      forceDecision: async <T = unknown>(
+        auctionId: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(`/api/admin/auctions/${auctionId}/force-decision`, payload, options),
     },
     vehicles: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>

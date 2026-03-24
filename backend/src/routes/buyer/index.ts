@@ -329,17 +329,8 @@ function buildLotTitle(brand: string | null | undefined, model: string | null | 
   return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
 }
 
-function buildLotNumber(lotId: string): string {
-  return `Lot ${lotId.slice(0, 8).toUpperCase()}`;
-}
-
 function normalizeStatusValue(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
-}
-
-function isLiveAuctionState(value: string): boolean {
-  const normalized = normalizeStatusValue(value);
-  return normalized === "LIVE" || normalized === "EXTENDED";
 }
 
 function applyLotFilters(
@@ -1062,6 +1053,10 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         if (!endedAuctionStates.has(auctionStatus)) {
+          continue;
+        }
+
+        if (entry.winnerCompanyId !== buyerContext.companyId) {
           continue;
         }
 

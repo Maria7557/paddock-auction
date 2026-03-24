@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SellerTabs } from "@/components/seller/SellerTabs";
 import { VehicleListCard } from "@/components/seller/VehicleListCard";
-import { api, getApiErrorMessage } from "@/src/lib/api-client";
+import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
 
 type SellerVehiclesResponse = {
   total: number;
@@ -24,6 +25,7 @@ type SellerVehiclesResponse = {
       startsAt: string;
       endsAt: string;
       currentPrice: number;
+      decisionDeadlineAt: string | null;
     } | null;
   }>;
 };
@@ -37,6 +39,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 export default function SellerVehiclesPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("ALL");
   const [sort, setSort] = useState<(typeof SORT_OPTIONS)[number]["value"]>("newest");
@@ -64,17 +67,61 @@ export default function SellerVehiclesPage() {
       const payload = await api.seller.vehicles.list<SellerVehiclesResponse>(
         params,
         {
-        cache: "no-store",
+          cache: "no-store",
         },
       );
 
       setData(payload ?? { total: 0, vehicles: [] });
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.statusCode === 401) {
+        router.replace("/login?next=/seller/vehicles");
+        return;
+      }
+
       setError(getApiErrorMessage(requestError, "Unexpected error"));
     } finally {
       setLoading(false);
     }
-  }, [search, status, sort]);
+  }, [router, search, status, sort]);
+
+  const handleAuctionDecision = useCallback(
+    async (vehicleId: string, auctionId: string, decision: "accept" | "decline") => {
+      try {
+        await api.seller.auctions.decision(
+          auctionId,
+          { decision },
+          {
+            cache: "no-store",
+          },
+        );
+      } catch (requestError) {
+        if (requestError instanceof ApiError && requestError.statusCode === 401) {
+          router.replace("/login?next=/seller/vehicles");
+          return;
+        }
+
+        throw requestError;
+      }
+
+      setData((current) => ({
+        ...current,
+        vehicles: current.vehicles.map((vehicle) => {
+          if (vehicle.id !== vehicleId || !vehicle.latestAuction || vehicle.latestAuction.id !== auctionId) {
+            return vehicle;
+          }
+
+          return {
+            ...vehicle,
+            latestAuction: {
+              ...vehicle.latestAuction,
+              state: decision === "accept" ? "PAYMENT_PENDING" : "RELISTED",
+            },
+          };
+        }),
+      }));
+    },
+    [router],
+  );
 
   useEffect(() => {
     void loadVehicles();
@@ -151,7 +198,11 @@ export default function SellerVehiclesPage() {
       {!loading && data.vehicles.length > 0 ? (
         <section className="seller-vehicle-list">
           {data.vehicles.map((vehicle) => (
-            <VehicleListCard key={vehicle.id} vehicle={vehicle} />
+            <VehicleListCard
+              key={vehicle.id}
+              vehicle={vehicle}
+              onDecision={(auctionId, decision) => handleAuctionDecision(vehicle.id, auctionId, decision)}
+            />
           ))}
         </section>
       ) : null}

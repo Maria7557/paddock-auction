@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 
+import type { Prisma } from "@prisma/client";
 import type { ScheduledTask } from "node-cron";
 import cron from "node-cron";
 
 import { prisma } from "./db";
-import { createIssuedInvoice, releaseAuctionDepositLocks } from "./lib/auction-deposit-locks";
+import { releaseAuctionDepositLocks } from "./lib/auction-deposit-locks";
 import { checkAndTick, startEvent } from "./lib/event-orchestrator";
 
 type DecimalLike =
@@ -38,6 +39,12 @@ type DueDeadlineRow = {
   buyer_company_id: string;
 };
 
+type DueSellerDecisionRow = {
+  id: string;
+  seller_company_id: string;
+  winner_company_id: string | null;
+};
+
 const schedulerActorId = "system:scheduler";
 const scheduledTasks: ScheduledTask[] = [];
 
@@ -61,54 +68,6 @@ let schedulerLogger: LoggerLike = {
   },
 };
 
-async function toNumberValue(value: DecimalLike): Promise<number> {
-  if (typeof value === "number") {
-    return value;
-  }
-
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-
-  if (typeof value === "string") {
-    const parsed = Number(value);
-
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  if (value && typeof value === "object" && typeof value.toNumber === "function") {
-    return value.toNumber();
-  }
-
-  if (value && typeof value === "object" && typeof value.valueOf === "function") {
-    const rawValue = value.valueOf();
-
-    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
-      return rawValue;
-    }
-
-    if (typeof rawValue === "string") {
-      const parsed = Number(rawValue);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-
-  if (value && typeof value === "object" && typeof value.toString === "function") {
-    const parsed = Number(value.toString());
-
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  throw new Error("Unable to convert value to number");
-}
-
 async function addHours(base: Date, hours: number): Promise<Date> {
   const next = new Date(base);
 
@@ -127,7 +86,7 @@ async function createAuditLog(
           entityType: string;
           entityId: string;
           payloadHash: string;
-          payload: any;
+          payload: Prisma.InputJsonValue;
         };
       }) => Promise<unknown>;
     };
@@ -136,7 +95,7 @@ async function createAuditLog(
     action: string;
     entityType: string;
     entityId: string;
-    payload: any;
+    payload: Prisma.InputJsonValue;
   },
 ): Promise<void> {
   const payloadHashHex = createHash("sha256")
@@ -150,7 +109,7 @@ async function createAuditLog(
       entityType: input.entityType,
       entityId: input.entityId,
       payloadHash: payloadHashHex,
-      payload: JSON.parse(JSON.stringify(input.payload)) as any,
+      payload: JSON.parse(JSON.stringify(input.payload)) as Prisma.InputJsonValue,
     },
   });
 }
@@ -182,11 +141,16 @@ async function processExpiredAuctionsBatch(): Promise<number> {
           },
         });
 
-        const nextState = winner ? "PAYMENT_PENDING" : "ENDED";
+        const nextState = winner ? "AWAITING_SELLER_DECISION" : "ENDED";
+        const decisionDeadlineAt = winner ? await addHours(new Date(), 24) : null;
         const updateResult = await tx.$executeRaw`
           UPDATE auctions
           SET state = ${nextState}::"AuctionState",
               winner_company_id = ${winner?.companyId ?? null},
+              decision_deadline_at = ${decisionDeadlineAt},
+              seller_decision = NULL,
+              seller_decided_at = NULL,
+              seller_decided_by = NULL,
               closed_at = NOW(),
               version = version + 1,
               updated_at = NOW()
@@ -212,19 +176,10 @@ async function processExpiredAuctionsBatch(): Promise<number> {
         });
 
         if (winner) {
-          const subtotal = await toNumberValue(winner.amount);
           await releaseAuctionDepositLocks(tx, {
             auctionId: auction.id,
             winnerCompanyId: winner.companyId,
             reason: "AUCTION_LOST_RELEASE",
-          });
-
-          await createIssuedInvoice(tx, {
-            auctionId: auction.id,
-            buyerCompanyId: winner.companyId,
-            sellerCompanyId: auction.seller_company_id,
-            subtotal,
-            dueAt: await addHours(new Date(), 48),
           });
         } else {
           await releaseAuctionDepositLocks(tx, {
@@ -232,6 +187,80 @@ async function processExpiredAuctionsBatch(): Promise<number> {
             reason: "AUCTION_ENDED_NO_WINNER",
           });
         }
+
+        processed += 1;
+      }
+
+      return processed;
+    },
+    {
+      isolationLevel: "Serializable",
+    },
+  );
+}
+
+async function processExpiredSellerDecisionBatch(): Promise<number> {
+  return prisma.$transaction(
+    async (tx) => {
+      const auctions = await tx.$queryRaw<DueSellerDecisionRow[]>`
+        SELECT id, seller_company_id, winner_company_id
+        FROM auctions
+        WHERE state = 'AWAITING_SELLER_DECISION'
+          AND decision_deadline_at < NOW()
+          AND seller_decision IS NULL
+        FOR UPDATE SKIP LOCKED
+        LIMIT 20
+      `;
+
+      let processed = 0;
+
+      for (const auction of auctions) {
+        const now = new Date();
+
+        await releaseAuctionDepositLocks(tx, {
+          auctionId: auction.id,
+          reason: "SELLER_DECISION_EXPIRED",
+        });
+
+        await tx.auction.update({
+          where: {
+            id: auction.id,
+          },
+          data: {
+            state: "RELISTED",
+            sellerDecision: "expired",
+            sellerDecidedAt: now,
+            sellerDecidedBy: null,
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: auction.id,
+            fromState: "AWAITING_SELLER_DECISION",
+            toState: "RELISTED",
+            trigger: "DECISION_DEADLINE_EXPIRED",
+            actorId: schedulerActorId,
+            reason: JSON.stringify({
+              sellerCompanyId: auction.seller_company_id,
+              buyerCompanyId: auction.winner_company_id,
+            }),
+          },
+        });
+
+        await createAuditLog(tx, {
+          action: "SELLER_DECISION_EXPIRED",
+          entityType: "Auction",
+          entityId: auction.id,
+          payload: {
+            auctionId: auction.id,
+            previousState: "AWAITING_SELLER_DECISION",
+            nextState: "RELISTED",
+            sellerCompanyId: auction.seller_company_id,
+            buyerCompanyId: auction.winner_company_id,
+            decision: "expired",
+          },
+        });
 
         processed += 1;
       }
@@ -393,6 +422,18 @@ export async function enforcePaymentDeadlines(): Promise<void> {
   );
 }
 
+export async function runSellerDecisionDeadlineJob(): Promise<void> {
+  const processed = await processExpiredSellerDecisionBatch();
+
+  schedulerLogger.info(
+    {
+      job: "runSellerDecisionDeadlineJob",
+      processed,
+    },
+    "Scheduler job completed",
+  );
+}
+
 export async function runEventAutoStartJob(): Promise<void> {
   const dueEvents = await prisma.auctionEvent.findMany({
     where: {
@@ -494,6 +535,22 @@ export async function startScheduler(): Promise<void> {
         schedulerLogger.error(
           {
             job: "closeExpiredAuctions",
+            err: error instanceof Error ? error.message : String(error),
+          },
+          "Scheduler job failed",
+        );
+      }
+    }),
+  );
+
+  scheduledTasks.push(
+    cron.schedule("*/5 * * * *", async () => {
+      try {
+        await runSellerDecisionDeadlineJob();
+      } catch (error) {
+        schedulerLogger.error(
+          {
+            job: "runSellerDecisionDeadlineJob",
             err: error instanceof Error ? error.message : String(error),
           },
           "Scheduler job failed",

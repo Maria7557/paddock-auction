@@ -446,6 +446,27 @@ describe("GET /api/buyer/my-bids", () => {
           },
         },
       },
+      {
+        id: "bid-5",
+        auctionId: "auction-5",
+        amount: 199000,
+        createdAt: new Date("2026-03-17T12:00:00.000Z"),
+        auction: {
+          id: "auction-5",
+          state: "CANCELED",
+          highestBidId: "someone-else",
+          currentPrice: 205000,
+          winnerCompanyId: "other-company",
+          decisionDeadlineAt: null,
+          startsAt: new Date("2026-03-15T09:00:00.000Z"),
+          endsAt: new Date("2026-03-16T09:00:00.000Z"),
+          vehicle: {
+            brand: "Nissan",
+            model: "Patrol",
+            images: ["https://cdn.example.com/nissan-patrol.jpg"],
+          },
+        },
+      },
     ]);
 
     const res = await request
@@ -496,6 +517,7 @@ describe("GET /api/buyer/my-bids", () => {
         isLeading: true,
       },
     ]);
+    expect(res.body.ended.find((item: { auctionId: string }) => item.auctionId === "auction-5")).toBeUndefined();
     expect(res.body.live[0]).toMatchObject({
       auctionId: "auction-1",
       isLeading: false,

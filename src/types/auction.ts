@@ -162,3 +162,17 @@ export interface MyBidsResponse {
   wonPending: WonPendingItem[];
   ended: EndedBidItem[];
 }
+
+export interface SellerPendingDecisionItem {
+  auctionId: string;
+  lotTitle: string;
+  imageUrl: string | null;
+  winningBidAmount: number;
+  buyerAlias: string;
+  decisionDeadlineIso: string;
+  status: "AWAITING_SELLER_DECISION";
+}
+
+export interface SellerPendingDecisionResponse {
+  pending: SellerPendingDecisionItem[];
+}
