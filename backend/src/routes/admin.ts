@@ -7,6 +7,13 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
 import { sendNewEventAnnouncementEmail } from "../lib/email";
+import {
+  buildInvoicePdfHtml,
+  formatInvoiceAmount,
+  formatInvoiceDate,
+  formatInvoiceDateTime,
+  renderInvoicePdf,
+} from "./finance";
 
 type DecimalLike =
   | number
@@ -156,6 +163,28 @@ const eventOrderSchema = z.object({
   vehicleIds: z.array(z.string().trim().min(1)).default([]),
 });
 
+const invoiceStatusSchema = z.enum([
+  "ISSUED",
+  "PAID_PENDING_CONFIRMATION",
+  "PAID",
+  "DEFAULTED",
+  "CANCELED",
+]);
+
+const adminInvoiceQuerySchema = z.object({
+  status: invoiceStatusSchema.optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+const invoiceIdParamsSchema = z.object({
+  invoiceId: z.string().trim().min(1),
+});
+
+const auctionIdParamsSchema = z.object({
+  auctionId: z.string().trim().min(1),
+});
+
 async function toNumberValue(value: DecimalLike): Promise<number> {
   if (typeof value === "number") {
     return value;
@@ -273,6 +302,40 @@ async function sendValidationError(
     error: "INVALID_REQUEST",
     issues,
   });
+}
+
+function buildAdminLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  year: number | null | undefined,
+  fallbackId: string,
+): string {
+  const parts = [brand?.trim(), model?.trim(), typeof year === "number" ? String(year) : null].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
+}
+
+function resolveInvoiceUrgency(
+  dueAt: Date,
+  now: Date,
+): "normal" | "warning" | "critical" {
+  const diffMs = dueAt.getTime() - now.getTime();
+
+  if (diffMs <= 12 * 60 * 60 * 1000) {
+    return "critical";
+  }
+
+  if (diffMs <= 24 * 60 * 60 * 1000) {
+    return "warning";
+  }
+
+  return "normal";
 }
 
 async function parseEventMeta(reason: string | null): Promise<EventMeta> {
@@ -1533,6 +1596,459 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       await reply.code(200).send({
         success: true,
+      });
+    },
+  );
+
+  fastify.get<{ Querystring: { status?: string; page?: string; limit?: string } }>(
+    "/admin/invoices",
+    async function getAdminInvoicesHandler(
+      request: FastifyRequest<{ Querystring: { status?: string; page?: string; limit?: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedQuery = adminInvoiceQuerySchema.safeParse(request.query ?? {});
+
+      if (!parsedQuery.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedQuery.error.issues));
+        return;
+      }
+
+      const status = parsedQuery.data.status;
+      const page = parsedQuery.data.page ?? 1;
+      const limit = parsedQuery.data.limit ?? 50;
+      const where = status ? { status } : undefined;
+
+      const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+          where,
+          orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            auctionId: true,
+            buyerCompanyId: true,
+            sellerCompanyId: true,
+            subtotal: true,
+            commission: true,
+            vat: true,
+            total: true,
+            status: true,
+            issuedAt: true,
+            dueAt: true,
+            paidAt: true,
+            auction: {
+              select: {
+                id: true,
+                closedAt: true,
+                vehicle: {
+                  select: {
+                    brand: true,
+                    model: true,
+                    year: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.invoice.count({ where }),
+      ]);
+
+      const companyIds = Array.from(
+        new Set(
+          invoices.flatMap((invoice) => [invoice.sellerCompanyId, invoice.buyerCompanyId]).filter(
+            (companyId): companyId is string => typeof companyId === "string" && companyId.length > 0,
+          ),
+        ),
+      );
+      const companies = companyIds.length
+        ? await prisma.company.findMany({
+            where: {
+              id: {
+                in: companyIds,
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              registrationNumber: true,
+              country: true,
+            },
+          })
+        : [];
+      const companyById = new Map(companies.map((company) => [company.id, company]));
+      const now = new Date();
+
+      await reply.code(200).send({
+        invoices: await Promise.all(
+          invoices.map(async (invoice) => {
+            const subtotal = await toNumberValue(invoice.subtotal);
+            const commission = await toNumberValue(invoice.commission);
+            const vat = await toNumberValue(invoice.vat);
+            const totalAmount = await toNumberValue(invoice.total);
+            const commissionRate = subtotal > 0 ? Number((commission / subtotal).toFixed(4)) : 0;
+            const seller = companyById.get(invoice.sellerCompanyId);
+            const buyer = companyById.get(invoice.buyerCompanyId);
+
+            return {
+              id: invoice.id,
+              auctionId: invoice.auctionId,
+              lotTitle: buildAdminLotTitle(
+                invoice.auction.vehicle?.brand,
+                invoice.auction.vehicle?.model,
+                invoice.auction.vehicle?.year,
+                invoice.auction.id,
+              ),
+              auctionClosedAt: (invoice.auction.closedAt ?? invoice.issuedAt).toISOString(),
+              subtotal,
+              commission,
+              commissionRate,
+              vat,
+              total: totalAmount,
+              status: invoice.status,
+              issuedAt: invoice.issuedAt.toISOString(),
+              dueAt: invoice.dueAt.toISOString(),
+              paidAt: invoice.paidAt?.toISOString() ?? null,
+              urgency: resolveInvoiceUrgency(invoice.dueAt, now),
+              seller: {
+                companyId: invoice.sellerCompanyId,
+                name: seller?.name ?? "Seller Company",
+                phone: seller?.phone ?? null,
+                registrationNumber: seller?.registrationNumber ?? "—",
+                country: seller?.country ?? "—",
+              },
+              buyer: {
+                companyId: invoice.buyerCompanyId,
+                name: buyer?.name ?? "Buyer Company",
+                phone: buyer?.phone ?? null,
+                registrationNumber: buyer?.registrationNumber ?? "—",
+                country: buyer?.country ?? "—",
+              },
+            };
+          }),
+        ),
+        total,
+      });
+    },
+  );
+
+  fastify.get<{ Params: { invoiceId: string } }>(
+    "/admin/invoices/:invoiceId/pdf",
+    async function getAdminInvoicePdfHandler(
+      request: FastifyRequest<{ Params: { invoiceId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = invoiceIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          id: parsedParams.data.invoiceId,
+        },
+        select: {
+          id: true,
+          auctionId: true,
+          buyerCompanyId: true,
+          subtotal: true,
+          commission: true,
+          vat: true,
+          total: true,
+          status: true,
+          issuedAt: true,
+          dueAt: true,
+          auction: {
+            select: {
+              id: true,
+              closedAt: true,
+              endsAt: true,
+              vehicle: {
+                select: {
+                  brand: true,
+                  model: true,
+                  year: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        await reply.code(404).send({
+          error: "INVOICE_NOT_FOUND",
+        });
+        return;
+      }
+
+      const buyerCompany = await prisma.company.findUnique({
+        where: {
+          id: invoice.buyerCompanyId,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      const subtotal = await toNumberValue(invoice.subtotal);
+      const commission = await toNumberValue(invoice.commission);
+      const vat = await toNumberValue(invoice.vat);
+      const totalAmount = await toNumberValue(invoice.total);
+      const invoiceNumber = invoice.id.slice(0, 8).toUpperCase();
+      const normalizedStatus = invoice.status.trim().toUpperCase();
+      const isPaid = normalizedStatus === "PAID" || normalizedStatus === "CONFIRMED";
+      const closedAtSource = invoice.auction.closedAt ?? invoice.auction.endsAt ?? invoice.issuedAt;
+      const html = buildInvoicePdfHtml({
+        invoiceNumber,
+        issuedAt: formatInvoiceDate(invoice.issuedAt),
+        statusClass: isPaid ? "status-paid" : "status-pending",
+        statusLabel: isPaid ? "Paid" : "Payment Pending",
+        lotTitle: buildAdminLotTitle(
+          invoice.auction.vehicle?.brand,
+          invoice.auction.vehicle?.model,
+          invoice.auction.vehicle?.year,
+          invoice.auction.id,
+        ),
+        lotNumber: invoice.auctionId.slice(0, 8).toUpperCase(),
+        closedAt: formatInvoiceDate(closedAtSource),
+        subtotal: formatInvoiceAmount(subtotal),
+        commissionPct: subtotal > 0 ? ((commission / subtotal) * 100).toFixed(0) : "0",
+        commission: formatInvoiceAmount(commission),
+        vat: formatInvoiceAmount(vat),
+        total: formatInvoiceAmount(totalAmount),
+        dueAt: formatInvoiceDateTime(invoice.dueAt),
+        buyerCompanyName: buyerCompany?.name?.trim() || "Buyer Company",
+        invoiceId: invoice.id,
+      });
+      const pdfBuffer = await renderInvoicePdf(html);
+
+      await reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `attachment; filename="invoice-${invoiceNumber}.pdf"`)
+        .send(pdfBuffer);
+    },
+  );
+
+  fastify.post<{ Params: { invoiceId: string } }>(
+    "/admin/invoices/:invoiceId/confirm-payment",
+    async function confirmAdminInvoicePaymentHandler(
+      request: FastifyRequest<{ Params: { invoiceId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = invoiceIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const actorId = request.auth?.userId ?? "system";
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          id: parsedParams.data.invoiceId,
+        },
+        select: {
+          id: true,
+          auctionId: true,
+          status: true,
+          auction: {
+            select: {
+              state: true,
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        await reply.code(404).send({
+          error: "INVOICE_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (invoice.status === "PAID") {
+        await reply.code(409).send({
+          error: "INVOICE_ALREADY_PAID",
+        });
+        return;
+      }
+
+      if (invoice.status === "CANCELED") {
+        await reply.code(409).send({
+          error: "INVOICE_CANCELED",
+        });
+        return;
+      }
+
+      const paidAt = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        await tx.invoice.update({
+          where: {
+            id: invoice.id,
+          },
+          data: {
+            status: "PAID",
+            paidAt,
+          },
+        });
+
+        await tx.auction.update({
+          where: {
+            id: invoice.auctionId,
+          },
+          data: {
+            state: "PAID",
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: invoice.auctionId,
+            fromState: invoice.auction.state,
+            toState: "PAID",
+            trigger: "ADMIN_PAYMENT_CONFIRMED",
+            actorId,
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "ADMIN_PAYMENT_CONFIRMED",
+          entityType: "Invoice",
+          entityId: invoice.id,
+          correlationId: request.id,
+          payload: {
+            invoiceId: invoice.id,
+            auctionId: invoice.auctionId,
+            previousInvoiceStatus: invoice.status,
+            nextInvoiceStatus: "PAID",
+            previousAuctionState: invoice.auction.state,
+            nextAuctionState: "PAID",
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        invoiceId: invoice.id,
+        status: "PAID",
+        paidAt: paidAt.toISOString(),
+      });
+    },
+  );
+
+  fastify.post<{ Params: { auctionId: string } }>(
+    "/admin/auctions/:auctionId/relist",
+    async function relistAdminInvoiceAuctionHandler(
+      request: FastifyRequest<{ Params: { auctionId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = auctionIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const actorId = request.auth?.userId ?? "system";
+      const auction = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.auctionId,
+        },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!auction) {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          auctionId: auction.id,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (auction.state === "RELISTED") {
+        await reply.code(200).send({
+          auctionId: auction.id,
+          newStatus: "RELISTED",
+        });
+        return;
+      }
+
+      if (auction.state === "PAID" || invoice?.status === "PAID") {
+        await reply.code(409).send({
+          error: "AUCTION_ALREADY_PAID",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auction.update({
+          where: {
+            id: auction.id,
+          },
+          data: {
+            state: "RELISTED",
+          },
+        });
+
+        if (invoice && invoice.status !== "CANCELED") {
+          await tx.invoice.update({
+            where: {
+              id: invoice.id,
+            },
+            data: {
+              status: "CANCELED",
+            },
+          });
+        }
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: auction.id,
+            fromState: auction.state,
+            toState: "RELISTED",
+            trigger: "ADMIN_RELISTED",
+            actorId,
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "ADMIN_RELISTED",
+          entityType: "Auction",
+          entityId: auction.id,
+          correlationId: request.id,
+          payload: {
+            auctionId: auction.id,
+            previousAuctionState: auction.state,
+            nextAuctionState: "RELISTED",
+            invoiceId: invoice?.id ?? null,
+            previousInvoiceStatus: invoice?.status ?? null,
+            nextInvoiceStatus: invoice ? "CANCELED" : null,
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        auctionId: auction.id,
+        newStatus: "RELISTED",
       });
     },
   );

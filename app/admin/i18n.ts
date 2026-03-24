@@ -8,6 +8,7 @@ type AdminLocaleCopy = {
     vehicles: string;
     events: string;
     buyers: string;
+    invoices: string;
   };
   filtersAriaLabel: string;
   status: {
@@ -172,6 +173,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       vehicles: "Vehicles",
       events: "Events",
       buyers: "Buyers",
+      invoices: "Invoices",
     },
     filtersAriaLabel: "Filters",
     status: {
@@ -334,6 +336,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       vehicles: "Автомобили",
       events: "События",
       buyers: "Покупатели",
+      invoices: "Счета",
     },
     filtersAriaLabel: "Фильтры",
     status: {

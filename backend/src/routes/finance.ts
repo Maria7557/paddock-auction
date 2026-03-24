@@ -116,7 +116,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function formatInvoiceDate(value: Date): string {
+export function formatInvoiceDate(value: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -125,7 +125,7 @@ function formatInvoiceDate(value: Date): string {
   }).format(value);
 }
 
-function formatInvoiceDateTime(value: Date): string {
+export function formatInvoiceDateTime(value: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -139,14 +139,14 @@ function formatInvoiceDateTime(value: Date): string {
     .replace(/\b(am|pm)\b/gi, (match) => match.toUpperCase());
 }
 
-function formatInvoiceAmount(value: number): string {
+export function formatInvoiceAmount(value: number): string {
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
 }
 
-function buildInvoicePdfHtml(input: {
+export function buildInvoicePdfHtml(input: {
   invoiceId: string;
   invoiceNumber: string;
   issuedAt: string;
@@ -297,7 +297,7 @@ function buildInvoicePdfHtml(input: {
 </html>`;
 }
 
-async function renderInvoicePdf(html: string): Promise<Buffer> {
+export async function renderInvoicePdf(html: string): Promise<Buffer> {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
