@@ -728,7 +728,8 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       const balanceAed = wallet ? await toNumberValue(wallet.balance) : 0;
       const lockedBalanceAed = wallet ? await toNumberValue(wallet.lockedBalance) : 0;
       const availableBalanceAed = Number((balanceAed - lockedBalanceAed).toFixed(2));
-      const hasRequiredDeposit = balanceAed >= 5000;
+      const minDepositAed = Number(process.env.MIN_DEPOSIT_AED ?? 5000);
+      const hasRequiredDeposit = balanceAed >= minDepositAed;
       const isVerified =
         buyerContext.kycVerified === true &&
         normalizeStatusValue(buyerContext.userStatus) === "ACTIVE" &&
@@ -833,7 +834,7 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           depositBalanceAed: balanceAed,
         },
         depositStatus: {
-          requiredAmountAed: 5000,
+          requiredAmountAed: minDepositAed,
           balanceAed,
           lockedBalanceAed,
           availableBalanceAed,
