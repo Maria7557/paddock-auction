@@ -83,7 +83,7 @@ export type AuctionLot = {
 
 export type WalletLockReadModel = {
   lockId: string;
-  auctionId: string;
+  auctionId: string | null;
   lotNumber: string;
   amountAed: number;
   status: "ACTIVE" | "RELEASED" | "BURNED";
@@ -300,6 +300,10 @@ function buildLotTitle(
 }
 
 function normalizeInvoiceStatus(status: DbInvoiceStatus): InvoiceStatus {
+  if (status === "PAID_PENDING_CONFIRMATION") {
+    return "PAID";
+  }
+
   if (status === "CANCELED") {
     return "CANCELED";
   }
@@ -661,7 +665,7 @@ export async function readWallet(input: Pick<BuyerReadQueryInput, "userId">): Pr
     activeLocks: activeLocks.map((lock) => ({
       lockId: lock.id,
       auctionId: lock.auctionId,
-      lotNumber: deriveLotNumber(lock.auctionId),
+      lotNumber: lock.auctionId ? deriveLotNumber(lock.auctionId) : "GLOBAL",
       amountAed: Number(lock.amount.toString()),
       status: lock.status,
     })),
