@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -7,6 +7,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
 import { sendNewEventAnnouncementEmail } from "../lib/email";
+import { createAuctionEventRecord } from "./auction-events";
 
 type DecimalLike =
   | number
@@ -1458,85 +1459,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  fastify.patch<{ Params: { id: string } }>(
-    "/admin/auctions/:id/relist",
-    async function relistAdminAuctionHandler(
-      request: FastifyRequest<{ Params: { id: string } }>,
-      reply: FastifyReply,
-    ): Promise<void> {
-      const parsedParams = companyIdParamsSchema.safeParse(request.params);
-
-      if (!parsedParams.success) {
-        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
-        return;
-      }
-
-      const auction = await prisma.auction.findUnique({
-        where: {
-          id: parsedParams.data.id,
-        },
-        select: {
-          id: true,
-          state: true,
-        },
-      });
-
-      if (!auction) {
-        await reply.code(404).send({
-          error: "AUCTION_NOT_FOUND",
-        });
-        return;
-      }
-
-      if (auction.state !== "ENDED") {
-        await reply.code(409).send({
-          error: "AUCTION_NOT_RELISTABLE",
-        });
-        return;
-      }
-
-      const startsAt = new Date();
-      const endsAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.auctionEventLot.deleteMany({
-          where: {
-            auctionId: auction.id,
-          },
-        });
-
-        await tx.auction.update({
-          where: {
-            id: auction.id,
-          },
-          data: {
-            state: "DRAFT",
-            startsAt,
-            endsAt,
-            auctionStartsAt: null,
-            auctionEndsAt: null,
-            winnerCompanyId: null,
-            closedAt: null,
-          },
-        });
-
-        await tx.auctionStateTransition.create({
-          data: {
-            auctionId: auction.id,
-            fromState: "ENDED",
-            toState: "DRAFT",
-            trigger: "RELISTED",
-            actorId: request.auth?.userId ?? "system",
-          },
-        });
-      });
-
-      await reply.code(200).send({
-        success: true,
-      });
-    },
-  );
-
   fastify.get("/admin/companies", async function getCompaniesHandler(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -2634,23 +2556,21 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const endsAt = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000);
-
+    const eventId = randomUUID();
     const createdEvent = await prisma.$transaction(async (tx) => {
-      const event = await tx.auctionEvent.create({
-        data: {
-          title: parsedBody.data.title,
-          scheduledAt: startsAt,
-          state: "SCHEDULED",
-        },
+      await createAuctionEventRecord(tx, {
+        id: eventId,
+        title: parsedBody.data.title,
+        scheduledAt: startsAt,
       });
 
       await createAuditLog(tx, {
         actorId,
         action: "EVENT_CREATED",
         entityType: "Event",
-        entityId: event.id,
+        entityId: eventId,
         payload: {
-          eventId: event.id,
+          eventId,
           title: parsedBody.data.title,
           date: parsedBody.data.date ?? startsAt.toISOString().slice(0, 10),
           time: startTime,
@@ -2658,7 +2578,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
-      return event;
+      return {
+        id: eventId,
+      };
     });
 
     const activeUsers = await prisma.user.findMany({
