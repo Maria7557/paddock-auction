@@ -153,8 +153,6 @@ export async function buildServer(): Promise<FastifyInstance> {
         prefix: "/auth",
       });
 
-      await api.register(stripeWebhookRoutes);
-
       await api.register(auctionEventsRoutes);
       await api.register(auctionWsRoutes);
       await api.register(bidsRoutes);
