@@ -136,7 +136,7 @@ export default function BuyerRegisterPage() {
       <section className="auth-layout">
         <article className="surface-panel auth-panel">
           <h1>Register as Buyer</h1>
-          <p>Create your buyer account. You will enter the workspace immediately, while deposits and purchases stay locked until admin approval.</p>
+          <p>Create your buyer account. You will enter the workspace immediately, and bidding unlocks as soon as your deposit is ready.</p>
 
           <form className="auth-form" onSubmit={onSubmit}>
             <label>

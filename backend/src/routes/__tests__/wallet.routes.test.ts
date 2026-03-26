@@ -164,7 +164,21 @@ describe("POST /api/wallet/topup", () => {
     });
   });
 
-  it("returns a Stripe client secret for a valid top-up request", async () => {
+  it("returns a Stripe client secret for a valid top-up request even when buyer approval is pending", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: buyerUserId,
+      role: "BUYER",
+      status: "PENDING_APPROVAL",
+      kycVerified: false,
+      companyUsers: [
+        {
+          companyId: buyerCompanyId,
+          company: {
+            status: "PENDING_APPROVAL",
+          },
+        },
+      ],
+    });
     mockStripe.paymentIntents.create.mockResolvedValue({
       id: "pi_server_1",
       client_secret: "pi_server_secret_1",

@@ -26,7 +26,6 @@ const DEFAULT_VIEWER_STATE: ViewerState = {
   isBuyer: false,
   userStatus: null,
   companyStatus: null,
-  kycVerified: false,
   hasRequiredDeposit: false,
   buyerTier: null,
 };
@@ -97,7 +96,6 @@ type ViewerState = {
   isBuyer: boolean;
   userStatus: string | null;
   companyStatus: string | null;
-  kycVerified: boolean;
   hasRequiredDeposit: boolean;
   buyerTier: BuyerTier | null;
 };
@@ -106,7 +104,6 @@ type AuthMeResponse = {
   user?: {
     role?: string;
     status?: string;
-    kycVerified?: boolean;
     companyUsers?: Array<{
       company?: {
         buyerTier?: BuyerTier | null;
@@ -296,8 +293,9 @@ function getStatusClassName(state: string): string {
   }
 }
 
-function isActiveStatus(value: string | null | undefined): boolean {
-  return value?.trim().toUpperCase() === "ACTIVE";
+function hasBuyerAccessStatus(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toUpperCase() ?? "";
+  return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
 }
 
 function getRemainingMs(endsAt: string | null): number {
@@ -417,7 +415,7 @@ function buildStateCardConfig(
       return {
         eyebrow: "Checking access",
         title: "Syncing your bidding status",
-        body: "We are verifying your buyer profile, KYC, and deposit readiness for this live lot.",
+        body: "We are syncing your buyer profile and deposit readiness for this live lot.",
         tone: "default",
       };
     }
@@ -425,10 +423,19 @@ function buildStateCardConfig(
     if (!viewer.isBuyer) {
       return {
         eyebrow: "Buyer access required",
-        title: "Switch to an approved buyer account",
+        title: "Switch to your buyer account",
         body: "Live bidding is reserved for buyer workspaces. Sign in with your buyer account to enter this auction.",
         actionLabel: "Go to login",
         actionHref: "/login",
+        tone: "warning",
+      };
+    }
+
+    if (!hasBuyerAccessStatus(viewer.userStatus) || !hasBuyerAccessStatus(viewer.companyStatus)) {
+      return {
+        eyebrow: "Buyer account unavailable",
+        title: "Live bidding is disabled for this account",
+        body: "This buyer workspace cannot place live bids right now. Switch accounts or contact support if you need help.",
         tone: "warning",
       };
     }
@@ -1086,9 +1093,8 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const canBid =
     viewer.authenticated &&
     viewer.isBuyer &&
-    isActiveStatus(viewer.userStatus) &&
-    isActiveStatus(viewer.companyStatus) &&
-    viewer.kycVerified &&
+    hasBuyerAccessStatus(viewer.userStatus) &&
+    hasBuyerAccessStatus(viewer.companyStatus) &&
     viewer.hasRequiredDeposit;
   const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
@@ -1299,7 +1305,6 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
           isBuyer,
           userStatus: user?.status ?? null,
           companyStatus: primaryCompany?.status ?? null,
-          kycVerified: user?.kycVerified === true,
           hasRequiredDeposit: false,
           buyerTier: primaryCompany?.buyerTier ?? null,
         };
@@ -1645,7 +1650,11 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   const handleBid = async () => {
     if (!isLive || !canBid) {
-      setInlineError("Live bidding is locked until your buyer access is fully ready.");
+      setInlineError(
+        viewer.hasRequiredDeposit
+          ? "Live bidding is unavailable for this buyer account right now."
+          : "Live bidding unlocks once your deposit is ready.",
+      );
       return;
     }
 
@@ -1870,7 +1879,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
                     <div className={styles.preliveChecklist}>
                       <div className={styles.preliveChecklistItem}>Review the vehicle and damage details before launch</div>
-                      <div className={styles.preliveChecklistItem}>Make sure your buyer account and deposit are ready</div>
+                      <div className={styles.preliveChecklistItem}>Sign in with your buyer account and make sure your deposit is ready</div>
                       <div className={styles.preliveChecklistItem}>Stay in this tab to move straight into live bidding</div>
                     </div>
                   </div>

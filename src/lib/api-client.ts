@@ -647,22 +647,10 @@ export const api = {
         getRequest<T>(appendSearchParams("/api/admin/users/pending", query), options),
       get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         getRequest<T>(`/api/admin/users/${id}`, options),
-      approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/users/${id}/approve`, undefined, options),
-      reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/users/${id}/reject`, undefined, options),
-      approveKyc: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/users/${id}/approve-kyc`, undefined, options),
       block: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/users/${id}/block`, payload, options),
       unblock: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/users/${id}/unblock`, payload, options),
-    },
-    buyers: {
-      approveDeposit: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/buyers/${id}/approve-deposit`, undefined, options),
-      rejectDeposit: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/buyers/${id}/reject-deposit`, undefined, options),
     },
   },
   buyer: {

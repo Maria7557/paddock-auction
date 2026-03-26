@@ -589,8 +589,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       const userId = randomUUID();
       const companyId = randomUUID();
       const companyUserId = randomUUID();
-      const userStatus = "PENDING_APPROVAL";
-      const companyStatus = "PENDING_APPROVAL";
+      const isBuyerRegistration = payload.role === "BUYER";
+      const userStatus = isBuyerRegistration ? "ACTIVE" : "PENDING_APPROVAL";
+      const companyStatus = isBuyerRegistration ? "ACTIVE" : "PENDING_APPROVAL";
       const companyUserRole = payload.role === "SELLER" ? "SELLER_MANAGER" : "BUYER_BIDDER";
       const registrationNumber = await buildRegistrationNumber(payload, companyId);
       const city = payload.city?.trim() || payload.emirate?.trim() || null;

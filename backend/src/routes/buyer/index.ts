@@ -256,7 +256,6 @@ async function requireBuyerContext(
   companyId: string;
   userStatus: string;
   companyStatus: string;
-  kycVerified: boolean;
   buyerTier: "STANDARD" | "VIP";
 } | null> {
   const context = await loadBuyerAccessContext(request);
@@ -314,6 +313,11 @@ function buildLotNumber(lotId: string): string {
 
 function normalizeStatusValue(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
+}
+
+function hasBuyerAccessStatus(value: string | null | undefined): boolean {
+  const normalized = normalizeStatusValue(value);
+  return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
 }
 
 function isLiveAuctionState(value: string): boolean {
@@ -482,7 +486,6 @@ function createBuyerActorBase(input: {
   companyId: string;
   userStatus: string;
   companyStatus: string;
-  kycVerified: boolean;
   buyerTier: "STANDARD" | "VIP";
 }): VipRequestActorBase {
   return {
@@ -494,7 +497,6 @@ function createBuyerActorBase(input: {
       companyId: input.companyId,
       userStatus: input.userStatus,
       companyStatus: input.companyStatus,
-      kycVerified: input.kycVerified,
       buyerTier: input.buyerTier,
     },
   };
@@ -801,10 +803,9 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       const lockedBalanceAed = wallet ? await toNumberValue(wallet.lockedBalance) : 0;
       const availableBalanceAed = Number((balanceAed - lockedBalanceAed).toFixed(2));
       const hasRequiredDeposit = balanceAed >= 5000;
-      const isVerified =
-        buyerContext.kycVerified === true &&
-        normalizeStatusValue(buyerContext.userStatus) === "ACTIVE" &&
-        normalizeStatusValue(buyerContext.companyStatus) === "ACTIVE";
+      const hasBuyerAccess =
+        hasBuyerAccessStatus(buyerContext.userStatus) &&
+        hasBuyerAccessStatus(buyerContext.companyStatus);
       const hasActivity =
         visibleActiveBidAuctions.length > 0 ||
         bidActivities.length > 0 ||
@@ -814,11 +815,11 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       let onboardingStep: 1 | 2 | 3 | 4 = 1;
 
-      if (isVerified && !hasRequiredDeposit) {
+      if (hasBuyerAccess && !hasRequiredDeposit) {
         onboardingStep = 2;
       }
 
-      if (isVerified && hasRequiredDeposit) {
+      if (hasBuyerAccess && hasRequiredDeposit) {
         onboardingStep = hasActivity ? 4 : 3;
       }
 

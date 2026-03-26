@@ -318,7 +318,7 @@ describe("POST /api/bids", () => {
     expect(res.body.error).toBe("Unauthorized");
   });
 
-  it("returns 403 when buyer account is pending approval", async () => {
+  it("allows bidding when buyer approval is pending but deposit checks pass", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: buyerId,
       role: "BUYER",
@@ -333,14 +333,23 @@ describe("POST /api/bids", () => {
         },
       ],
     });
+    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
+    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-pending-approval" });
+    mockPrisma.bidRequest.update.mockResolvedValue({});
+
+    setupTransactionSuccess();
+    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
+    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
+    mockTx.bid.create.mockResolvedValue(makeBidRecord());
+    mockTx.$executeRaw.mockResolvedValueOnce(1);
 
     const res = await request
       .post("/api/bids")
       .set("Authorization", `Bearer ${buyerToken}`)
       .send(validBody);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("ACCOUNT_PENDING_APPROVAL");
+    expect(res.status).toBe(201);
+    expect(res.body.bid.amount).toBe(51_000);
   });
 
   it("returns 400 when auctionId is missing", async () => {

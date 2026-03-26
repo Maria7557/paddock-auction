@@ -2076,11 +2076,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       const depositStatus =
         user.status === "REJECTED"
           ? "REJECTED"
-          : user.kycVerified
+          : walletBalanceAed > 0
             ? "APPROVED"
-            : walletBalanceAed > 0
-              ? "PENDING"
-              : "NONE";
+            : "NONE";
 
       await reply.code(200).send({
         user: {
