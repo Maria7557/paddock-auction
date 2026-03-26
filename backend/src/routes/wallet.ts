@@ -373,14 +373,6 @@ async function processWalletDeposit(
     return;
   }
 
-  if (buyerAccess.kycVerified !== true) {
-    await reply.code(403).send({
-      error: "KYC_PENDING",
-      message: "Your account is under review.",
-    });
-    return;
-  }
-
   const { userId } = buyerAccess;
   const parsedBody = depositSchema.safeParse(request.body);
 

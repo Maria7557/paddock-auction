@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
-import { api, getApiErrorMessage, getApiErrorPayload } from "@/src/lib/api-client";
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
 export default function BuyerLoginPage() {
@@ -30,13 +30,6 @@ export default function BuyerLoginPage() {
 
       router.push("/dashboard");
     } catch (error) {
-      const payload = getApiErrorPayload<{ error?: string }>(error);
-
-      if (payload?.error === "ACCOUNT_PENDING_APPROVAL") {
-        setFeedback("Account is pending admin approval.");
-        return;
-      }
-
       setFeedback(getApiErrorMessage(error, "Login failed due to network error."));
     } finally {
       setIsSubmitting(false);

@@ -284,8 +284,8 @@ export default async function DashboardPage() {
                 <div className={styles.sectionHeading}>
                   <h1>Add a deposit to start bidding</h1>
                   <p>
-                    A refundable deposit of {formatAed(5000)} is required. Our team reviews it
-                    within 12 hours — then you&apos;re ready to bid.
+                    A refundable deposit of {formatAed(5000)} is required. As soon as it is ready
+                    in your wallet, you&apos;re ready to bid.
                   </p>
                 </div>
                 <span className={styles.refundPill}>
@@ -311,8 +311,8 @@ export default async function DashboardPage() {
               <div className={styles.depositStep}>
                 <span className={styles.depositStepNumber}>2</span>
                 <div>
-                  <strong>Review</strong>
-                  <span>up to 12 hours</span>
+                  <strong>Deposit ready</strong>
+                  <span>wallet funded</span>
                 </div>
               </div>
               <div className={styles.depositStepLine} />

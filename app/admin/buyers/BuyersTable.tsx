@@ -1,17 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { FilterTabs } from "@/app/admin/components/FilterTabs";
 import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
-import { api } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import type { SupportedLocale } from "@/src/i18n/routing";
 
 import styles from "./page.module.css";
 
-type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+type DepositStatus = "NONE" | "APPROVED" | "REJECTED";
 type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
@@ -31,10 +29,8 @@ type BuyersTableProps = {
 };
 
 export function BuyersTable({ buyers, locale }: BuyersTableProps) {
-  const router = useRouter();
   const t = getAdminCopy(locale);
-  const [tab, setTab] = useState<"pending" | "all">("pending");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"pending" | "all">("all");
   const [selectedBuyer, setSelectedBuyer] = useState<{ id: string; label: string } | null>(null);
 
   const filtered = useMemo(() => {
@@ -42,30 +38,8 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
       return buyers;
     }
 
-    return buyers.filter(
-      (buyer) => buyer.accountStatus === "PENDING_APPROVAL" || buyer.depositStatus === "PENDING",
-    );
+    return buyers.filter((buyer) => buyer.accountStatus === "PENDING_APPROVAL");
   }, [buyers, tab]);
-
-  async function mutateBuyer(id: string, action: "approve" | "reject" | "approve-deposit" | "reject-deposit"): Promise<void> {
-    setBusyId(id);
-
-    try {
-      if (action === "approve") {
-        await api.admin.users.approve(id);
-      } else if (action === "reject") {
-        await api.admin.users.reject(id);
-      } else if (action === "approve-deposit") {
-        await api.admin.buyers.approveDeposit(id);
-      } else {
-        await api.admin.buyers.rejectDeposit(id);
-      }
-
-      router.refresh();
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   return (
     <section className={styles.page}>
@@ -115,9 +89,6 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                   </td>
                   <td>
                     {buyer.depositStatus === "NONE" ? <span className="pill">{t.status.none}</span> : null}
-                    {buyer.depositStatus === "PENDING" ? (
-                      <span className="pill pill-sched">{t.status.pending}</span>
-                    ) : null}
                     {buyer.depositStatus === "APPROVED" ? (
                       <span className="pill pill-green">{t.status.approved}</span>
                     ) : null}
@@ -133,47 +104,6 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                       >
                         {t.buyers.actions.view}
                       </button>
-                    {buyer.accountStatus === "PENDING_APPROVAL" ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "approve")}
-                        >
-                          {t.buyers.actions.approve}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "reject")}
-                        >
-                          {t.buyers.actions.reject}
-                        </button>
-                      </>
-                    ) : buyer.depositStatus === "PENDING" ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "approve-deposit")}
-                        >
-                          {t.buyers.actions.approveDeposit}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          disabled={busyId === buyer.id}
-                          onClick={() => void mutateBuyer(buyer.id, "reject-deposit")}
-                        >
-                          {t.buyers.actions.rejectDeposit}
-                        </button>
-                      </>
-                    ) : (
-                      <span className={styles.metaText}>{t.buyers.actions.noPendingAction}</span>
-                    )}
                     </div>
                   </td>
                 </tr>

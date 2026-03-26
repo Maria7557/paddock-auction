@@ -31,7 +31,6 @@ type AuthMeResponse = {
   user?: {
     role?: string;
     status?: string;
-    kycVerified?: boolean;
     companyUsers?: Array<{
       company?: {
         buyerTier?: BuyerTier | null;
@@ -56,7 +55,6 @@ type ViewerState = {
   isBuyer: boolean;
   userStatus: string | null;
   companyStatus: string | null;
-  kycVerified: boolean;
   hasRequiredDeposit: boolean;
   buyerTier: BuyerTier | null;
 };
@@ -67,7 +65,6 @@ const DEFAULT_VIEWER_STATE: ViewerState = {
   isBuyer: false,
   userStatus: null,
   companyStatus: null,
-  kycVerified: false,
   hasRequiredDeposit: false,
   buyerTier: null,
 };
@@ -86,8 +83,9 @@ function useCountdown(iso: string) {
   return cd;
 }
 
-function isActiveStatus(value: string | null | undefined): boolean {
-  return value?.trim().toUpperCase() === "ACTIVE";
+function hasBuyerAccessStatus(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toUpperCase() ?? "";
+  return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
 }
 
 export function BidPanel({ lot, totalBids = 0, display }: Props) {
@@ -160,7 +158,6 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           isBuyer,
           userStatus: user?.status ?? null,
           companyStatus: primaryCompany?.status ?? null,
-          kycVerified: user?.kycVerified === true,
           hasRequiredDeposit: false,
           buyerTier: primaryCompany?.buyerTier ?? null,
         };
@@ -247,9 +244,8 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const canBid =
     viewer.authenticated &&
     viewer.isBuyer &&
-    isActiveStatus(viewer.userStatus) &&
-    isActiveStatus(viewer.companyStatus) &&
-    viewer.kycVerified &&
+    hasBuyerAccessStatus(viewer.userStatus) &&
+    hasBuyerAccessStatus(viewer.companyStatus) &&
     viewer.hasRequiredDeposit;
   const gateHref = viewer.authenticated ? "/wallet" : "/login";
   const nextBid = livePrice + lot.minStepAed;
@@ -273,13 +269,13 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     if (!viewer.isBuyer) {
       return isRu
         ? "Только активные buyer-аккаунты с депозитом могут делать ставки."
-        : "Only active buyer accounts with a ready deposit can place bids.";
+        : "Only buyer accounts with a ready deposit can place bids.";
     }
 
-    if (!isActiveStatus(viewer.userStatus) || !isActiveStatus(viewer.companyStatus) || !viewer.kycVerified) {
+    if (!hasBuyerAccessStatus(viewer.userStatus) || !hasBuyerAccessStatus(viewer.companyStatus)) {
       return isRu
-        ? "Аккаунт и KYC должны быть одобрены, после чего bidding откроется."
-        : "Your account and KYC must be approved before bidding unlocks.";
+        ? "Этот buyer-аккаунт сейчас недоступен для bidding."
+        : "This buyer account is unavailable for bidding right now.";
     }
 
     return isRu

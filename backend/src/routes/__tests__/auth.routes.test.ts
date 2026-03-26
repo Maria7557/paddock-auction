@@ -355,7 +355,7 @@ describe("POST /api/auth/register", () => {
         companyName: validBuyerBody.companyName,
         email: validBuyerBody.email,
         role: "BUYER",
-        status: "PENDING_APPROVAL",
+        status: "ACTIVE",
       }),
       expect.anything(),
     );
@@ -368,7 +368,7 @@ describe("POST /api/auth/register", () => {
         phoneNumber: validBuyerBody.phoneNumber,
         registrationNumber: null,
         role: "BUYER",
-        status: "PENDING_APPROVAL",
+        status: "ACTIVE",
       }),
       expect.anything(),
     );

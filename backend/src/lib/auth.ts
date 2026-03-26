@@ -23,7 +23,6 @@ export type BuyerAccessContext = {
   companyId: string;
   userStatus: string;
   companyStatus: string;
-  kycVerified: boolean;
   buyerTier: "STANDARD" | "VIP";
 };
 
@@ -95,6 +94,15 @@ async function sendUnauthorized(reply: FastifyReply): Promise<void> {
 
 async function sendForbidden(reply: FastifyReply): Promise<void> {
   await reply.code(403).send({ error: "Forbidden" });
+}
+
+function normalizeStatusValue(value: string | null | undefined): string {
+  return value?.trim().toUpperCase() ?? "";
+}
+
+function isBuyerAccessDisabledStatus(value: string | null | undefined): boolean {
+  const normalized = normalizeStatusValue(value);
+  return normalized === "BLOCKED" || normalized === "REJECTED";
 }
 
 export async function verifyToken(token: string): Promise<AuthTokenPayload> {
@@ -226,16 +234,11 @@ export async function loadBuyerAccessContext(
     return null;
   }
 
-  if (request.auth) {
-    request.auth.kycVerified = user.kycVerified;
-  }
-
   return {
     userId: user.id,
     companyId: membership.companyId,
     userStatus: user.status,
     companyStatus,
-    kycVerified: user.kycVerified,
     buyerTier: membership.company?.buyerTier === "VIP" ? "VIP" : "STANDARD",
   };
 }
@@ -251,22 +254,15 @@ export async function requireActiveBuyerAccount(
     return null;
   }
 
-  const userStatus = context.userStatus.toUpperCase();
-  const companyStatus = context.companyStatus.toUpperCase();
-  const isPending =
-    userStatus === "PENDING_APPROVAL" ||
-    companyStatus === "PENDING_APPROVAL" ||
-    companyStatus === "PENDING";
+  const userStatus = normalizeStatusValue(context.userStatus);
+  const companyStatus = normalizeStatusValue(context.companyStatus);
 
-  if (isPending) {
-    await reply.code(403).send({
-      error: "ACCOUNT_PENDING_APPROVAL",
-      message: "Account pending admin approval. Buying is disabled until activation.",
-    });
-    return null;
-  }
-
-  if (userStatus !== "ACTIVE" || companyStatus !== "ACTIVE") {
+  if (
+    userStatus.length === 0 ||
+    companyStatus.length === 0 ||
+    isBuyerAccessDisabledStatus(userStatus) ||
+    isBuyerAccessDisabledStatus(companyStatus)
+  ) {
     await reply.code(403).send({
       error: "ACCOUNT_INACTIVE",
       message: "Account is inactive. Buying is unavailable.",

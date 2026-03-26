@@ -6,7 +6,7 @@ import { BuyersTable } from "./BuyersTable";
 
 export const dynamic = "force-dynamic";
 
-type DepositStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+type DepositStatus = "NONE" | "APPROVED" | "REJECTED";
 type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
@@ -30,19 +30,14 @@ function toNumber(value: { toString(): string } | null): number {
 
 function resolveDepositStatus(
   userStatus: string,
-  kycVerified: boolean,
   walletBalanceAed: number,
 ): DepositStatus {
   if (userStatus === "REJECTED") {
     return "REJECTED";
   }
 
-  if (kycVerified) {
-    return "APPROVED";
-  }
-
   if (walletBalanceAed > 0) {
-    return "PENDING";
+    return "APPROVED";
   }
 
   return "NONE";
@@ -69,7 +64,6 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
           email: string;
           role: string;
           status: string;
-          kycVerified: boolean;
           walletBalance?: number | null;
           createdAt: string;
           companyUsers?: Array<{
@@ -86,7 +80,6 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
       email: string;
       role: string;
       status: string;
-      kycVerified: boolean;
       walletBalance?: number | null;
       createdAt: string;
       companyUsers?: Array<{
@@ -105,7 +98,7 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
     }
   }
 
-  return [...usersById.values()].map((user: { id: string; email: string; role: string; status: string; kycVerified: boolean; walletBalance?: number | null; createdAt: string; companyUsers?: Array<{ companyPhone?: string | null }> }) => {
+  return [...usersById.values()].map((user: { id: string; email: string; role: string; status: string; walletBalance?: number | null; createdAt: string; companyUsers?: Array<{ companyPhone?: string | null }> }) => {
     const amountAed = toNumber(user.walletBalance ?? null);
     const phone = user.companyUsers?.find((membership) => membership.companyPhone?.trim())?.companyPhone?.trim() || "-";
 
@@ -115,7 +108,7 @@ async function getBuyerRows(): Promise<BuyerRow[]> {
       phone,
       email: user.email,
       accountStatus: user.status as AccountStatus,
-      depositStatus: resolveDepositStatus(user.status, user.kycVerified, amountAed),
+      depositStatus: resolveDepositStatus(user.status, amountAed),
       amountAed,
       createdAt: user.createdAt,
     };

@@ -66,12 +66,7 @@ type AdminLocaleCopy = {
       };
       actions: {
         view: string;
-        approve: string;
-        reject: string;
-        approveDeposit: string;
-        rejectDeposit: string;
-        noPendingAction: string;
-    };
+      };
     empty: string;
   };
   vehicles: {
@@ -232,11 +227,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       },
       actions: {
         view: "View",
-        approve: "Approve",
-        reject: "Reject",
-        approveDeposit: "Approve Deposit",
-        rejectDeposit: "Reject Deposit",
-        noPendingAction: "No pending action",
       },
       empty: "No buyers found for this filter.",
     },
@@ -396,11 +386,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       },
       actions: {
         view: "Открыть",
-        approve: "Одобрить",
-        reject: "Отклонить",
-        approveDeposit: "Одобрить депозит",
-        rejectDeposit: "Отклонить депозит",
-        noPendingAction: "Нет ожидающих действий",
       },
       empty: "Для этого фильтра покупатели не найдены.",
     },

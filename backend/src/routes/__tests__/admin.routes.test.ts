@@ -1175,7 +1175,7 @@ describe("GET /api/admin/users/:id", () => {
       id: "u-buyer",
       email: "buyer@example.com",
       walletBalanceAed: 5000,
-      depositStatus: "PENDING",
+      depositStatus: "APPROVED",
     });
     expect(res.body.user.linkedCompanies[0]).toMatchObject({
       id: "buyer-company",
