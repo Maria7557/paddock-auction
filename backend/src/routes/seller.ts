@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
 import { releaseAuctionDepositLocks } from "../lib/auction-deposit-locks";
 import { requireAuth, requireSellerAuth } from "../lib/auth";
+import {
+  sendAuctionLostEmail,
+  sendAuctionResultSellerEmail,
+  sendAuctionWonEmail,
+} from "../lib/email";
+import { releaseAuctionBidsFromBuyingPower } from "../modules/deposits/application/deposit_commands";
 
 type DecimalLike =
   | number
@@ -196,6 +202,10 @@ async function normalizeVin(vin: string): Promise<string> {
 
 async function normalizeMoney(value: number): Promise<number> {
   return Number(value.toFixed(2));
+}
+
+async function toDecimalValue(value: DecimalLike): Promise<Prisma.Decimal> {
+  return new Prisma.Decimal((await toNumberValue(value)).toFixed(2));
 }
 
 function buildLotTitle(
@@ -668,6 +678,15 @@ async function applyAuctionDecisionInTransaction(
     reason: input.decision === "decline" ? "SELLER_DECLINED" : "SELLER_DECISION_EXPIRED",
   });
 
+  if (auction.winner_company_id) {
+    await releaseAuctionBidsFromBuyingPower(
+      tx,
+      auction.id,
+      [auction.winner_company_id],
+      new Map([[auction.winner_company_id, await toDecimalValue(auction.current_price)]]),
+    );
+  }
+
   await tx.auction.update({
     where: {
       id: auction.id,
@@ -840,6 +859,174 @@ async function findSellerVehicle(
   });
 }
 
+async function sendAuctionClosedEmails(
+  auctionId: string,
+  decision: "accept" | "decline",
+  invoiceId: string | null,
+  logger: {
+    info?: (...args: unknown[]) => void;
+    error?: (...args: unknown[]) => void;
+  },
+): Promise<void> {
+  try {
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      select: {
+        currentPrice: true,
+        winnerCompanyId: true,
+        sellerCompanyId: true,
+        vehicle: {
+          select: {
+            brand: true,
+            model: true,
+            year: true,
+          },
+        },
+      },
+    });
+
+    if (!auction) {
+      return;
+    }
+
+    const vehicleTitle = `${auction.vehicle.brand} ${auction.vehicle.model} ${auction.vehicle.year}`;
+    const sold = decision === "accept";
+    const dashboardUrl = `${process.env.FRONTEND_URL?.trim() || "https://fleetbid.ae"}/seller/dashboard`;
+    const sellerUsers = await prisma.companyUser.findMany({
+      where: {
+        companyId: auction.sellerCompanyId,
+        role: "SELLER_MANAGER",
+      },
+      select: {
+        user: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
+
+    let buyerName = "Unknown buyer";
+    let paymentDeadline: Date | null = null;
+
+    if (sold && auction.winnerCompanyId) {
+      const [buyerCompanyUsers, buyerCompany] = await Promise.all([
+        prisma.companyUser.findMany({
+          where: {
+            companyId: auction.winnerCompanyId,
+            role: "BUYER_BIDDER",
+          },
+          select: {
+            user: {
+              select: {
+                email: true,
+              },
+            },
+          },
+          take: 1,
+        }),
+        prisma.company.findUnique({
+          where: {
+            id: auction.winnerCompanyId,
+          },
+          select: {
+            name: true,
+          },
+        }),
+      ]);
+
+      buyerName = buyerCompany?.name ?? "Unknown buyer";
+
+      if (invoiceId) {
+        const invoice = await prisma.invoice.findUnique({
+          where: {
+            id: invoiceId,
+          },
+          select: {
+            dueAt: true,
+          },
+        });
+
+        paymentDeadline = invoice?.dueAt ?? null;
+
+        const buyerEmail = buyerCompanyUsers[0]?.user?.email ?? null;
+
+        if (buyerEmail && paymentDeadline) {
+          void sendAuctionWonEmail(
+            {
+              email: buyerEmail,
+              name: buyerEmail,
+              vehicleTitle,
+              finalPriceAed: await toNumberValue(auction.currentPrice),
+              paymentDeadline,
+              invoiceId,
+            },
+            logger,
+          );
+        }
+      }
+
+      const otherBidders = await prisma.bid.findMany({
+        where: {
+          auctionId,
+          companyId: {
+            not: auction.winnerCompanyId,
+          },
+        },
+        distinct: ["userId"],
+        select: {
+          userId: true,
+        },
+      });
+
+      for (const bidder of otherBidders) {
+        const bidderUser = await prisma.user.findUnique({
+          where: {
+            id: bidder.userId,
+          },
+          select: {
+            email: true,
+          },
+        });
+
+        if (!bidderUser) {
+          continue;
+        }
+
+        void sendAuctionLostEmail(
+          {
+            email: bidderUser.email,
+            name: bidderUser.email,
+            vehicleTitle,
+          },
+          logger,
+        );
+      }
+    }
+
+    const finalPriceAed = sold ? await toNumberValue(auction.currentPrice) : undefined;
+
+    for (const sellerUser of sellerUsers) {
+      void sendAuctionResultSellerEmail(
+        {
+          email: sellerUser.user.email,
+          name: sellerUser.user.email,
+          vehicleTitle,
+          sold,
+          finalPriceAed,
+          buyerName: sold ? buyerName : undefined,
+          paymentDeadline: sold && paymentDeadline ? paymentDeadline : undefined,
+          auctionId,
+          dashboardUrl,
+        },
+        logger,
+      );
+    }
+  } catch {
+    // Fire-and-forget email dispatch must never affect seller decision flows.
+  }
+}
+
 export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { auctionId: string }; Body: unknown }>(
     "/admin/auctions/:auctionId/force-decision",
@@ -901,6 +1088,13 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       await reply.code(200).send(result.response);
+
+      void sendAuctionClosedEmails(
+        parsedParams.data.auctionId,
+        parsedBody.data.decision,
+        result.response.invoiceId,
+        fastify.log,
+      );
     },
   );
 
@@ -1144,6 +1338,13 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           responseStatus: 200,
           responseBody: result.response,
         });
+
+        void sendAuctionClosedEmails(
+          parsedParams.data.auctionId,
+          parsedBody.data.decision,
+          result.response.invoiceId,
+          fastify.log,
+        );
 
         await reply.code(200).send(result.response);
       } catch (error) {
