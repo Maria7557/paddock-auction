@@ -84,7 +84,7 @@ export type AuctionLot = {
 
 export type WalletLockReadModel = {
   lockId: string;
-  auctionId: string;
+  auctionId: string | null;
   lotNumber: string;
   amountAed: number;
   status: "ACTIVE" | "RELEASED" | "BURNED";
@@ -281,7 +281,11 @@ function normalizeAuctionStatus(state: AuctionState): AuctionStatus {
   return "ENDED";
 }
 
-function deriveLotNumber(auctionId: string): string {
+function deriveLotNumber(auctionId: string | null): string {
+  if (auctionId === null) {
+    return "GLOBAL";
+  }
+
   return `LOT-${auctionId.slice(0, 8).toUpperCase()}`;
 }
 

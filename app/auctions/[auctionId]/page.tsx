@@ -264,7 +264,7 @@ async function getFallbackSimilarLots(currentLot: LotDetail): Promise<SimilarLot
   }
 }
 
-export async function getLot(auctionId: string): Promise<LotDetail | null> {
+async function getLot(auctionId: string): Promise<LotDetail | null> {
   try {
     const data = await api.auctions.get<Record<string, unknown>>(auctionId, await withServerCookies({
       cache: "no-store",

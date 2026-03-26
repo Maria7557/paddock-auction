@@ -1,6 +1,6 @@
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { WalletWorkspace } from "@/components/buyer/WalletWorkspace";
-import { api } from "@/src/lib/api-client";
+import { api, type BuyerBuyingPowerResponse } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
@@ -39,12 +39,18 @@ type WalletResponse = {
   pendingWithdrawalAmount?: number;
 };
 
+function toMoneyNumber(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default async function WalletPage() {
   const session = await requireBuyerSession("/wallet");
   const requestOptions = await withServerCookies({ cache: "no-store" });
 
-  const [walletResponse, dashboard, authResponse] = await Promise.all([
+  const [walletResponse, buyingPower, dashboard, authResponse] = await Promise.all([
     api.wallet.get<WalletResponse>(requestOptions),
+    api.buyer.buyingPower<BuyerBuyingPowerResponse>(requestOptions),
     api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
     api.auth.me<BuyerAuthResponse>(requestOptions),
   ]);
@@ -69,6 +75,12 @@ export default async function WalletPage() {
         <WalletWorkspace
           availableBalance={walletResponse.wallet.availableBalance}
           lockedBalance={walletResponse.wallet.lockedBalance}
+          buyingPower={{
+            depositAmount: toMoneyNumber(buyingPower.depositAmount),
+            ceiling: toMoneyNumber(buyingPower.ceiling),
+            activeBidsTotal: toMoneyNumber(buyingPower.activeBidsTotal),
+            remaining: toMoneyNumber(buyingPower.remaining),
+          }}
           pendingWithdrawalAmount={walletResponse.pendingWithdrawalAmount ?? 0}
           transactions={walletResponse.transactions ?? []}
         />

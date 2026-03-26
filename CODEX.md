@@ -23,6 +23,18 @@ B2B аукционная платформа для флотовых автомо
 | Anti-sniping: поздние ставки продлевают аукцион | Показывать "Extended" статус |
 | Без аккаунта = только просмотр | Показывать login notice в BidPanel |
 
+## Buying Power (новая модель депозита)
+Депозит 5 000 AED даёт buying power ceiling 300 000 AED.
+Buyer может участвовать в нескольких аукционах одновременно
+пока сумма активных ставок не превышает ceiling.
+
+API:
+GET /api/buyer/buying-power → {
+  depositAmount, ceiling, activeBidsTotal, remaining, activeBids[]
+}
+POST /api/bids ответ включает:
+  buyingPower: { activeBidsTotal, ceiling, remaining }
+
 Статусы аукциона: `DRAFT → SCHEDULED → LIVE → EXTENDED → PAYMENT_PENDING → ENDED / DEFAULTED`
 
 ---

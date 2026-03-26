@@ -13,6 +13,12 @@ const { mockPrisma } = vi.hoisted(() => ({
     bid: {
       findMany: vi.fn(),
     },
+    depositLock: {
+      findFirst: vi.fn(),
+    },
+    buyerBidSummary: {
+      findUnique: vi.fn(),
+    },
     savedLot: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -119,6 +125,8 @@ beforeEach(() => {
     ],
   });
   mockPrisma.bid.findMany.mockResolvedValue([]);
+  mockPrisma.depositLock.findFirst.mockResolvedValue(null);
+  mockPrisma.buyerBidSummary.findUnique.mockResolvedValue(null);
   mockPrisma.savedLot.findMany.mockResolvedValue([]);
   mockPrisma.savedLot.findFirst.mockResolvedValue(null);
   mockPrisma.wallet.findUnique.mockResolvedValue({
@@ -158,6 +166,94 @@ describe("buyer auth guard", () => {
 
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("Unauthorized");
+  });
+
+  it("returns 403 for non-buyer token on buying power endpoint", async () => {
+    const res = await request
+      .get("/api/buyer/buying-power")
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("Forbidden");
+  });
+});
+
+describe("GET /api/buyer/buying-power", () => {
+  it("returns 401 without auth token", async () => {
+    const res = await request.get("/api/buyer/buying-power");
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("Unauthorized");
+  });
+
+  it("returns zeroed buying power when there is no active lock", async () => {
+    const res = await request
+      .get("/api/buyer/buying-power")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      depositAmount: "0.00",
+      ceiling: "0.00",
+      activeBidsTotal: "0.00",
+      remaining: "0.00",
+      activeBids: [],
+    });
+  });
+
+  it("returns current buying power and active leading bids", async () => {
+    mockPrisma.depositLock.findFirst.mockResolvedValue({
+      amount: "5000.00",
+      buyingPowerCeiling: "300000.00",
+    });
+    mockPrisma.buyerBidSummary.findUnique.mockResolvedValue({
+      activeBidsTotal: "150000.00",
+    });
+    mockPrisma.bid.findMany.mockResolvedValueOnce([
+      {
+        id: "bid-highest-1",
+        auctionId: "auction-1",
+        amount: "150000.00",
+        auction: {
+          highestBidId: "bid-highest-1",
+          vehicle: {
+            brand: "BMW",
+            model: "X5",
+          },
+        },
+      },
+      {
+        id: "bid-old-1",
+        auctionId: "auction-1",
+        amount: "149000.00",
+        auction: {
+          highestBidId: "bid-highest-1",
+          vehicle: {
+            brand: "BMW",
+            model: "X5",
+          },
+        },
+      },
+    ]);
+
+    const res = await request
+      .get("/api/buyer/buying-power")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      depositAmount: "5000.00",
+      ceiling: "300000.00",
+      activeBidsTotal: "150000.00",
+      remaining: "150000.00",
+      activeBids: [
+        {
+          auctionId: "auction-1",
+          lotTitle: "BMW X5",
+          amount: "150000.00",
+        },
+      ],
+    });
   });
 });
 

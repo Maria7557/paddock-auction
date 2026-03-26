@@ -96,8 +96,19 @@ const { mockPrisma, mockTx, MockRedis, resetRedis } = vi.hoisted(() => {
   };
 });
 
+const { mockCloseAuction } = vi.hoisted(() => ({
+  mockCloseAuction: {
+    collectAuctionCloseBuyingPowerOutcome: vi.fn(),
+    releaseBuyingPowerForClosedAuction: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({
   prisma: mockPrisma,
+}));
+vi.mock("../../modules/auction/application/close_auction", () => ({
+  collectAuctionCloseBuyingPowerOutcome: mockCloseAuction.collectAuctionCloseBuyingPowerOutcome,
+  releaseBuyingPowerForClosedAuction: mockCloseAuction.releaseBuyingPowerForClosedAuction,
 }));
 
 vi.mock("ioredis", () => ({
@@ -266,6 +277,17 @@ beforeEach(() => {
   mockTx.auction.update.mockResolvedValue({});
   mockTx.bid.findFirst.mockResolvedValue(makeLeaderBid());
   mockPrisma.bid.count.mockResolvedValue(0);
+  mockCloseAuction.collectAuctionCloseBuyingPowerOutcome.mockResolvedValue({
+    auctionId: "auction-1",
+    winningBidId: "bid-1",
+    winnerCompanyId: "buyer-company-1",
+    winningBidAmount: 25_000,
+    losingCompanyIds: [],
+    bidAmountsByCompany: new Map(),
+    releasableLosingCompanyIds: [],
+    releasableBidAmountsByCompany: new Map(),
+  });
+  mockCloseAuction.releaseBuyingPowerForClosedAuction.mockResolvedValue(undefined);
 });
 
 describe("event orchestrator", () => {
@@ -323,6 +345,16 @@ describe("event orchestrator", () => {
   });
 
   it("advanceToNextLot moves to next lot correctly", async () => {
+    mockCloseAuction.collectAuctionCloseBuyingPowerOutcome.mockResolvedValueOnce({
+      auctionId: "auction-1",
+      winningBidId: "bid-1",
+      winnerCompanyId: "buyer-company-1",
+      winningBidAmount: 31_500,
+      losingCompanyIds: [],
+      bidAmountsByCompany: new Map(),
+      releasableLosingCompanyIds: [],
+      releasableBidAmountsByCompany: new Map(),
+    });
     mockTx.auctionEventRuntime.findUnique.mockResolvedValue(makeRuntime());
     mockTx.auctionEventLot.findUnique.mockResolvedValue(makeLot({ state: "ON_BLOCK" }));
     mockTx.bid.count.mockResolvedValue(3);
@@ -480,6 +512,16 @@ describe("event orchestrator", () => {
   });
 
   it("checkAndTick advances lot when bids > 0 and time passed", async () => {
+    mockCloseAuction.collectAuctionCloseBuyingPowerOutcome.mockResolvedValueOnce({
+      auctionId: "auction-1",
+      winningBidId: "bid-1",
+      winnerCompanyId: "buyer-company-1",
+      winningBidAmount: 44_000,
+      losingCompanyIds: [],
+      bidAmountsByCompany: new Map(),
+      releasableLosingCompanyIds: [],
+      releasableBidAmountsByCompany: new Map(),
+    });
     mockPrisma.auctionEventRuntime.findUnique.mockResolvedValue(makeRuntime());
     mockPrisma.auctionEventLot.findUnique.mockResolvedValue(makeLot({ state: "ON_BLOCK" }));
     mockPrisma.bid.count.mockResolvedValue(2);

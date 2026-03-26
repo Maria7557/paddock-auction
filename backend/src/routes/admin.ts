@@ -6,7 +6,14 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
-import { sendNewEventAnnouncementEmail } from "../lib/email";
+import {
+  sendAccountApprovedEmail,
+  sendAccountRejectedEmail,
+  sendDepositApprovedEmail,
+  sendNewEventAnnouncementEmail,
+  sendVehicleApprovedEmail,
+} from "../lib/email";
+import { releaseWinnerBidAfterPayment } from "../modules/deposits/application/deposit_commands";
 import {
   buildInvoicePdfHtml,
   formatInvoiceAmount,
@@ -43,6 +50,19 @@ type PendingRequestRow = {
   id: string;
   amount: DecimalLike;
   reference: string | null;
+};
+
+type LockedCompanyDepositWalletRow = {
+  id: string;
+  available_balance: Prisma.Decimal;
+  locked_balance: Prisma.Decimal;
+};
+
+type LockedCompanyDepositLockRow = {
+  id: string;
+  amount: Prisma.Decimal;
+  status: "ACTIVE" | "RELEASED" | "BURNED";
+  created_at: Date;
 };
 
 type EventMeta = {
@@ -1302,6 +1322,74 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const approvedVehicle = await prisma.vehicle.findUnique({
+            where: { id },
+            select: {
+              brand: true,
+              model: true,
+              year: true,
+              auctions: {
+                where: {
+                  transitions: {
+                    none: {
+                      trigger: "EVENT_META",
+                    },
+                  },
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: 1,
+                select: {
+                  id: true,
+                  startsAt: true,
+                  sellerCompanyId: true,
+                },
+              },
+            },
+          });
+
+          const vehicleAuction = approvedVehicle?.auctions[0];
+
+          if (!vehicleAuction) {
+            return;
+          }
+
+          const sellerUsers = await prisma.companyUser.findMany({
+            where: {
+              companyId: vehicleAuction.sellerCompanyId,
+              role: "SELLER_MANAGER",
+            },
+            select: {
+              user: {
+                select: {
+                  email: true,
+                },
+              },
+            },
+          });
+
+          const vehicleTitle = approvedVehicle
+            ? `${approvedVehicle.brand} ${approvedVehicle.model} ${approvedVehicle.year}`
+            : id;
+
+          for (const sellerUser of sellerUsers) {
+            void sendVehicleApprovedEmail(
+              {
+                email: sellerUser.user.email,
+                name: sellerUser.user.email,
+                vehicleTitle,
+                auctionDate: vehicleAuction.startsAt,
+                auctionId: vehicleAuction.id,
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -1859,6 +1947,8 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           auction: {
             select: {
               state: true,
+              winnerCompanyId: true,
+              currentPrice: true,
             },
           },
         },
@@ -1886,6 +1976,14 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const paidAt = new Date();
+      const winnerCompanyId = invoice.auction.winnerCompanyId?.trim() ?? null;
+
+      if (!winnerCompanyId) {
+        await reply.code(422).send({
+          error: "INVOICE_AUCTION_HAS_NO_WINNER",
+        });
+        return;
+      }
 
       await prisma.$transaction(async (tx) => {
         await tx.invoice.update({
@@ -1897,6 +1995,8 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             paidAt,
           },
         });
+
+        await releaseWinnerBidAfterPayment(tx, winnerCompanyId, invoice.auction.currentPrice);
 
         await tx.auction.update({
           where: {
@@ -2328,6 +2428,45 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const approvedCompany = await prisma.company.findUnique({
+            where: { id },
+            select: {
+              name: true,
+              users: {
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                      role: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!approvedCompany) {
+            return;
+          }
+
+          for (const membership of approvedCompany.users) {
+            void sendAccountApprovedEmail(
+              {
+                email: membership.user.email,
+                name: membership.user.email,
+                companyName: approvedCompany.name,
+                role: membership.user.role as "SELLER" | "BUYER",
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -2421,6 +2560,45 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const rejectedCompany = await prisma.company.findUnique({
+            where: { id },
+            select: {
+              name: true,
+              users: {
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!rejectedCompany) {
+            return;
+          }
+
+          for (const membership of rejectedCompany.users) {
+            void sendAccountRejectedEmail(
+              {
+                email: membership.user.email,
+                name: membership.user.email,
+                companyName: rejectedCompany.name,
+                rejectionReason:
+                  "Your application did not meet our current requirements. Please contact support for details.",
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the rejection flow.
+        }
+      })();
     },
   );
 
@@ -2716,6 +2894,44 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         status: "ACTIVE",
       });
+
+      void (async () => {
+        try {
+          const approvedUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              role: true,
+              companyUsers: {
+                select: {
+                  company: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          });
+
+          if (!approvedUser) {
+            return;
+          }
+
+          void sendAccountApprovedEmail(
+            {
+              email: approvedUser.email,
+              name: approvedUser.email,
+              companyName: approvedUser.companyUsers[0]?.company?.name ?? "your company",
+              role: approvedUser.role as "SELLER" | "BUYER",
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -2823,6 +3039,44 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         status: "REJECTED",
       });
+
+      void (async () => {
+        try {
+          const rejectedUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              companyUsers: {
+                select: {
+                  company: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          });
+
+          if (!rejectedUser) {
+            return;
+          }
+
+          void sendAccountRejectedEmail(
+            {
+              email: rejectedUser.email,
+              name: rejectedUser.email,
+              companyName: rejectedUser.companyUsers[0]?.company?.name ?? "your company",
+              rejectionReason:
+                "Your application did not meet our current requirements. Please contact support for details.",
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the rejection flow.
+        }
+      })();
     },
   );
 
@@ -2901,6 +3155,40 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         kycVerified: true,
       });
+
+      void (async () => {
+        try {
+          const kycUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              wallet: {
+                select: {
+                  balance: true,
+                },
+              },
+            },
+          });
+
+          if (!kycUser) {
+            return;
+          }
+
+          const balanceAed =
+            kycUser.wallet?.balance == null ? 0 : await toNumberValue(kycUser.wallet.balance);
+
+          void sendDepositApprovedEmail(
+            {
+              email: kycUser.email,
+              name: kycUser.email,
+              amountAed: balanceAed,
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the KYC flow.
+        }
+      })();
     },
   );
 
@@ -3657,6 +3945,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3786,6 +4079,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3907,6 +4205,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3940,32 +4243,122 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const activeLock = await prisma.depositLock.findFirst({
-        where: {
-          auctionId: parsedBody.data.auctionId,
-          walletId: wallet.id,
-          status: "ACTIVE",
-        },
-        select: {
-          id: true,
-          amount: true,
-        },
-      });
-
-      if (!activeLock) {
-        await reply.code(400).send({
-          error: "NO_ACTIVE_DEPOSIT_LOCK",
-        });
-        return;
-      }
-
       const correlationId = request.headers["x-correlation-id"]?.toString().trim();
       const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
-      const lockAmount = await toNumberValue(activeLock.amount);
       const result = await prisma.$transaction(async (tx) => {
+        const auction = await tx.auction.findUnique({
+          where: {
+            id: parsedBody.data.auctionId,
+          },
+          select: {
+            id: true,
+            state: true,
+          },
+        });
+
+        if (!auction) {
+          return {
+            kind: "auction-not-found",
+          } as const;
+        }
+
+        if (auction.state !== "DEFAULTED") {
+          return {
+            kind: "auction-not-defaulted",
+          } as const;
+        }
+
+        const winningBid = await tx.bid.findFirst({
+          where: {
+            auctionId: parsedBody.data.auctionId,
+          },
+          orderBy: [{ amount: "desc" }, { sequenceNo: "desc" }, { createdAt: "desc" }],
+          select: {
+            id: true,
+            userId: true,
+            companyId: true,
+            amount: true,
+          },
+        });
+
+        if (!winningBid) {
+          return {
+            kind: "winning-bid-not-found",
+          } as const;
+        }
+
+        const buyerCompanyIds = new Set(buyer.companyUsers.map((entry) => entry.companyId));
+        const belongsToWinningCompany =
+          winningBid.userId === normalizedUserId || buyerCompanyIds.has(winningBid.companyId);
+
+        if (!belongsToWinningCompany) {
+          return {
+            kind: "winner-company-mismatch",
+          } as const;
+        }
+
+        await releaseWinnerBidAfterPayment(tx, winningBid.companyId, winningBid.amount);
+
+        const depositWalletRows = await tx.$queryRaw<LockedCompanyDepositWalletRow[]>`
+          SELECT
+            id,
+            available_balance,
+            locked_balance
+          FROM deposit_wallets
+          WHERE company_id = ${winningBid.companyId}
+            AND currency = 'AED'
+          FOR UPDATE
+        `;
+        const depositWallet = depositWalletRows[0];
+
+        if (!depositWallet) {
+          return {
+            kind: "deposit-wallet-not-found",
+          } as const;
+        }
+
+        const burnableLocks = await tx.$queryRaw<LockedCompanyDepositLockRow[]>`
+          SELECT
+            id,
+            amount,
+            status,
+            created_at
+          FROM deposit_locks
+          WHERE company_id = ${winningBid.companyId}
+            AND status IN ('ACTIVE', 'RELEASED')
+          ORDER BY
+            CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END,
+            created_at DESC
+          FOR UPDATE
+        `;
+        const burnableLock = burnableLocks[0];
+
+        if (!burnableLock) {
+          return {
+            kind: "lock-not-found",
+          } as const;
+        }
+
+        const lockAmount = burnableLock.amount;
+        const walletAmount = lockAmount.toFixed(2);
+        const updatedDepositWalletRows = await tx.$queryRaw<Array<{ id: string }>>`
+          UPDATE deposit_wallets
+          SET available_balance = available_balance - ${lockAmount},
+              updated_at = NOW()
+          WHERE id = ${depositWallet.id}
+            AND available_balance >= ${lockAmount}
+          RETURNING id
+        `;
+
+        if (updatedDepositWalletRows.length === 0) {
+          return {
+            kind: "insufficient-deposit-wallet-balance",
+          } as const;
+        }
+
         await tx.depositLock.update({
           where: {
-            id: activeLock.id,
+            id: burnableLock.id,
           },
           data: {
             status: "BURNED",
@@ -3978,26 +4371,19 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           where: {
             id: wallet.id,
             balance: {
-              gte: lockAmount,
-            },
-            lockedBalance: {
-              gte: lockAmount,
+              gte: walletAmount,
             },
           },
           data: {
             balance: {
-              decrement: lockAmount,
-            },
-            lockedBalance: {
-              decrement: lockAmount,
+              decrement: walletAmount,
             },
           },
         });
 
         if (updatedWallet.count === 0) {
           return {
-            insufficientWalletBalance: true,
-            burnedAmount: 0,
+            kind: "insufficient-wallet-balance",
           } as const;
         }
 
@@ -4005,7 +4391,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           data: {
             walletId: wallet.id,
             type: "DEPOSIT_BURN",
-            amount: lockAmount * -1,
+            amount: Number(lockAmount.negated().toFixed(2)),
             reference: parsedBody.data.auctionId,
           },
         });
@@ -4020,19 +4406,66 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           payload: {
             userId: normalizedUserId,
             auctionId: parsedBody.data.auctionId,
-            burnedAmount: lockAmount,
+            companyId: winningBid.companyId,
+            winningBidAmount: winningBid.amount.toFixed(2),
+            burnedAmount: walletAmount,
             reason: parsedBody.data.reason,
-            depositLockId: activeLock.id,
+            depositLockId: burnableLock.id,
           },
         });
 
         return {
-          insufficientWalletBalance: false,
-          burnedAmount: lockAmount,
+          kind: "burned",
+          burnedAmount: Number(walletAmount),
         } as const;
       });
 
-      if (result.insufficientWalletBalance) {
+      if (result.kind === "auction-not-found") {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "auction-not-defaulted") {
+        await reply.code(409).send({
+          error: "AUCTION_NOT_DEFAULTED",
+        });
+        return;
+      }
+
+      if (result.kind === "winning-bid-not-found") {
+        await reply.code(404).send({
+          error: "WINNING_BID_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "winner-company-mismatch") {
+        await reply.code(409).send({
+          error: "USER_NOT_WINNING_BUYER",
+        });
+        return;
+      }
+
+      if (result.kind === "deposit-wallet-not-found") {
+        await reply.code(404).send({
+          error: "DEPOSIT_WALLET_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "lock-not-found") {
+        await reply.code(400).send({
+          error: "NO_ACTIVE_DEPOSIT_LOCK",
+        });
+        return;
+      }
+
+      if (
+        result.kind === "insufficient-deposit-wallet-balance" ||
+        result.kind === "insufficient-wallet-balance"
+      ) {
         await reply.code(409).send({
           error: "INSUFFICIENT_WALLET_BALANCE_FOR_BURN",
         });

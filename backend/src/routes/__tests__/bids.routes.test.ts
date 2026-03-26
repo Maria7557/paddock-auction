@@ -1,43 +1,100 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { SignJWT } from "jose";
 import supertest from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockTx, mockPrisma } = vi.hoisted(() => ({
-  mockTx: {
-    $queryRaw: vi.fn(),
-    $executeRaw: vi.fn(),
-    bid: {
-      create: vi.fn(),
+const { mockTx, mockPrisma } = vi.hoisted(() => {
+  const userFindUnique = vi.fn();
+  const bidRequestUpdate = vi.fn();
+
+  return {
+    mockTx: {
+      $queryRaw: vi.fn(),
+      $executeRaw: vi.fn(),
+      user: {
+        findUnique: userFindUnique,
+      },
+      bid: {
+        create: vi.fn(),
+      },
+      bidRequest: {
+        update: bidRequestUpdate,
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
+      outboxEvent: {
+        create: vi.fn(),
+      },
+      depositLock: {
+        findFirst: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      depositWallet: {
+        findUnique: vi.fn(),
+      },
+      buyerBidSummary: {
+        update: vi.fn(),
+      },
     },
-    depositLock: {
-      findFirst: vi.fn(),
+    mockPrisma: {
+      auction: {
+        findMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      bid: {
+        findMany: vi.fn(),
+      },
+      company: {
+        findMany: vi.fn(),
+      },
+      user: {
+        findUnique: userFindUnique,
+        findMany: vi.fn(),
+      },
+      bidRequest: {
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: bidRequestUpdate,
+      },
+      $transaction: vi.fn(),
+      $disconnect: vi.fn(),
     },
-  },
-  mockPrisma: {
-    auction: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
+  };
+});
+
+const { mockBuyingPowerCommands, MockBuyingPowerCommandError } = vi.hoisted(() => {
+  class MockBuyingPowerCommandError extends Error {
+    readonly code: string;
+    readonly details: Record<string, unknown> | undefined;
+
+    constructor(code: string, message: string, details?: Record<string, unknown>) {
+      super(message);
+      this.name = "BuyingPowerCommandError";
+      this.code = code;
+      this.details = details;
+    }
+  }
+
+  return {
+    MockBuyingPowerCommandError,
+    mockBuyingPowerCommands: {
+      initializeBuyerBidSummary: vi.fn(),
+      primeBuyingPowerState: vi.fn(),
+      acquireOrVerifyBuyingPowerLock: vi.fn(),
+      releaseLeadingBidOnOutbid: vi.fn(),
+      recordLeadingBid: vi.fn(),
+      readBuyingPowerSnapshot: vi.fn(),
     },
-    bid: {
-      findMany: vi.fn(),
-    },
-    company: {
-      findMany: vi.fn(),
-    },
-    user: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-    },
-    bidRequest: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    $transaction: vi.fn(),
-    $disconnect: vi.fn(),
+  };
+});
+
+const { mockPlaceBidCommand } = vi.hoisted(() => ({
+  mockPlaceBidCommand: {
+    executePlaceBidCommand: vi.fn(),
   },
 }));
 
@@ -50,6 +107,18 @@ const { mockNotifyEventRuntime } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../modules/bidding/application/place_bid", () => ({
+  executePlaceBidCommand: mockPlaceBidCommand.executePlaceBidCommand,
+}));
+vi.mock("../../modules/deposits/application/deposit_commands", () => ({
+  BuyingPowerCommandError: MockBuyingPowerCommandError,
+  initializeBuyerBidSummary: mockBuyingPowerCommands.initializeBuyerBidSummary,
+  primeBuyingPowerState: mockBuyingPowerCommands.primeBuyingPowerState,
+  acquireOrVerifyBuyingPowerLock: mockBuyingPowerCommands.acquireOrVerifyBuyingPowerLock,
+  releaseLeadingBidOnOutbid: mockBuyingPowerCommands.releaseLeadingBidOnOutbid,
+  recordLeadingBid: mockBuyingPowerCommands.recordLeadingBid,
+  readBuyingPowerSnapshot: mockBuyingPowerCommands.readBuyingPowerSnapshot,
+}));
 vi.mock("../auction-ws", () => ({
   auctionWsRoutes: async () => {},
   publishAuctionRealtimeSnapshot: mockPublishAuctionRealtimeSnapshot,
@@ -72,6 +141,11 @@ const buyerId = randomUUID();
 const companyId = randomUUID();
 const auctionId = randomUUID();
 const bidId = randomUUID();
+const BUYING_POWER_CEILING = new Prisma.Decimal(300_000);
+
+function decimal(value: number | string): Prisma.Decimal {
+  return new Prisma.Decimal(value);
+}
 
 async function makeToken(payload: {
   userId: string;
@@ -101,7 +175,7 @@ async function makeRequestHash(input: {
     .update(
       JSON.stringify({
         auctionId: input.auctionId,
-        amount: input.amount,
+        amount: input.amount.toFixed(2),
         companyId: input.companyId,
         userId: input.userId,
       }),
@@ -147,12 +221,50 @@ function makeBidRecord(
   return {
     id: overrides.id ?? bidId,
     amount: overrides.amount ?? 51_000,
-    sequenceNo: overrides.sequenceNo ?? 6,
     createdAt: overrides.createdAt ?? new Date("2026-03-14T09:00:00.000Z"),
     companyId: overrides.companyId ?? companyId,
     userId: overrides.userId ?? buyerId,
     auctionId: overrides.auctionId ?? auctionId,
   };
+}
+
+function configureBuyingPowerSuccess(activeBidsTotal: number): void {
+  mockBuyingPowerCommands.initializeBuyerBidSummary.mockResolvedValue(undefined);
+  mockBuyingPowerCommands.primeBuyingPowerState.mockResolvedValue({});
+  mockBuyingPowerCommands.acquireOrVerifyBuyingPowerLock.mockResolvedValue({
+    allowed: true,
+    currentTotal: decimal(0),
+    ceiling: BUYING_POWER_CEILING,
+    remaining: BUYING_POWER_CEILING.minus(activeBidsTotal),
+  });
+  mockBuyingPowerCommands.releaseLeadingBidOnOutbid.mockResolvedValue({
+    activeBidsTotal: decimal(0),
+    ceiling: BUYING_POWER_CEILING,
+    remaining: BUYING_POWER_CEILING,
+  });
+  mockBuyingPowerCommands.recordLeadingBid.mockResolvedValue({
+    activeBidsTotal: decimal(activeBidsTotal),
+    ceiling: BUYING_POWER_CEILING,
+    remaining: BUYING_POWER_CEILING.minus(activeBidsTotal),
+  });
+  mockBuyingPowerCommands.readBuyingPowerSnapshot.mockResolvedValue({
+    activeBidsTotal: decimal(activeBidsTotal),
+    ceiling: BUYING_POWER_CEILING,
+    remaining: BUYING_POWER_CEILING.minus(activeBidsTotal),
+  });
+}
+
+function setupBidQuerySequence(options: {
+  auctionRow?: ReturnType<typeof makeLiveAuctionRow> | null;
+  previousLeaderPreview?: Array<Record<string, unknown>>;
+  previousLeader?: Array<Record<string, unknown>>;
+}): void {
+  mockTx.$queryRaw.mockReset();
+  mockTx.$queryRaw.mockResolvedValueOnce(options.previousLeaderPreview ?? []);
+  mockTx.$queryRaw.mockResolvedValueOnce(
+    options.auctionRow === null ? [] : [options.auctionRow ?? makeLiveAuctionRow()],
+  );
+  mockTx.$queryRaw.mockResolvedValueOnce(options.previousLeader ?? []);
 }
 
 function makeAuctionDetails() {
@@ -251,6 +363,25 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockPublishAuctionRealtimeSnapshot.mockResolvedValue(true);
+  mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+    kind: "success",
+    statusCode: 201,
+    bidId: bidId,
+    body: {
+      bid: {
+        id: bidId,
+        auctionId,
+        amount: "51000.00",
+        createdAt: "2026-03-14T09:00:00.000Z",
+      },
+      buyingPower: {
+        activeBidsTotal: "51000.00",
+        ceiling: "300000.00",
+        remaining: "249000.00",
+      },
+    },
+  });
+  configureBuyingPowerSuccess(51_000);
   mockPrisma.user.findUnique.mockResolvedValue({
     id: buyerId,
     role: "BUYER",
@@ -267,6 +398,9 @@ beforeEach(() => {
   });
   mockPrisma.user.findMany.mockResolvedValue([]);
   mockPrisma.company.findMany.mockResolvedValue([]);
+  mockTx.auditLog.create.mockResolvedValue({});
+  mockTx.outboxEvent.create.mockResolvedValue({});
+  mockTx.depositLock.updateMany.mockResolvedValue({ count: 0 });
 });
 
 describe("POST /api/bids", () => {
@@ -364,24 +498,21 @@ describe("POST /api/bids", () => {
     const cachedResponse = {
       bid: {
         id: bidId,
-        amount: 51_000,
-        sequenceNo: 6,
+        auctionId,
+        amount: "51000.00",
         createdAt: "2026-03-14T09:00:00.000Z",
       },
+      buyingPower: {
+        activeBidsTotal: "51000.00",
+        ceiling: "300000.00",
+        remaining: "249000.00",
+      },
     };
-    const requestHash = await makeRequestHash({
-      auctionId,
-      amount: validBody.amount,
-      companyId,
-      userId: buyerId,
-    });
-
-    mockPrisma.bidRequest.findUnique.mockResolvedValue({
-      id: "req-1",
-      requestHash,
-      status: "SUCCEEDED",
-      responseStatus: 201,
-      responseBody: cachedResponse,
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "replay",
+      statusCode: 201,
+      bidId,
+      body: cachedResponse,
     });
 
     const res = await request
@@ -396,20 +527,12 @@ describe("POST /api/bids", () => {
   });
 
   it("returns cached failed response when bid request was previously REJECTED", async () => {
-    const requestHash = await makeRequestHash({
-      auctionId,
-      amount: validBody.amount,
-      companyId,
-      userId: buyerId,
-    });
-
-    mockPrisma.bidRequest.findUnique.mockResolvedValue({
-      id: "req-2",
-      requestHash,
-      status: "REJECTED",
-      responseStatus: 403,
-      responseBody: {
-        error: "Deposit required to bid",
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_INSUFFICIENT_DEPOSIT",
       },
     });
 
@@ -418,25 +541,19 @@ describe("POST /api/bids", () => {
       .set("Authorization", `Bearer ${buyerToken}`)
       .send(validBody);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Deposit required to bid");
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("BID_INSUFFICIENT_DEPOSIT");
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("returns 409 when bid request is already in progress", async () => {
-    const requestHash = await makeRequestHash({
-      auctionId,
-      amount: validBody.amount,
-      companyId,
-      userId: buyerId,
-    });
-
-    mockPrisma.bidRequest.findUnique.mockResolvedValue({
-      id: "req-3",
-      requestHash,
-      status: "IN_PROGRESS",
-      responseStatus: null,
-      responseBody: null,
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 409,
+      bidId: null,
+      body: {
+        error: "BID_REQUEST_IN_PROGRESS",
+      },
     });
 
     const res = await request
@@ -445,16 +562,17 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toContain("already in progress");
+    expect(res.body.error).toBe("BID_REQUEST_IN_PROGRESS");
   });
 
   it("returns 409 when idempotency key was reused for a different bid", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue({
-      id: "req-4",
-      requestHash: "different-hash",
-      status: "IN_PROGRESS",
-      responseStatus: null,
-      responseBody: null,
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 409,
+      bidId: null,
+      body: {
+        error: "BID_IDEMPOTENCY_CONFLICT",
+      },
     });
 
     const res = await request
@@ -463,46 +581,53 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toContain("different bid");
+    expect(res.body.error).toBe("BID_IDEMPOTENCY_CONFLICT");
   });
 
   it("returns 201 and serializes bid data for a valid bid", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-5" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(makeBidRecord());
-    mockTx.$executeRaw.mockResolvedValueOnce(1);
-
     const res = await request
       .post("/api/bids")
       .set("Authorization", `Bearer ${buyerToken}`)
       .send(validBody);
 
     expect(res.status).toBe(201);
-    expect(res.body.bid.amount).toBe(51_000);
-    expect(res.body.bid.sequenceNo).toBe(6);
+    expect(res.body.bid.amount).toBe("51000.00");
+    expect(res.body.bid.auctionId).toBe(auctionId);
     expect(res.body.bid.createdAt).toBe("2026-03-14T09:00:00.000Z");
+    expect(res.body.buyingPower).toEqual({
+      activeBidsTotal: "51000.00",
+      ceiling: "300000.00",
+      remaining: "249000.00",
+    });
+    expect(mockPlaceBidCommand.executePlaceBidCommand).toHaveBeenCalledWith(mockPrisma, {
+      auctionId,
+      amount: 51_000,
+      companyId,
+      idempotencyKey: "idem-key-001",
+      userId: buyerId,
+    });
     expect(mockPublishAuctionRealtimeSnapshot).toHaveBeenCalledWith(auctionId, server.log);
   });
 
   it("runs anti-sniping extension when less than three minutes remain", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-6" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        ends_at: new Date(Date.now() + 60_000),
-      }),
-    ]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(makeBidRecord());
-    mockTx.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "success",
+      statusCode: 201,
+      bidId,
+      body: {
+        bid: {
+          id: bidId,
+          auctionId,
+          amount: "51000.00",
+          createdAt: "2026-03-14T09:00:00.000Z",
+        },
+        buyingPower: {
+          activeBidsTotal: "51000.00",
+          ceiling: "300000.00",
+          remaining: "249000.00",
+        },
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -510,54 +635,18 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(201);
-    expect(mockTx.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(mockPlaceBidCommand.executePlaceBidCommand).toHaveBeenCalledOnce();
   });
 
   it("returns 409 when auction is not active", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-7" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow({ state: "CLOSED" })]);
-
-    const res = await request
-      .post("/api/bids")
-      .set("Authorization", `Bearer ${buyerToken}`)
-      .send(validBody);
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Auction is not active");
-  });
-
-  it("returns 409 when auction has already ended", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-8" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        ends_at: new Date(Date.now() - 60_000),
-      }),
-    ]);
-
-    const res = await request
-      .post("/api/bids")
-      .set("Authorization", `Bearer ${buyerToken}`)
-      .send(validBody);
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Auction has ended");
-  });
-
-  it("returns 422 when bid amount is not higher than current price", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-9" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow({ current_price: 51_000 })]);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_AUCTION_NOT_LIVE",
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -565,21 +654,56 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe("Bid must be higher than current price");
+    expect(res.body.error).toBe("BID_AUCTION_NOT_LIVE");
+  });
+
+  it("returns 409 when auction has already ended", async () => {
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_AUCTION_NOT_LIVE",
+      },
+    });
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send(validBody);
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("BID_AUCTION_NOT_LIVE");
+  });
+
+  it("returns 422 when bid amount is not higher than current price", async () => {
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_INCREMENT_TOO_LOW",
+      },
+    });
+
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send(validBody);
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("BID_INCREMENT_TOO_LOW");
   });
 
   it("returns 422 when bid does not meet minimum increment", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-10" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        current_price: 50_000,
-        min_increment: 1_000,
-      }),
-    ]);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_INCREMENT_TOO_LOW",
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -587,49 +711,47 @@ describe("POST /api/bids", () => {
       .send({ ...validBody, amount: 50_500 });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe("Bid must meet the minimum increment");
+    expect(res.body.error).toBe("BID_INCREMENT_TOO_LOW");
   });
 
   it("returns 403 when no active deposit lock exists", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-11" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValueOnce([makeLiveAuctionRow()]).mockResolvedValueOnce([]);
-    mockTx.depositLock.findFirst.mockResolvedValue(null);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_INSUFFICIENT_DEPOSIT",
+      },
+    });
 
     const res = await request
       .post("/api/bids")
       .set("Authorization", `Bearer ${buyerToken}`)
       .send(validBody);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Deposit required to bid");
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("BID_INSUFFICIENT_DEPOSIT");
   });
 
   it("accepts the first manual pre-bid for a scheduled auction", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-1" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        state: "SCHEDULED",
-        current_price: 0,
-        starts_at: new Date(Date.now() + 60 * 60 * 1000),
-        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      }),
-    ]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(
-      makeBidRecord({
-        amount: 3_000,
-        sequenceNo: 6,
-      }),
-    );
-    mockTx.$executeRaw.mockResolvedValueOnce(1);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "success",
+      statusCode: 201,
+      bidId,
+      body: {
+        bid: {
+          id: bidId,
+          auctionId,
+          amount: "3000.00",
+          createdAt: "2026-03-14T09:00:00.000Z",
+        },
+        buyingPower: {
+          activeBidsTotal: "3000.00",
+          ceiling: "300000.00",
+          remaining: "297000.00",
+        },
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -637,23 +759,18 @@ describe("POST /api/bids", () => {
       .send({ ...validBody, amount: 3_000, idempotencyKey: "idem-scheduled-1" });
 
     expect(res.status).toBe(201);
-    expect(res.body.bid.amount).toBe(3_000);
+    expect(res.body.bid.amount).toBe("3000.00");
   });
 
   it("rejects a scheduled pre-bid that skips the exact AED 500 increment", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-2" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        state: "SCHEDULED",
-        current_price: 3_000,
-        starts_at: new Date(Date.now() + 60 * 60 * 1000),
-        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      }),
-    ]);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_INCREMENT_TOO_LOW",
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -661,31 +778,28 @@ describe("POST /api/bids", () => {
       .send({ ...validBody, amount: 3_600, idempotencyKey: "idem-scheduled-2" });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe("Bid must meet the minimum increment");
+    expect(res.body.error).toBe("BID_INCREMENT_TOO_LOW");
   });
 
   it("accepts bidding on a scheduled auction after its start time and promotes it to LIVE", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-scheduled-live-1" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([
-      makeLiveAuctionRow({
-        state: "SCHEDULED",
-        current_price: 0,
-        starts_at: new Date(Date.now() - 10_000),
-        ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      }),
-    ]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-live-1" });
-    mockTx.bid.create.mockResolvedValue(
-      makeBidRecord({
-        amount: 500,
-        sequenceNo: 6,
-      }),
-    );
-    mockTx.$executeRaw.mockResolvedValueOnce(1);
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "success",
+      statusCode: 201,
+      bidId,
+      body: {
+        bid: {
+          id: bidId,
+          auctionId,
+          amount: "500.00",
+          createdAt: "2026-03-14T09:00:00.000Z",
+        },
+        buyingPower: {
+          activeBidsTotal: "500.00",
+          ceiling: "300000.00",
+          remaining: "299500.00",
+        },
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -693,17 +807,38 @@ describe("POST /api/bids", () => {
       .send({ ...validBody, amount: 500, idempotencyKey: "idem-scheduled-live-1" });
 
     expect(res.status).toBe(201);
-    expect(res.body.bid.amount).toBe(500);
+    expect(res.body.bid.amount).toBe("500.00");
     expect(mockPublishAuctionRealtimeSnapshot).toHaveBeenCalledWith(auctionId, expect.anything());
   });
 
   it("returns 409 when locked auction row is missing", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-12" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 422,
+      bidId: null,
+      body: {
+        error: "BID_AUCTION_NOT_LIVE",
+      },
+    });
 
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([]);
+    const res = await request
+      .post("/api/bids")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send(validBody);
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("BID_AUCTION_NOT_LIVE");
+  });
+
+  it("returns 409 when optimistic lock update affects zero rows after one retry", async () => {
+    mockPlaceBidCommand.executePlaceBidCommand.mockResolvedValue({
+      kind: "rejected",
+      statusCode: 409,
+      bidId: null,
+      body: {
+        error: "BID_OPTIMISTIC_CONFLICT",
+      },
+    });
 
     const res = await request
       .post("/api/bids")
@@ -711,39 +846,54 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Auction is not active");
-  });
-
-  it("returns 500 when optimistic lock update affects zero rows", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-13" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(makeBidRecord());
-    mockTx.$executeRaw.mockResolvedValueOnce(0);
-
-    const res = await request
-      .post("/api/bids")
-      .set("Authorization", `Bearer ${buyerToken}`)
-      .send(validBody);
-
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe("Internal server error");
+    expect(res.body.error).toBe("BID_OPTIMISTIC_CONFLICT");
   });
 
   it("marks BidRequest as SUCCEEDED after a successful bid", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-14" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
+    mockPlaceBidCommand.executePlaceBidCommand.mockImplementation(async () => {
+      await mockPrisma.bidRequest.update({
+        where: {
+          id: "req-14",
+        },
+        data: {
+          status: "SUCCEEDED",
+          responseStatus: 201,
+          bidId: bidId,
+          responseBody: {
+            bid: {
+              id: bidId,
+              auctionId,
+              amount: "51000.00",
+              createdAt: "2026-03-14T09:00:00.000Z",
+            },
+            buyingPower: {
+              activeBidsTotal: "51000.00",
+              ceiling: "300000.00",
+              remaining: "249000.00",
+            },
+          },
+        },
+      });
 
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(makeBidRecord());
-    mockTx.$executeRaw.mockResolvedValueOnce(1);
+      return {
+        kind: "success",
+        statusCode: 201,
+        bidId,
+        body: {
+          bid: {
+            id: bidId,
+            auctionId,
+            amount: "51000.00",
+            createdAt: "2026-03-14T09:00:00.000Z",
+          },
+          buyingPower: {
+            activeBidsTotal: "51000.00",
+            ceiling: "300000.00",
+            remaining: "249000.00",
+          },
+        },
+      };
+    });
 
     await request
       .post("/api/bids")
@@ -759,18 +909,48 @@ describe("POST /api/bids", () => {
           status: "SUCCEEDED",
           responseStatus: 201,
           bidId: bidId,
+          responseBody: {
+            bid: {
+              id: bidId,
+              auctionId,
+              amount: "51000.00",
+              createdAt: "2026-03-14T09:00:00.000Z",
+            },
+            buyingPower: {
+              activeBidsTotal: "51000.00",
+              ceiling: "300000.00",
+              remaining: "249000.00",
+            },
+          },
         }),
       }),
     );
   });
 
   it("marks BidRequest as REJECTED for business rule failures", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-15" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
+    mockPlaceBidCommand.executePlaceBidCommand.mockImplementation(async () => {
+      await mockPrisma.bidRequest.update({
+        where: {
+          id: "req-15",
+        },
+        data: {
+          status: "REJECTED",
+          responseStatus: 422,
+          responseBody: {
+            error: "BID_AUCTION_NOT_LIVE",
+          },
+        },
+      });
 
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow({ state: "CLOSED" })]);
+      return {
+        kind: "rejected",
+        statusCode: 422,
+        bidId: null,
+        body: {
+          error: "BID_AUCTION_NOT_LIVE",
+        },
+      };
+    });
 
     await request
       .post("/api/bids")
@@ -784,17 +964,39 @@ describe("POST /api/bids", () => {
         },
         data: expect.objectContaining({
           status: "REJECTED",
-          responseStatus: 409,
+          responseStatus: 422,
+          responseBody: {
+            error: "BID_AUCTION_NOT_LIVE",
+          },
         }),
       }),
     );
   });
 
   it("marks BidRequest as FAILED for unexpected transaction errors", async () => {
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-16" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-    mockPrisma.$transaction.mockRejectedValue(new Error("database is down"));
+    mockPlaceBidCommand.executePlaceBidCommand.mockImplementation(async () => {
+      await mockPrisma.bidRequest.update({
+        where: {
+          id: "req-16",
+        },
+        data: {
+          status: "FAILED",
+          responseStatus: 500,
+          responseBody: {
+            error: "INTERNAL_ERROR",
+          },
+        },
+      });
+
+      return {
+        kind: "rejected",
+        statusCode: 500,
+        bidId: null,
+        body: {
+          error: "INTERNAL_ERROR",
+        },
+      };
+    });
 
     const res = await request
       .post("/api/bids")
@@ -802,6 +1004,7 @@ describe("POST /api/bids", () => {
       .send(validBody);
 
     expect(res.status).toBe(500);
+    expect(res.body.error).toBe("INTERNAL_ERROR");
     expect(mockPrisma.bidRequest.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {

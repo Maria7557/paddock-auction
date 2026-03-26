@@ -5,9 +5,9 @@ import { AuctionLiveRoom } from "@/src/components/auction/AuctionLiveRoom";
 import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
 import { getLocalePreference } from "@/src/lib/display_preferences";
+import { getLot } from "@/src/lib/lot-detail";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import type { AuctionLiveSnapshot } from "@/src/types/auction";
-import { getLot } from "@/app/auctions/[auctionId]/page";
 
 type PageProps = {
   params: Promise<{

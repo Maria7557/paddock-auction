@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LotDetail } from "@/app/auctions/[auctionId]/page";
+import { LiveRoomBuyingPowerBar } from "@/src/components/finance/LiveRoomBuyingPowerBar";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useEventLiveSocket } from "@/src/hooks/useEventLiveSocket";
 import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
@@ -1485,6 +1486,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
               <aside className={styles.rightPane}>
                 {runtime.currentLot && currentSnapshot ? (
                   <>
+                    <LiveRoomBuyingPowerBar />
+
                     <div className={styles.currentBidSection}>
                       <div className={styles.blockLabel}>
                         {currentSnapshot.totalBids > 0 ? "Current Bid" : "Starting Bid"}

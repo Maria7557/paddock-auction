@@ -9,6 +9,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { startEvent } from "../lib/event-orchestrator";
 import { type AuthTokenPayload, requireAdminAuth, verifyToken } from "../lib/auth";
+import { sendAuctionLiveSellerEmail } from "../lib/email";
 import { type AuctionRealtimeSnapshot, getAuctionSnapshot } from "./auction-ws";
 
 declare module "fastify" {
@@ -1670,6 +1671,72 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
 
       try {
         await startEvent(parsedParams.data.eventId);
+
+        void (async () => {
+          try {
+            const eventLots = await prisma.auctionEventLot.findMany({
+              where: {
+                eventId: parsedParams.data.eventId,
+              },
+              select: {
+                auction: {
+                  select: {
+                    id: true,
+                    endsAt: true,
+                    sellerCompanyId: true,
+                    vehicle: {
+                      select: {
+                        brand: true,
+                        model: true,
+                        year: true,
+                      },
+                    },
+                    _count: {
+                      select: {
+                        bids: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+
+            for (const lot of eventLots) {
+              const sellerUsers = await prisma.companyUser.findMany({
+                where: {
+                  companyId: lot.auction.sellerCompanyId,
+                  role: "SELLER_MANAGER",
+                },
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                    },
+                  },
+                },
+              });
+
+              const vehicleTitle = `${lot.auction.vehicle.brand} ${lot.auction.vehicle.model} ${lot.auction.vehicle.year}`;
+
+              for (const sellerUser of sellerUsers) {
+                void sendAuctionLiveSellerEmail(
+                  {
+                    email: sellerUser.user.email,
+                    name: sellerUser.user.email,
+                    vehicleTitle,
+                    endsAt: lot.auction.endsAt,
+                    bidderCount: lot.auction._count.bids,
+                    auctionId: lot.auction.id,
+                  },
+                  fastify.log,
+                );
+              }
+            }
+          } catch {
+            // Fire-and-forget email dispatch must never affect event start.
+          }
+        })();
+
         await reply.code(200).send({
           success: true,
         });

@@ -4,6 +4,10 @@ import type { Prisma } from "@prisma/client";
 import Redis from "ioredis";
 
 import { prisma } from "../db";
+import {
+  collectAuctionCloseBuyingPowerOutcome,
+  releaseBuyingPowerForClosedAuction,
+} from "../modules/auction/application/close_auction";
 
 type DecimalLike =
   | number
@@ -378,7 +382,19 @@ async function finalizeLotIfNeeded(
   const bidCount = await tx.bid.count({
     where: { auctionId: lot.auctionId },
   });
-  const leaderBid = bidCount > 0 ? await loadLeaderBid(tx, lot.auctionId) : null;
+  const closeOutcome =
+    bidCount > 0 ? await collectAuctionCloseBuyingPowerOutcome(tx, lot.auctionId) : null;
+  const leaderBid =
+    closeOutcome &&
+    closeOutcome.winningBidId !== null &&
+    closeOutcome.winnerCompanyId !== null &&
+    closeOutcome.winningBidAmount !== null
+      ? {
+          id: closeOutcome.winningBidId,
+          companyId: closeOutcome.winnerCompanyId,
+          amount: closeOutcome.winningBidAmount,
+        }
+      : null;
   const soldAmount = leaderBid ? toNumberValue(leaderBid.amount) : null;
   const winnerCompanyId = leaderBid?.companyId ?? null;
   const targetEventLotState: EventLotStateValue = leaderBid ? "SOLD" : "UNSOLD";
@@ -424,6 +440,20 @@ async function finalizeLotIfNeeded(
         winnerCompanyId,
       },
     });
+
+    await releaseBuyingPowerForClosedAuction(
+      tx,
+      closeOutcome ?? {
+        auctionId: lot.auctionId,
+        winningBidId: null,
+        winnerCompanyId: null,
+        winningBidAmount: null,
+        losingCompanyIds: [],
+        bidAmountsByCompany: new Map<string, Prisma.Decimal>(),
+        releasableLosingCompanyIds: [],
+        releasableBidAmountsByCompany: new Map<string, Prisma.Decimal>(),
+      },
+    );
   }
 
   await createAuditLog(tx, {

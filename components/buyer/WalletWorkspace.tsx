@@ -19,6 +19,12 @@ type WalletTransaction = {
 type WalletWorkspaceProps = {
   availableBalance: number;
   lockedBalance: number;
+  buyingPower: {
+    depositAmount: number;
+    ceiling: number;
+    activeBidsTotal: number;
+    remaining: number;
+  };
   pendingWithdrawalAmount: number;
   transactions: WalletTransaction[];
 };
@@ -74,6 +80,7 @@ function resolveTransactionMeta(type: string): {
 export function WalletWorkspace({
   availableBalance,
   lockedBalance,
+  buyingPower,
   pendingWithdrawalAmount,
   transactions,
 }: WalletWorkspaceProps) {
@@ -88,17 +95,22 @@ export function WalletWorkspace({
         toneClass: styles.metricValuePositive,
       },
       {
-        label: "Locked — active auctions",
+        label: "Locked",
         value: formatAed(lockedBalance),
+        toneClass: styles.metricValueMuted,
+      },
+      {
+        label: "Active bids",
+        value: formatAed(buyingPower.activeBidsTotal),
         toneClass: styles.metricValueAmber,
       },
       {
-        label: "Pending withdrawal",
-        value: formatAed(pendingWithdrawalAmount),
-        toneClass: styles.metricValueMuted,
+        label: "Remaining",
+        value: formatAed(buyingPower.remaining),
+        toneClass: styles.metricValuePositive,
       },
     ],
-    [availableBalance, lockedBalance, pendingWithdrawalAmount],
+    [availableBalance, buyingPower.activeBidsTotal, buyingPower.remaining, lockedBalance],
   );
 
   return (
@@ -115,6 +127,12 @@ export function WalletWorkspace({
       <span className={styles.refundPill}>
         Your deposit is fully refundable within 48 hours of your withdrawal request
       </span>
+
+      {pendingWithdrawalAmount > 0 ? (
+        <span className={styles.pendingPill}>
+          {`Pending withdrawal: ${formatAed(pendingWithdrawalAmount)}`}
+        </span>
+      ) : null}
 
       <div className={styles.actionRow}>
         <button type="button" className="btn btn-primary" onClick={() => setIsAddFundsOpen(true)}>

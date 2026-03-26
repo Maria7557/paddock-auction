@@ -65,6 +65,16 @@ model DepositWallet {
   @@map("deposit_wallets")
 }
 
+model BuyerBidSummary {
+  id              String   @id @default(uuid())
+  companyId       String   @unique @map("company_id")
+  activeBidsTotal Decimal  @default(0) @map("active_bids_total") @db.Decimal(18, 2)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company         Company  @relation(fields: [companyId], references: [id])
+
+  @@map("buyer_bid_summaries")
+}
+
 model WalletLedger {
   id        String     @id @default(uuid())
   walletId  String
@@ -79,16 +89,18 @@ model WalletLedger {
 
 model DepositLock {
   id               String            @id @default(uuid())
-  auctionId        String            @map("auction_id")
+  auctionId        String?           @map("auction_id")
   companyId        String?           @map("company_id")
   walletId         String?           @map("wallet_id")
   amount           Decimal           @db.Decimal(18, 2)
+  buyingPowerCeiling Decimal         @map("buying_power_ceiling") @db.Decimal(18, 2)
   status           DepositLockStatus @default(ACTIVE)
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   releasedAt       DateTime?         @map("released_at") @db.Timestamptz(6)
   burnedAt         DateTime?         @map("burned_at") @db.Timestamptz(6)
   resolutionReason String?           @map("resolution_reason")
-  auction          Auction           @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  auction          Auction?          @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  company          Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   wallet           Wallet?           @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([auctionId, companyId, status], map: "deposit_locks_lookup_idx")
@@ -106,6 +118,8 @@ model Company {
   buyerTier          BuyerTier     @default(STANDARD)
   status             CompanyStatus @default(PENDING)
   createdAt          DateTime      @default(now())
+  buyerBidSummary    BuyerBidSummary?
+  depositLocks       DepositLock[]
   users              CompanyUser[]
   vipUpgradeRequests VipUpgradeRequest[]
 }
@@ -408,7 +422,7 @@ model FinancialEvent {
   paymentId  String?  @map("payment_id")
   amount     Decimal? @db.Decimal(18, 2)
   currency   String?
-  payload    Json     @default(dbgenerated("'{}'::jsonb"))
+  payload    Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   invoice    Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   payment    Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)

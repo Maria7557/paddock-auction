@@ -34,7 +34,16 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
+const { mockDepositCommands } = vi.hoisted(() => ({
+  mockDepositCommands: {
+    releaseAuctionBidsFromBuyingPower: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
+vi.mock("../../modules/deposits/application/deposit_commands", () => ({
+  releaseAuctionBidsFromBuyingPower: mockDepositCommands.releaseAuctionBidsFromBuyingPower,
+}));
 
 import { buildServer } from "../../server";
 
@@ -142,6 +151,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDepositCommands.releaseAuctionBidsFromBuyingPower.mockResolvedValue(undefined);
   mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
   mockPrisma.idempotencyKey.create.mockResolvedValue({
     id: "idem-1",
@@ -429,6 +439,12 @@ describe("seller decision flow", () => {
         sellerDecidedBy: sellerUserId,
       }),
     });
+    expect(mockDepositCommands.releaseAuctionBidsFromBuyingPower).toHaveBeenCalledWith(
+      tx,
+      "auction-2",
+      ["buyer-company-2"],
+      expect.any(Map),
+    );
   });
 
   it("returns 409 when a decision is already recorded", async () => {

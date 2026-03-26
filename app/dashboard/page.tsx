@@ -2,10 +2,11 @@ import Link from "next/link";
 
 import { RecommendedLots } from "@/components/buyer/RecommendedLots";
 import { BuyerShell } from "@/components/buyer/BuyerShell";
+import { DepositCard } from "@/components/buyer/DepositCard";
 import { TierStatusCard } from "@/components/buyer/TierStatusCard";
 import { IconCheck } from "@/components/ui/icons";
 import { withLocalePath } from "@/src/i18n/routing";
-import { api } from "@/src/lib/api-client";
+import { api, type BuyerBuyingPowerResponse } from "@/src/lib/api-client";
 import { isLiveAuctionState, isScheduledAuctionState } from "@/src/lib/auction-display";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
@@ -197,8 +198,9 @@ export default async function DashboardPage() {
   const session = await requireBuyerSession("/dashboard");
   const requestOptions = await withServerCookies({ cache: "no-store" });
 
-  const [dashboard, authResponse, auctionsResponse, display] = await Promise.all([
+  const [dashboard, buyingPower, authResponse, auctionsResponse, display] = await Promise.all([
     api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
+    api.buyer.buyingPower<BuyerBuyingPowerResponse>(requestOptions),
     api.auth.me<BuyerAuthResponse>(requestOptions),
     api.auctions.list<AuctionsListResponse>(undefined, requestOptions),
     getPublicDisplaySettings(),
@@ -331,6 +333,10 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
+        {hasRequiredDeposit ? (
+          <DepositCard buyingPower={buyingPower} />
+        ) : null}
+
         <section className={styles.section}>
           <div className={styles.sectionTitle}>Available right now</div>
           <div className={styles.availabilityGrid}>
@@ -401,35 +407,6 @@ export default async function DashboardPage() {
             ))}
           </div>
         </section>
-
-        {hasRequiredDeposit ? (
-          <section className={styles.section}>
-            <div className={styles.sectionTitle}>Wallet summary</div>
-            <div className={styles.walletSection}>
-              <div className={styles.walletGrid}>
-                <article className={styles.walletTile}>
-                  <span>Available</span>
-                  <strong className={styles.metricGreen}>
-                    {formatAed(dashboard.depositStatus.balanceAed)}
-                  </strong>
-                </article>
-                <article className={styles.walletTile}>
-                  <span>Locked</span>
-                  <strong className={styles.metricAmber}>
-                    {formatAed(dashboard.depositStatus.lockedBalanceAed)}
-                  </strong>
-                </article>
-                <article className={styles.walletTile}>
-                  <span>Free to use</span>
-                  <strong className={styles.metricGreen}>
-                    {formatAed(dashboard.depositStatus.availableBalanceAed)}
-                  </strong>
-                </article>
-              </div>
-              <span className={styles.refundPill}>Fully refundable within 48 hours</span>
-            </div>
-          </section>
-        ) : null}
 
         <RecommendedLots lots={dashboard.recommendedLots} />
       </div>

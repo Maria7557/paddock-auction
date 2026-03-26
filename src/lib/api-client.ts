@@ -150,6 +150,35 @@ export type AdminInvoiceConfirmPaymentResponse = {
   paidAt: string;
 };
 
+export type BuyerBuyingPowerActiveBid = {
+  auctionId: string;
+  lotTitle: string;
+  amount: string;
+};
+
+export type BuyerBuyingPowerResponse = {
+  depositAmount: string;
+  ceiling: string;
+  activeBidsTotal: string;
+  remaining: string;
+  activeBids: BuyerBuyingPowerActiveBid[];
+};
+
+export type BidBuyingPowerSummary = Pick<
+  BuyerBuyingPowerResponse,
+  "activeBidsTotal" | "ceiling" | "remaining"
+>;
+
+export type PlaceBidResponse = {
+  bid: {
+    id: string;
+    auctionId: string;
+    amount: string;
+    createdAt: string;
+  };
+  buyingPower: BidBuyingPowerSummary;
+};
+
 export class ApiError extends Error {
   statusCode: number;
   payload: unknown;
@@ -178,8 +207,23 @@ function normalizePath(path: string): string {
   return `/${path}`;
 }
 
+function normalizeLoopbackBaseUrl(value: string): string {
+  try {
+    const normalized = new URL(value);
+
+    if (normalized.hostname === "localhost" || normalized.hostname === "::1") {
+      normalized.hostname = "127.0.0.1";
+    }
+
+    return normalized.toString().replace(/\/$/, "");
+  } catch {
+    return value.replace(/\/$/, "");
+  }
+}
+
 function getApiBaseUrl(): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "");
+  const configuredBaseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const baseUrl = configuredBaseUrl ? normalizeLoopbackBaseUrl(configuredBaseUrl) : "";
 
   if (baseUrl) {
     return baseUrl;
@@ -755,6 +799,8 @@ export const api = {
   buyer: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/dashboard", options),
+    buyingPower: async <T = BuyerBuyingPowerResponse>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/buyer/buying-power", options),
     myBids: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/my-bids", options),
     upgradeToVip: async <T = unknown>(options?: RequestInit): Promise<T> =>

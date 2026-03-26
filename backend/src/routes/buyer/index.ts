@@ -171,6 +171,20 @@ type BuyerMyBidsResponse = {
   ended: EndedBidItem[];
 };
 
+type BuyerBuyingPowerActiveBid = {
+  auctionId: string;
+  lotTitle: string;
+  amount: string;
+};
+
+type BuyerBuyingPowerResponse = {
+  depositAmount: string;
+  ceiling: string;
+  activeBidsTotal: string;
+  remaining: string;
+  activeBids: BuyerBuyingPowerActiveBid[];
+};
+
 const watchlistQuerySchema = z
   .object({
     status: z.string().trim().min(1).optional(),
@@ -279,6 +293,16 @@ async function sendUnauthorized(reply: FastifyReply): Promise<void> {
   await reply.code(401).send({
     error: "Unauthorized",
   });
+}
+
+async function sendForbidden(reply: FastifyReply): Promise<void> {
+  await reply.code(403).send({
+    error: "Forbidden",
+  });
+}
+
+async function toMoneyString(value: DecimalLike): Promise<string> {
+  return (await toNumberValue(value)).toFixed(2);
 }
 
 async function requireBuyerContext(
@@ -854,6 +878,116 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       };
 
       await reply.code(200).send(responseBody);
+    },
+  );
+
+  fastify.get(
+    "/buyer/buying-power",
+    async function buyerBuyingPowerHandler(
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<void> {
+      if (reply.sent) {
+        return;
+      }
+
+      if (request.auth?.role !== "BUYER") {
+        await sendForbidden(reply);
+        return;
+      }
+
+      const buyerContext = await requireBuyerContext(request, reply);
+
+      if (!buyerContext) {
+        return;
+      }
+
+      const activeLock = await prisma.depositLock.findFirst({
+        where: {
+          companyId: buyerContext.companyId,
+          status: "ACTIVE",
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          amount: true,
+          buyingPowerCeiling: true,
+        },
+      });
+
+      if (!activeLock) {
+        await reply.code(200).send({
+          depositAmount: "0.00",
+          ceiling: "0.00",
+          activeBidsTotal: "0.00",
+          remaining: "0.00",
+          activeBids: [],
+        } satisfies BuyerBuyingPowerResponse);
+        return;
+      }
+
+      const [summary, companyHighestBids] = await Promise.all([
+        prisma.buyerBidSummary.findUnique({
+          where: {
+            companyId: buyerContext.companyId,
+          },
+          select: {
+            activeBidsTotal: true,
+          },
+        }),
+        prisma.bid.findMany({
+          where: {
+            companyId: buyerContext.companyId,
+            auction: {
+              highestBidId: {
+                not: null,
+              },
+            },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            auctionId: true,
+            amount: true,
+            auction: {
+              select: {
+                highestBidId: true,
+                vehicle: {
+                  select: {
+                    brand: true,
+                    model: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const depositAmount = await toNumberValue(activeLock.amount);
+      const ceiling = await toNumberValue(activeLock.buyingPowerCeiling);
+      const activeBidsTotal = summary ? await toNumberValue(summary.activeBidsTotal) : 0;
+      const remaining = Math.max(0, Number((ceiling - activeBidsTotal).toFixed(2)));
+      const activeBids = await Promise.all(
+        companyHighestBids
+          .filter((bid) => bid.auction.highestBidId === bid.id)
+          .map(async (bid) => ({
+            auctionId: bid.auctionId,
+            lotTitle: buildLotTitle(
+              bid.auction.vehicle?.brand,
+              bid.auction.vehicle?.model,
+              bid.auctionId,
+            ),
+            amount: await toMoneyString(bid.amount),
+          })),
+      );
+
+      await reply.code(200).send({
+        depositAmount: depositAmount.toFixed(2),
+        ceiling: ceiling.toFixed(2),
+        activeBidsTotal: activeBidsTotal.toFixed(2),
+        remaining: remaining.toFixed(2),
+        activeBids,
+      } satisfies BuyerBuyingPowerResponse);
     },
   );
 

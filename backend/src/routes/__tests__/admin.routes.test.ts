@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { SignJWT } from "jose";
 import supertest from "supertest";
@@ -48,13 +49,26 @@ const { mockEmail } = vi.hoisted(() => ({
   },
 }));
 
+const { mockDepositCommands } = vi.hoisted(() => ({
+  mockDepositCommands: {
+    releaseWinnerBidAfterPayment: vi.fn(),
+  },
+}));
+
 vi.mock("../../db", () => ({ prisma: mockPrisma }));
 vi.mock("../../lib/email", () => mockEmail);
+vi.mock("../../modules/deposits/application/deposit_commands", () => ({
+  releaseWinnerBidAfterPayment: mockDepositCommands.releaseWinnerBidAfterPayment,
+}));
 
 import { buildServer } from "../../server";
 
 const jwtSecret = "test-secret-32-chars-long-enough!!";
 const adminUserId = randomUUID();
+
+function decimal(value: number | string): Prisma.Decimal {
+  return new Prisma.Decimal(value);
+}
 
 async function makeToken(payload: {
   userId: string;
@@ -77,6 +91,7 @@ async function makeToken(payload: {
 function buildAdminTx(overrides: Record<string, unknown> = {}) {
   return {
     auction: {
+      findUnique: vi.fn(),
       update: vi.fn(),
       create: vi.fn(),
       deleteMany: vi.fn(),
@@ -104,12 +119,16 @@ function buildAdminTx(overrides: Record<string, unknown> = {}) {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    bid: {
+      findFirst: vi.fn(),
+    },
     walletLedger: {
       create: vi.fn(),
     },
     depositLock: {
       update: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     auditLog: {
       create: vi.fn(),
     },
@@ -152,6 +171,11 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDepositCommands.releaseWinnerBidAfterPayment.mockResolvedValue({
+    activeBidsTotal: decimal(0),
+    ceiling: decimal(300_000),
+    remaining: decimal(300_000),
+  });
 });
 
 describe("admin auth guard", () => {
@@ -1379,16 +1403,44 @@ describe("POST /api/admin/deposits/:userId/burn", () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: "u1",
       role: "BUYER",
+      companyUsers: [
+        {
+          companyId: "buyer-company-1",
+        },
+      ],
     });
     mockPrisma.wallet.findUnique.mockResolvedValue({
       id: "w1",
     });
-    mockPrisma.depositLock.findFirst.mockResolvedValue({
-      id: "dl1",
-      amount: 5000,
-    });
 
     const tx = buildAdminTx();
+    tx.auction.findUnique.mockResolvedValue({
+      id: "a1",
+      state: "DEFAULTED",
+    });
+    tx.bid.findFirst.mockResolvedValue({
+      id: "bid-1",
+      userId: "u1",
+      companyId: "buyer-company-1",
+      amount: decimal(5000),
+    });
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: "deposit-wallet-1",
+          available_balance: decimal(5000),
+          locked_balance: decimal(0),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "dl1",
+          amount: decimal(5000),
+          status: "RELEASED",
+          created_at: new Date("2026-03-14T08:00:00.000Z"),
+        },
+      ])
+      .mockResolvedValueOnce([{ id: "deposit-wallet-1" }]);
     tx.wallet.updateMany.mockResolvedValue({
       count: 1,
     });
@@ -1409,5 +1461,10 @@ describe("POST /api/admin/deposits/:userId/burn", () => {
       burnedAmount: 5000,
       reason: "Buyer defaulted after payment deadline",
     });
+    expect(mockDepositCommands.releaseWinnerBidAfterPayment).toHaveBeenCalledWith(
+      tx,
+      "buyer-company-1",
+      expect.any(Prisma.Decimal),
+    );
   });
 });

@@ -10,6 +10,8 @@ import {
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
 import { hydrateAuthIfPresent, requireActiveBuyerAccount, requireAuth } from "../lib/auth";
+import { sendOutbidEmail } from "../lib/email";
+import { executePlaceBidCommand } from "../modules/bidding/application/place_bid";
 import { notifyEventRuntime } from "./auction-events";
 import { publishAuctionRealtimeSnapshot } from "./auction-ws";
 
@@ -593,259 +595,113 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { userId, companyId } = buyerAccess;
-
       const payload = parsedBody.data;
-      const requestHash = await createBidRequestHash({
-        auctionId: payload.auctionId,
-        amount: payload.amount,
-        companyId,
-        userId,
-      });
-      const existingRequest = await prisma.bidRequest.findUnique({
-        where: {
-          auctionId_companyId_idempotencyKey: {
-            auctionId: payload.auctionId,
-            companyId,
-            idempotencyKey: payload.idempotencyKey,
-          },
-        },
-      });
-
-      if (existingRequest) {
-        if (existingRequest.requestHash !== requestHash) {
-          await reply.code(409).send({
-            error: "Idempotency key already used for a different bid",
-          });
-          return;
-        }
-
-        if (
-          existingRequest.status === "SUCCEEDED" &&
-          existingRequest.responseStatus !== null &&
-          existingRequest.responseBody
-        ) {
-          fastify.log.info(
-            {
-              auctionId: payload.auctionId,
-              amount: payload.amount,
-              companyId,
-              bidRequestId: existingRequest.id,
-            },
-            "Bid replayed from idempotency cache",
-          );
-
-          await reply
-            .code(existingRequest.responseStatus)
-            .send(await readStoredResponseBody(existingRequest.responseBody));
-          return;
-        }
-
-        if (
-          (existingRequest.status === "REJECTED" || existingRequest.status === "FAILED") &&
-          existingRequest.responseStatus !== null &&
-          existingRequest.responseBody
-        ) {
-          await reply
-            .code(existingRequest.responseStatus)
-            .send(await readStoredResponseBody(existingRequest.responseBody));
-          return;
-        }
-
-        await reply.code(409).send({
-          error: "Bid request already in progress",
-        });
-        return;
-      }
-
-      const expiresAt = await computeBidRequestExpiry(new Date());
-      let bidRequestId: string | null = null;
-
-      try {
-        const bidRequest = await prisma.bidRequest.create({
-          data: {
-            auctionId: payload.auctionId,
-            companyId,
-            idempotencyKey: payload.idempotencyKey,
-            requestHash,
-            status: "IN_PROGRESS",
-            expiresAt,
-          },
-        });
-
-        bidRequestId = bidRequest.id;
-      } catch (error) {
-        const racedRequest = await prisma.bidRequest.findUnique({
-          where: {
-            auctionId_companyId_idempotencyKey: {
-              auctionId: payload.auctionId,
-              companyId,
-              idempotencyKey: payload.idempotencyKey,
-            },
-          },
-        });
-
-        if (
-          racedRequest &&
-          racedRequest.requestHash === requestHash &&
-          racedRequest.responseStatus !== null &&
-          racedRequest.responseBody
-        ) {
-          await reply
-            .code(racedRequest.responseStatus)
-            .send(await readStoredResponseBody(racedRequest.responseBody));
-          return;
-        }
-
-        throw error;
-      }
-
       fastify.log.info(
         {
           auctionId: payload.auctionId,
           amount: payload.amount,
           companyId,
           userId,
-          bidRequestId,
         },
         "Bid placement requested",
       );
+      const result = await executePlaceBidCommand(prisma, {
+        auctionId: payload.auctionId,
+        companyId,
+        userId,
+        amount: payload.amount,
+        idempotencyKey: payload.idempotencyKey,
+      });
 
-      try {
-        const bid = await prisma.$transaction(
-          async (tx) => {
-            const rows = await tx.$queryRaw<AuctionLockRow[]>`
-              SELECT
-                id,
-                state,
-                version,
-                current_price,
-                starts_at,
-                min_increment,
-                buy_now_price,
-                seller_company_id,
-                last_bid_sequence,
-                ends_at
-              FROM auctions
-              WHERE id = ${payload.auctionId}
-              FOR UPDATE
-            `;
-            const auction = rows[0];
-
-            if (!auction) {
-              throw new Error("AUCTION_NOT_LIVE");
-            }
-
-            const currentPrice = await toNumberValue(auction.current_price);
-            const minIncrement = await toNumberValue(auction.min_increment);
-            const endsAt = await toDateValue(auction.ends_at);
-            const isScheduled = auction.state === "SCHEDULED";
-            const isLive = auction.state === "LIVE" || auction.state === "EXTENDED";
-            const startsAt = isScheduled ? await toDateValue(auction.starts_at) : null;
-            const scheduledWindowStarted = isScheduled && startsAt !== null && new Date() >= startsAt;
-            const acceptsLiveBidding = isLive || scheduledWindowStarted;
-
-            if (!isScheduled && !isLive) {
-              throw new Error("AUCTION_NOT_LIVE");
-            }
-
-            if (isScheduled) {
-              if (!scheduledWindowStarted && currentPrice > 0) {
-                const nextScheduledBid = currentPrice + minIncrement;
-
-                if (payload.amount !== nextScheduledBid) {
-                  throw new Error("BID_INCREMENT_VIOLATION");
-                }
-              }
-            }
-
-            if (acceptsLiveBidding) {
-              if (payload.amount <= currentPrice) {
-                throw new Error("BID_TOO_LOW");
-              }
-
-              if (payload.amount < currentPrice + minIncrement) {
-                throw new Error("BID_INCREMENT_VIOLATION");
-              }
-            }
-
-            if (new Date() > endsAt) {
-              throw new Error("AUCTION_ENDED");
-            }
-
-            const depositLockResult = await ensureAuctionDepositLock(tx, {
-              auctionId: payload.auctionId,
-              companyId,
-              userId,
-            });
-
-            if (depositLockResult.kind === "deposit_required") {
-              throw new Error("NO_DEPOSIT");
-            }
-
-            const nextSequenceNo = auction.last_bid_sequence + 1;
-            const bidRecord = await tx.bid.create({
-              data: {
-                auctionId: payload.auctionId,
-                companyId,
-                userId,
-                amount: payload.amount,
-                sequenceNo: nextSequenceNo,
-              },
-            });
-            const nextAuctionState = scheduledWindowStarted ? "LIVE" : auction.state;
-            const updatedRows = await tx.$executeRaw`
-              UPDATE auctions
-              SET current_price = ${payload.amount},
-                  last_bid_sequence = ${nextSequenceNo},
-                  highest_bid_id = ${bidRecord.id},
-                  state = ${nextAuctionState}::"AuctionState",
-                  version = version + 1
-              WHERE id = ${payload.auctionId} AND version = ${auction.version}
-            `;
-
-            if (updatedRows !== 1) {
-              throw new Error("AUCTION_VERSION_CONFLICT");
-            }
-
-            const timeLeft = endsAt.getTime() - Date.now();
-
-            if (acceptsLiveBidding && timeLeft < 3 * 60 * 1000) {
-              await tx.$executeRaw`
-                UPDATE auctions
-                SET ends_at = NOW() + INTERVAL '3 minutes',
-                    extension_count = extension_count + 1
-                WHERE id = ${payload.auctionId}
-              `;
-            }
-
-            return bidRecord;
-          },
+      if (result.kind === "replay") {
+        fastify.log.info(
           {
-            isolationLevel: "Serializable",
+            auctionId: payload.auctionId,
+            amount: payload.amount,
+            companyId,
+            bidId: result.bidId,
           },
+          "Bid replayed from idempotency cache",
         );
-        const responseBody = {
-          bid: await serializeBid({
-            id: bid.id,
-            amount: bid.amount,
-            sequenceNo: bid.sequenceNo,
-            createdAt: bid.createdAt,
-          }),
-        };
+      }
 
-        await prisma.bidRequest.update({
-          where: {
-            id: bidRequestId,
-          },
-          data: {
-            status: "SUCCEEDED",
-            responseStatus: 201,
-            responseBody: await toStoredJson(responseBody),
-            bidId: bid.id,
-          },
-        });
+      if (result.kind === "success") {
         void publishAuctionRealtimeSnapshot(payload.auctionId, fastify.log);
         void notifyEventRuntime(payload.auctionId, fastify.log);
+        void (async () => {
+          try {
+            const auction = await prisma.auction.findUnique({
+              where: {
+                id: payload.auctionId,
+              },
+              select: {
+                currentPrice: true,
+                bids: {
+                  orderBy: [{ sequenceNo: "desc" }],
+                  take: 2,
+                  select: {
+                    companyId: true,
+                    userId: true,
+                    amount: true,
+                    sequenceNo: true,
+                  },
+                },
+              },
+            });
+
+            const bids = auction?.bids ?? [];
+            const previousBid = bids.find((bid) => bid.companyId !== companyId);
+
+            if (!previousBid || !auction) {
+              return;
+            }
+
+            const [previousUser, auctionDetails] = await Promise.all([
+              prisma.user.findUnique({
+                where: {
+                  id: previousBid.userId,
+                },
+                select: {
+                  email: true,
+                },
+              }),
+              prisma.auction.findUnique({
+                where: {
+                  id: payload.auctionId,
+                },
+                select: {
+                  vehicle: {
+                    select: {
+                      brand: true,
+                      model: true,
+                      year: true,
+                    },
+                  },
+                },
+              }),
+            ]);
+
+            if (!previousUser || !auctionDetails) {
+              return;
+            }
+
+            const vehicleTitle = `${auctionDetails.vehicle.brand} ${auctionDetails.vehicle.model} ${auctionDetails.vehicle.year}`;
+
+            await sendOutbidEmail(
+              {
+                email: previousUser.email,
+                name: previousUser.email,
+                vehicleTitle,
+                currentBidAed: payload.amount,
+                yourBidAed: await toNumberValue(previousBid.amount),
+                auctionId: payload.auctionId,
+              },
+              fastify.log,
+            );
+          } catch {
+            // Fire-and-forget email dispatch must never affect bid placement.
+          }
+        })();
 
         fastify.log.info(
           {
@@ -853,43 +709,25 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             amount: payload.amount,
             companyId,
             userId,
-            bidId: bid.id,
+            bidId: result.bidId,
           },
           "Bid placed successfully",
         );
-
-        await reply.code(201).send(responseBody);
-      } catch (error) {
-        const mappedError = await mapBidError(error);
-
-        if (bidRequestId) {
-          await prisma.bidRequest.update({
-            where: {
-              id: bidRequestId,
-            },
-            data: {
-              status: mappedError.bidRequestStatus,
-              responseStatus: mappedError.statusCode,
-              responseBody: await toStoredJson(mappedError.body),
-            },
-          });
-        }
-
-        if (mappedError.statusCode === 500) {
-          fastify.log.error(
-            {
-              err: error,
-              auctionId: payload.auctionId,
-              amount: payload.amount,
-              companyId,
-              userId,
-            },
-            "Bid placement failed",
-          );
-        }
-
-        await reply.code(mappedError.statusCode).send(mappedError.body);
       }
+
+      if (result.kind === "rejected" && result.statusCode === 500) {
+        fastify.log.error(
+          {
+            auctionId: payload.auctionId,
+            amount: payload.amount,
+            companyId,
+            userId,
+          },
+          "Bid placement failed",
+        );
+      }
+
+      await reply.code(result.statusCode).send(result.body);
     },
   );
 

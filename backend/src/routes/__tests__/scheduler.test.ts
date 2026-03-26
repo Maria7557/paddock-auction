@@ -5,6 +5,17 @@ const { mockStartEvent, mockCheckAndTick } = vi.hoisted(() => ({
   mockStartEvent: vi.fn(),
   mockCheckAndTick: vi.fn(),
 }));
+const { mockCloseAuction } = vi.hoisted(() => ({
+  mockCloseAuction: {
+    collectAuctionCloseBuyingPowerOutcome: vi.fn(),
+    releaseBuyingPowerForClosedAuction: vi.fn(),
+  },
+}));
+const { mockDepositCommands } = vi.hoisted(() => ({
+  mockDepositCommands: {
+    releaseAuctionBidsFromBuyingPower: vi.fn(),
+  },
+}));
 const mockPrisma = {
   $transaction: vi.fn(),
   auctionEvent: {
@@ -20,6 +31,13 @@ vi.mock("../../lib/event-orchestrator", () => ({
   startEvent: mockStartEvent,
   checkAndTick: mockCheckAndTick,
 }));
+vi.mock("../../modules/auction/application/close_auction", () => ({
+  collectAuctionCloseBuyingPowerOutcome: mockCloseAuction.collectAuctionCloseBuyingPowerOutcome,
+  releaseBuyingPowerForClosedAuction: mockCloseAuction.releaseBuyingPowerForClosedAuction,
+}));
+vi.mock("../../modules/deposits/application/deposit_commands", () => ({
+  releaseAuctionBidsFromBuyingPower: mockDepositCommands.releaseAuctionBidsFromBuyingPower,
+}));
 
 vi.mock("node-cron", () => ({
   default: {
@@ -32,6 +50,18 @@ beforeEach(() => {
   mockPrisma.auctionEvent.findMany.mockResolvedValue([]);
   mockStartEvent.mockResolvedValue(undefined);
   mockCheckAndTick.mockResolvedValue(undefined);
+  mockCloseAuction.collectAuctionCloseBuyingPowerOutcome.mockResolvedValue({
+    auctionId: "auction-1",
+    winningBidId: "bid-1",
+    winnerCompanyId: "buyer-1",
+    winningBidAmount: "120.00",
+    losingCompanyIds: [],
+    bidAmountsByCompany: new Map(),
+    releasableLosingCompanyIds: [],
+    releasableBidAmountsByCompany: new Map(),
+  });
+  mockCloseAuction.releaseBuyingPowerForClosedAuction.mockResolvedValue(undefined);
+  mockDepositCommands.releaseAuctionBidsFromBuyingPower.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -68,6 +98,11 @@ describe("scheduler", () => {
       auctionStateTransition: {
         create: vi.fn().mockResolvedValue({
           id: "transition-1",
+        }),
+      },
+      outboxEvent: {
+        create: vi.fn().mockResolvedValue({
+          id: "outbox-1",
         }),
       },
     };
@@ -149,6 +184,11 @@ describe("scheduler", () => {
           id: "audit-1",
         }),
       },
+      outboxEvent: {
+        create: vi.fn().mockResolvedValue({
+          id: "outbox-1",
+        }),
+      },
     };
 
     mockPrisma.$transaction.mockImplementation(async (callback, options) => {
@@ -205,33 +245,14 @@ describe("scheduler", () => {
       info: vi.fn(),
       error: vi.fn(),
     };
-    const taskA = {
+    const tasks = Array.from({ length: 9 }, () => ({
       stop: vi.fn(),
       destroy: vi.fn(),
-    };
-    const taskB = {
-      stop: vi.fn(),
-      destroy: vi.fn(),
-    };
-    const taskC = {
-      stop: vi.fn(),
-      destroy: vi.fn(),
-    };
-    const taskD = {
-      stop: vi.fn(),
-      destroy: vi.fn(),
-    };
-    const taskE = {
-      stop: vi.fn(),
-      destroy: vi.fn(),
-    };
+    }));
 
-    scheduleMock
-      .mockReturnValueOnce(taskA)
-      .mockReturnValueOnce(taskB)
-      .mockReturnValueOnce(taskC)
-      .mockReturnValueOnce(taskD)
-      .mockReturnValueOnce(taskE);
+    for (const task of tasks) {
+      scheduleMock.mockReturnValueOnce(task);
+    }
 
     const { setSchedulerLogger, startScheduler, stopScheduler } = await import("../../scheduler");
 
@@ -239,25 +260,28 @@ describe("scheduler", () => {
     await startScheduler();
     await startScheduler();
 
-    expect(scheduleMock).toHaveBeenCalledTimes(5);
+    expect(scheduleMock).toHaveBeenCalledTimes(9);
     expect(scheduleMock).toHaveBeenNthCalledWith(1, "* * * * *", expect.any(Function));
     expect(scheduleMock).toHaveBeenNthCalledWith(2, "*/5 * * * *", expect.any(Function));
     expect(scheduleMock).toHaveBeenNthCalledWith(3, "*/5 * * * *", expect.any(Function));
-    expect(scheduleMock).toHaveBeenNthCalledWith(4, "*/30 * * * * *", expect.any(Function));
-    expect(scheduleMock).toHaveBeenNthCalledWith(5, "*/2 * * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(4, "*/15 * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(5, "*/30 * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(6, "0 * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(
+      7,
+      "0 9 */4 * *",
+      expect.any(Function),
+      { timezone: "Asia/Dubai" },
+    );
+    expect(scheduleMock).toHaveBeenNthCalledWith(8, "*/30 * * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(9, "*/2 * * * * *", expect.any(Function));
 
     await stopScheduler();
 
-    expect(taskA.stop).toHaveBeenCalledOnce();
-    expect(taskA.destroy).toHaveBeenCalledOnce();
-    expect(taskB.stop).toHaveBeenCalledOnce();
-    expect(taskB.destroy).toHaveBeenCalledOnce();
-    expect(taskC.stop).toHaveBeenCalledOnce();
-    expect(taskC.destroy).toHaveBeenCalledOnce();
-    expect(taskD.stop).toHaveBeenCalledOnce();
-    expect(taskD.destroy).toHaveBeenCalledOnce();
-    expect(taskE.stop).toHaveBeenCalledOnce();
-    expect(taskE.destroy).toHaveBeenCalledOnce();
+    for (const task of tasks) {
+      expect(task.stop).toHaveBeenCalledOnce();
+      expect(task.destroy).toHaveBeenCalledOnce();
+    }
   });
 
   it("runEventAutoStartJob starts events whose scheduledAt has passed", async () => {
@@ -450,6 +474,11 @@ describe("scheduler", () => {
           id: "transition-1",
         }),
       },
+      outboxEvent: {
+        create: vi.fn().mockResolvedValue({
+          id: "outbox-1",
+        }),
+      },
       invoice: {
         findUnique: vi.fn().mockResolvedValue(null),
       },
@@ -476,7 +505,7 @@ describe("scheduler", () => {
       data: expect.objectContaining({
         auctionId: "auction-1",
         fromState: "LIVE",
-        toState: "ENDED",
+        toState: "AWAITING_SELLER_DECISION",
         trigger: "scheduler_close",
       }),
     });
@@ -493,6 +522,7 @@ describe("scheduler", () => {
           id: "auction-5",
           seller_company_id: "seller-5",
           winner_company_id: "buyer-5",
+          current_price: "5000.00",
         },
       ]),
       depositLock: {
@@ -564,6 +594,12 @@ describe("scheduler", () => {
         trigger: "DECISION_DEADLINE_EXPIRED",
       }),
     });
+    expect(mockDepositCommands.releaseAuctionBidsFromBuyingPower).toHaveBeenCalledWith(
+      txMock,
+      "auction-5",
+      ["buyer-5"],
+      expect.any(Map),
+    );
     expect(logger.info).toHaveBeenCalledWith(
       {
         job: "runSellerDecisionDeadlineJob",

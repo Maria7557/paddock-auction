@@ -5,16 +5,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { toIntlLocale } from "@/src/i18n/routing";
-import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
+import {
+  ApiError,
+  api,
+  getApiErrorMessage,
+  getApiErrorPayload,
+  type BuyerBuyingPowerResponse,
+  type PlaceBidResponse,
+} from "@/src/lib/api-client";
 import {
   isLiveAuctionState,
   isScheduledAuctionState,
   isScheduledWithoutBids,
 } from "@/src/lib/auction-display";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
-import { formatCountdown, savingPct, pad } from "@/src/lib/utils";
-
-import type { LotDetail } from "../page";
+import type { LotDetail } from "@/src/lib/lot-detail";
+import { formatAed, formatCountdown, savingPct, pad } from "@/src/lib/utils";
 import styles from "./BidPanel.module.css";
 
 type Props = {
@@ -41,15 +47,6 @@ type AuthMeResponse = {
   };
 };
 
-type BuyerDashboardResponse = {
-  depositStatus?: {
-    hasRequiredDeposit?: boolean;
-  };
-  vipStatus?: {
-    tier?: BuyerTier;
-  };
-};
-
 type ViewerState = {
   checked: boolean;
   authenticated: boolean;
@@ -60,6 +57,15 @@ type ViewerState = {
   hasRequiredDeposit: boolean;
   buyerTier: BuyerTier | null;
 };
+
+type BuyingPowerState = {
+  depositAmount: number;
+  ceiling: number;
+  activeBidsTotal: number;
+  remaining: number;
+};
+
+type BuyingPowerRequestState = "idle" | "loading" | "ready" | "missing" | "error";
 
 const DEFAULT_VIEWER_STATE: ViewerState = {
   checked: false,
@@ -90,6 +96,46 @@ function isActiveStatus(value: string | null | undefined): boolean {
   return value?.trim().toUpperCase() === "ACTIVE";
 }
 
+function parseMoneyNumber(value: string | number | null | undefined): number {
+  const parsed = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeBuyingPower(payload: BuyerBuyingPowerResponse): BuyingPowerState {
+  return {
+    depositAmount: parseMoneyNumber(payload.depositAmount),
+    ceiling: parseMoneyNumber(payload.ceiling),
+    activeBidsTotal: parseMoneyNumber(payload.activeBidsTotal),
+    remaining: parseMoneyNumber(payload.remaining),
+  };
+}
+
+function buildBidErrorMessage(error: unknown, isRu: boolean): string {
+  const payload = getApiErrorPayload<{
+    error?: string;
+    shortfall?: string;
+  }>(error);
+
+  if (payload?.error === "BID_INSUFFICIENT_DEPOSIT") {
+    return isRu
+      ? "Недостаточно депозита для открытия buying power."
+      : "Your deposit is not enough to unlock buying power.";
+  }
+
+  if (payload?.error === "BID_CEILING_EXCEEDED") {
+    const shortfall = parseMoneyNumber(payload.shortfall);
+
+    return isRu
+      ? `Недостаточно buying power. Добавьте ещё ${formatAed(shortfall)} в wallet.`
+      : `Insufficient buying power. Add ${formatAed(shortfall)} more in wallet.`;
+  }
+
+  return getApiErrorMessage(
+    error,
+    isRu ? "Не удалось отправить ставку. Попробуйте снова." : "Bid failed. Please try again.",
+  );
+}
+
 export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const router = useRouter();
   const isRu = display.locale === "ru";
@@ -102,6 +148,9 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const cd = useCountdown(countdownIso);
 
   const [viewer, setViewer] = useState<ViewerState>(DEFAULT_VIEWER_STATE);
+  const [buyingPower, setBuyingPower] = useState<BuyingPowerState | null>(null);
+  const [buyingPowerRequestState, setBuyingPowerRequestState] = useState<BuyingPowerRequestState>("idle");
+  const [showBuyingPowerLoading, setShowBuyingPowerLoading] = useState(false);
   const [livePrice, setLivePrice] = useState(lot.currentBidAed);
   const [visibleBidCount, setVisibleBidCount] = useState(totalBids);
   const [manualBidAed, setManualBidAed] = useState("");
@@ -110,6 +159,8 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const [saved, setSaved] = useState(false);
   const [buyNowSuccess, setBuyNowSuccess] = useState(false);
   const clearOutcome = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialBuyingPowerRequestStarted = useRef(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     setLivePrice(lot.currentBidAed);
@@ -117,6 +168,92 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     setManualBidAed("");
     setBuyNowSuccess(false);
   }, [lot.auctionId, lot.currentBidAed, totalBids]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const refreshBuyingPower = useCallback(async () => {
+    const isInitialRequest = !initialBuyingPowerRequestStarted.current;
+
+    if (isInitialRequest) {
+      initialBuyingPowerRequestStarted.current = true;
+      setBuyingPowerRequestState("loading");
+    }
+
+    try {
+      const payload = await api.buyer.buyingPower<BuyerBuyingPowerResponse>({
+        cache: "no-store",
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      const normalizedBuyingPower = normalizeBuyingPower(payload);
+      const hasRequiredDeposit = normalizedBuyingPower.depositAmount > 0 && normalizedBuyingPower.ceiling > 0;
+
+      setBuyingPower(normalizedBuyingPower);
+      setBuyingPowerRequestState(hasRequiredDeposit ? "ready" : "missing");
+      setViewer((currentViewer) =>
+        currentViewer.isBuyer
+          ? {
+              ...currentViewer,
+              hasRequiredDeposit,
+            }
+          : currentViewer,
+      );
+    } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403)) {
+        setBuyingPower(null);
+        setBuyingPowerRequestState("idle");
+        setViewer({
+          ...DEFAULT_VIEWER_STATE,
+          checked: true,
+        });
+        return;
+      }
+
+      setBuyingPower(null);
+      setBuyingPowerRequestState("error");
+      setViewer((currentViewer) =>
+        currentViewer.isBuyer
+          ? {
+              ...currentViewer,
+              hasRequiredDeposit: false,
+            }
+          : currentViewer,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (buyingPowerRequestState !== "loading") {
+      setShowBuyingPowerLoading(false);
+      return;
+    }
+
+    setShowBuyingPowerLoading(true);
+
+    const timeoutId = setTimeout(() => {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setShowBuyingPowerLoading(false);
+      setBuyingPowerRequestState((currentState) => (currentState === "loading" ? "error" : currentState));
+    }, 2_000);
+
+    return () => clearTimeout(timeoutId);
+  }, [buyingPowerRequestState]);
 
   useEffect(() => {
     if (!isLive) {
@@ -131,6 +268,10 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
         if (typeof data.currentPrice === "number" && data.currentPrice !== livePrice) {
           setLivePrice(data.currentPrice);
+
+          if (viewer.isBuyer) {
+            void refreshBuyingPower();
+          }
         }
       } catch {
         // Keep existing UI state on transient errors.
@@ -138,7 +279,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     }, 3_000);
 
     return () => clearInterval(poll);
-  }, [isLive, lot.auctionId, livePrice]);
+  }, [isLive, livePrice, lot.auctionId, refreshBuyingPower, viewer.isBuyer]);
 
   useEffect(() => {
     let active = true;
@@ -166,37 +307,13 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
         };
 
         if (!isBuyer) {
+          setBuyingPower(null);
+          setBuyingPowerRequestState("idle");
           setViewer(nextViewer);
           return;
         }
 
-        try {
-          const dashboard = await api.buyer.dashboard<BuyerDashboardResponse>();
-
-          if (!active) {
-            return;
-          }
-
-          setViewer({
-            ...nextViewer,
-            hasRequiredDeposit: dashboard.depositStatus?.hasRequiredDeposit === true,
-            buyerTier: dashboard.vipStatus?.tier ?? nextViewer.buyerTier ?? "STANDARD",
-          });
-        } catch (dashboardError) {
-          if (!active) {
-            return;
-          }
-
-          if (dashboardError instanceof ApiError && dashboardError.statusCode === 401) {
-            setViewer({
-              ...DEFAULT_VIEWER_STATE,
-              checked: true,
-            });
-            return;
-          }
-
-          setViewer(nextViewer);
-        }
+        setViewer(nextViewer);
       } catch (error) {
         if (!active) {
           return;
@@ -207,6 +324,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             ...DEFAULT_VIEWER_STATE,
             checked: true,
           });
+          setBuyingPowerRequestState("idle");
           return;
         }
 
@@ -215,6 +333,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
           checked: true,
           authenticated: true,
         });
+        setBuyingPowerRequestState("error");
       }
     }
 
@@ -223,7 +342,15 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshBuyingPower]);
+
+  useEffect(() => {
+    if (!viewer.checked || !viewer.authenticated || !viewer.isBuyer) {
+      return;
+    }
+
+    void refreshBuyingPower();
+  }, [refreshBuyingPower, viewer.authenticated, viewer.checked, viewer.isBuyer]);
 
   useEffect(() => {
     return () => {
@@ -244,18 +371,32 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   }, []);
 
   const hasVisibleScheduledBid = !isScheduledWithoutBids(lot.state, livePrice);
-  const canBid =
+  const hasActiveBuyingPower =
+    buyingPower !== null &&
+    buyingPower.depositAmount > 0 &&
+    buyingPower.ceiling > 0;
+  const canAttemptBid =
     viewer.authenticated &&
     viewer.isBuyer &&
     isActiveStatus(viewer.userStatus) &&
     isActiveStatus(viewer.companyStatus) &&
-    viewer.kycVerified &&
+    viewer.kycVerified;
+  const isBuyingPowerReady = buyingPowerRequestState === "ready" && hasActiveBuyingPower;
+  const canBid =
+    canAttemptBid &&
     viewer.hasRequiredDeposit;
+  const canTransact = canBid && isBuyingPowerReady;
   const gateHref = viewer.authenticated ? "/wallet" : "/login";
   const nextBid = livePrice + lot.minStepAed;
   const nextScheduledBid = livePrice > 0 ? livePrice + lot.minStepAed : null;
   const firstManualBidAmount = Number(manualBidAed);
   const hasValidManualBid = Number.isFinite(firstManualBidAmount) && firstManualBidAmount > 0;
+  const enteredBidAmount =
+    isLive
+      ? nextBid
+      : isScheduled && !hasVisibleScheduledBid
+        ? (hasValidManualBid ? firstManualBidAmount : null)
+        : nextScheduledBid;
   const marketReference = lot.actualCashValue > 0 ? lot.actualCashValue : 0;
   const buyNowSaving =
     lot.buyNowAed > 0 && marketReference > lot.buyNowAed ? savingPct(marketReference, lot.buyNowAed) : 0;
@@ -263,6 +404,36 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
   const showActionGate = !isClosed && viewer.checked && !canBid;
   const showHowToBid = !isClosed && viewer.checked && !canBid;
   const showBuyNow = lot.buyNowAed > 0;
+  const buyingPowerStatusLabel = buyingPower
+    ? formatAed(buyingPower.remaining)
+    : showBuyingPowerLoading
+      ? isRu
+        ? "Проверяем buying power…"
+        : "Checking buying power..."
+      : isRu
+        ? "Buying power временно недоступен"
+        : "Buying power unavailable right now";
+  const hasZeroBuyingPower =
+    canTransact && buyingPower !== null && buyingPower.remaining <= 0;
+  const hasInsufficientBuyingPower =
+    canTransact &&
+    buyingPower !== null &&
+    enteredBidAmount !== null &&
+    buyingPower.remaining < enteredBidAmount;
+  const shouldShowMissingDepositState =
+    canAttemptBid &&
+    !showBuyingPowerLoading &&
+    (buyingPowerRequestState === "missing" || (buyingPower !== null && !hasActiveBuyingPower));
+  const shouldShowNeutralBuyingPowerState =
+    canAttemptBid &&
+    !showBuyingPowerLoading &&
+    !isBuyingPowerReady &&
+    !shouldShowMissingDepositState &&
+    (buyingPowerRequestState === "loading" || buyingPowerRequestState === "error");
+  const shouldShowBuyingPowerSummary =
+    canAttemptBid &&
+    (showBuyingPowerLoading || isBuyingPowerReady || shouldShowNeutralBuyingPowerState);
+  const shouldDisableBidAction = busy || hasInsufficientBuyingPower;
   const gateSecondaryMessage = useMemo(() => {
     if (!viewer.authenticated) {
       return isRu
@@ -304,7 +475,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
       try {
         const idempotencyKey = `bid-${lot.auctionId}-${amount}-${Date.now()}`;
-        await api.bids.place(lot.auctionId, amount, idempotencyKey);
+        const payload = await api.bids.place<PlaceBidResponse>(lot.auctionId, amount, idempotencyKey);
 
         showOutcome({
           type: "success",
@@ -312,9 +483,19 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             ? `Ставка принята: ${formatMoneyFromAed(amount, display)}`
             : `Bid placed: ${formatMoneyFromAed(amount, display)}`,
         });
-        setLivePrice(amount);
+        setLivePrice(parseMoneyNumber(payload.bid?.amount) || amount);
         setVisibleBidCount((count) => count + 1);
         setManualBidAed("");
+        setBuyingPower(
+          normalizeBuyingPower({
+            depositAmount: buyingPower?.depositAmount?.toFixed(2) ?? "0.00",
+            activeBids: [],
+            activeBidsTotal: payload.buyingPower.activeBidsTotal,
+            ceiling: payload.buyingPower.ceiling,
+            remaining: payload.buyingPower.remaining,
+          }),
+        );
+        setBuyingPowerRequestState("ready");
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 401) {
           setViewer({
@@ -327,20 +508,17 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
         showOutcome({
           type: "error",
-          msg: getApiErrorMessage(
-            error,
-            isRu ? "Не удалось отправить ставку. Попробуйте снова." : "Bid failed. Please try again.",
-          ),
+          msg: buildBidErrorMessage(error, isRu),
         });
       } finally {
         setBusy(false);
       }
     },
-    [display, isRu, lot.auctionId, router, showOutcome],
+    [buyingPower?.depositAmount, display, isRu, lot.auctionId, router, showOutcome],
   );
 
   const handleBuyNow = useCallback(async () => {
-    if (!canBid) {
+    if (!canTransact) {
       router.push(gateHref);
       return;
     }
@@ -372,7 +550,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [canBid, gateHref, isRu, lot.auctionId, router, showOutcome]);
+  }, [canTransact, gateHref, isRu, lot.auctionId, router, showOutcome]);
 
   const handleFirstPreBid = useCallback(() => {
     if (!hasValidManualBid) {
@@ -557,11 +735,75 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
 
       {!isClosed ? (
         <div className={styles.actions}>
-          {isLive && canBid ? (
+          {!viewer.authenticated && viewer.checked ? (
+            <div className={`${styles.feedback} ${styles.fb_info}`} role="status" aria-live="polite">
+              {isRu ? "Войдите, чтобы сделать ставку" : "Login to place a bid"}{" "}
+              <Link href="/login" className={styles.inlineLink}>
+                {isRu ? "Войти" : "Log in"}
+              </Link>
+            </div>
+          ) : null}
+
+          {shouldShowBuyingPowerSummary ? (
+            <div className={styles.buyingPowerSummary}>
+              <span className={styles.buyingPowerLabel}>
+                BUYING POWER
+              </span>
+              <strong className={styles.buyingPowerValue}>
+                {isBuyingPowerReady && buyingPower
+                  ? isRu
+                    ? `${buyingPowerStatusLabel} доступно`
+                    : `${buyingPowerStatusLabel} remaining`
+                  : buyingPowerStatusLabel}
+              </strong>
+              {isBuyingPowerReady && buyingPower ? (
+                <span className={styles.buyingPowerMeta}>
+                  {isRu
+                    ? `${formatAed(buyingPower.activeBidsTotal)} в активных ставках из ${formatAed(buyingPower.ceiling)} ceiling`
+                    : `${formatAed(buyingPower.activeBidsTotal)} in active bids of ${formatAed(buyingPower.ceiling)} ceiling`}
+                </span>
+              ) : shouldShowNeutralBuyingPowerState ? (
+                <span className={styles.buyingPowerMeta}>
+                  {isRu
+                    ? "Мы всё ещё обновляем статус. Попробуйте ещё раз через пару секунд."
+                    : "We are still refreshing your status. Try again in a moment."}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {shouldShowMissingDepositState ? (
+            <div className={`${styles.feedback} ${styles.fb_info}`} role="status" aria-live="polite">
+              {isRu ? "Нет активного депозита — добавьте депозит для ставок" : "No active deposit — Add deposit to bid"}{" "}
+              <Link href="/wallet" className={styles.inlineLink}>
+                {isRu ? "Открыть wallet" : "Open wallet"}
+              </Link>
+            </div>
+          ) : null}
+
+          {canBid && hasZeroBuyingPower ? (
+            <div className={`${styles.feedback} ${styles.fb_error}`} role="status" aria-live="polite">
+              {isRu ? "Лимит buying power достигнут — пополните депозит" : "Buying power limit reached — add deposit"}{" "}
+              <Link href="/wallet" className={styles.inlineLink}>
+                {isRu ? "Открыть wallet" : "Open wallet"}
+              </Link>
+            </div>
+          ) : null}
+
+          {canBid && !hasZeroBuyingPower && hasInsufficientBuyingPower && enteredBidAmount !== null ? (
+            <div className={`${styles.feedback} ${styles.fb_error}`} role="status" aria-live="polite">
+              {isRu ? "Недостаточно buying power" : "Insufficient buying power"}{" "}
+              <Link href="/wallet" className={styles.inlineLink}>
+                {isRu ? "Открыть wallet" : "Open wallet"}
+              </Link>
+            </div>
+          ) : null}
+
+          {isLive && canTransact ? (
             <button
               className={`btn btn-primary ${styles.bidBtn}`}
               onClick={() => void placeBid(nextBid)}
-              disabled={busy}
+              disabled={shouldDisableBidAction}
               aria-busy={busy}
             >
               {busy
@@ -574,7 +816,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             </button>
           ) : null}
 
-          {isScheduled && canBid && !hasVisibleScheduledBid ? (
+          {isScheduled && canTransact && !hasVisibleScheduledBid ? (
             <>
               <div className={styles.manualBidGroup}>
                 <input
@@ -590,7 +832,7 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
                 <button
                   className={`btn btn-primary ${styles.bidBtn}`}
                   onClick={handleFirstPreBid}
-                  disabled={busy || !hasValidManualBid}
+                  disabled={busy || !hasValidManualBid || hasInsufficientBuyingPower}
                   aria-busy={busy}
                 >
                   {busy ? (isRu ? "Отправка pre-bid…" : "Placing pre-bid…") : isRu ? "Сделать первую pre-bid" : "Place First Pre-Bid"}
@@ -604,11 +846,11 @@ export function BidPanel({ lot, totalBids = 0, display }: Props) {
             </>
           ) : null}
 
-          {isScheduled && canBid && nextScheduledBid !== null ? (
+          {isScheduled && canTransact && nextScheduledBid !== null ? (
             <button
               className={`btn btn-primary ${styles.bidBtn}`}
               onClick={() => void placeBid(nextScheduledBid)}
-              disabled={busy}
+              disabled={shouldDisableBidAction}
               aria-busy={busy}
             >
               {busy
