@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { getWalletBalance } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
+import WalletTopupForm from "@/src/components/wallet/WalletTopupForm";
 
-import { AddFundsModal } from "./AddFundsModal";
 import { WithdrawalModal } from "./WithdrawalModal";
 import styles from "./WalletWorkspace.module.css";
 
@@ -77,37 +78,91 @@ export function WalletWorkspace({
   pendingWithdrawalAmount,
   transactions,
 }: WalletWorkspaceProps) {
-  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false);
+  const [walletState, setWalletState] = useState({
+    availableBalance,
+    lockedBalance,
+    pendingWithdrawalAmount,
+  });
+  const [showTopup, setShowTopup] = useState(false);
+  const [topupDone, setTopupDone] = useState(false);
   const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
+  const successTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setWalletState({
+      availableBalance,
+      lockedBalance,
+      pendingWithdrawalAmount,
+    });
+  }, [availableBalance, lockedBalance, pendingWithdrawalAmount]);
+
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current !== null) {
+        window.clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const metricCards = useMemo(
     () => [
       {
         label: "Available balance",
-        value: formatAed(availableBalance),
+        value: formatAed(walletState.availableBalance),
         toneClass: styles.metricValuePositive,
+        detail: "Fully refundable",
       },
       {
         label: "Locked — active auctions",
-        value: formatAed(lockedBalance),
+        value: formatAed(walletState.lockedBalance),
         toneClass: styles.metricValueAmber,
       },
       {
         label: "Pending withdrawal",
-        value: formatAed(pendingWithdrawalAmount),
+        value: formatAed(walletState.pendingWithdrawalAmount),
         toneClass: styles.metricValueMuted,
       },
     ],
-    [availableBalance, lockedBalance, pendingWithdrawalAmount],
+    [walletState.availableBalance, walletState.lockedBalance, walletState.pendingWithdrawalAmount],
   );
+
+  const handleTopupSuccess = async () => {
+    setShowTopup(false);
+    setTopupDone(true);
+
+    try {
+      const freshWallet = await getWalletBalance({ cache: "no-store" });
+
+      setWalletState({
+        availableBalance: Number(freshWallet.availableBalance),
+        lockedBalance: Number(freshWallet.lockedBalance),
+        pendingWithdrawalAmount: Number(freshWallet.pendingWithdrawalBalance),
+      });
+    } catch {
+      // Keep the optimistic success state even if the refresh lags behind.
+    }
+
+    if (successTimeoutRef.current !== null) {
+      window.clearTimeout(successTimeoutRef.current);
+    }
+
+    successTimeoutRef.current = window.setTimeout(() => {
+      setTopupDone(false);
+    }, 5000);
+  };
 
   return (
     <div className={styles.workspace}>
+      {topupDone ? (
+        <div className={styles.successBanner}>✓ Funds received — your balance has been updated</div>
+      ) : null}
+
       <div className={styles.metricGrid}>
         {metricCards.map((card) => (
           <article key={card.label} className={styles.metricCard}>
             <span className={styles.metricLabel}>{card.label}</span>
             <strong className={`${styles.metricValue} ${card.toneClass}`}>{card.value}</strong>
+            {card.detail ? <span className={styles.metricDetail}>{card.detail}</span> : null}
           </article>
         ))}
       </div>
@@ -117,7 +172,7 @@ export function WalletWorkspace({
       </span>
 
       <div className={styles.actionRow}>
-        <button type="button" className="btn btn-primary" onClick={() => setIsAddFundsOpen(true)}>
+        <button type="button" className="btn btn-primary" onClick={() => setShowTopup(true)}>
           Add funds
         </button>
         <button type="button" className="btn btn-outline" onClick={() => setIsWithdrawalOpen(true)}>
@@ -125,11 +180,16 @@ export function WalletWorkspace({
         </button>
       </div>
 
-      <AddFundsModal isOpen={isAddFundsOpen} onClose={() => setIsAddFundsOpen(false)} />
+      {showTopup ? (
+        <div className={styles.topupFormWrap}>
+          <WalletTopupForm onSuccess={() => void handleTopupSuccess()} onCancel={() => setShowTopup(false)} />
+        </div>
+      ) : null}
+
       <WithdrawalModal
         isOpen={isWithdrawalOpen}
         onClose={() => setIsWithdrawalOpen(false)}
-        availableBalance={availableBalance}
+        availableBalance={walletState.availableBalance}
       />
 
       <section className={styles.tableCard}>

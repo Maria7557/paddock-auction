@@ -1,6 +1,6 @@
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { WalletWorkspace } from "@/components/buyer/WalletWorkspace";
-import { api } from "@/src/lib/api-client";
+import { api, getWalletBalance } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
@@ -23,28 +23,17 @@ type BuyerAuthResponse = {
   };
 };
 
-type WalletResponse = {
-  wallet: {
-    balance: number;
-    lockedBalance: number;
-    availableBalance: number;
-  };
-  transactions?: Array<{
-    id: string;
-    type: string;
-    amount: number;
-    reference: string | null;
-    createdAt: string;
-  }>;
-  pendingWithdrawalAmount?: number;
-};
+function parseMoneyString(value: string): number {
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+}
 
 export default async function WalletPage() {
   const session = await requireBuyerSession("/wallet");
   const requestOptions = await withServerCookies({ cache: "no-store" });
 
-  const [walletResponse, dashboard, authResponse] = await Promise.all([
-    api.wallet.get<WalletResponse>(requestOptions),
+  const [walletBalance, dashboard, authResponse] = await Promise.all([
+    getWalletBalance(requestOptions),
     api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
     api.auth.me<BuyerAuthResponse>(requestOptions),
   ]);
@@ -67,10 +56,10 @@ export default async function WalletPage() {
         </header>
 
         <WalletWorkspace
-          availableBalance={walletResponse.wallet.availableBalance}
-          lockedBalance={walletResponse.wallet.lockedBalance}
-          pendingWithdrawalAmount={walletResponse.pendingWithdrawalAmount ?? 0}
-          transactions={walletResponse.transactions ?? []}
+          availableBalance={parseMoneyString(walletBalance.availableBalance)}
+          lockedBalance={parseMoneyString(walletBalance.lockedBalance)}
+          pendingWithdrawalAmount={parseMoneyString(walletBalance.pendingWithdrawalBalance)}
+          transactions={[]}
         />
       </div>
     </BuyerShell>

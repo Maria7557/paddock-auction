@@ -41,7 +41,7 @@ const depositSchema = z.object({
 });
 
 const topupSchema = z.object({
-  amount: z.coerce.number().finite().positive().min(5000),
+  amount: z.coerce.number().finite().positive(),
 });
 
 const withdrawSchema = z.object({
@@ -803,6 +803,18 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (!parsedBody.success) {
         await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const minTopup = Number(process.env.MIN_TOPUP_AED ?? 5000);
+
+      if (parsedBody.data.amount < minTopup) {
+        await sendValidationError(reply, [
+          {
+            path: "amount",
+            message: `Minimum deposit is AED ${minTopup}`,
+          },
+        ]);
         return;
       }
 
