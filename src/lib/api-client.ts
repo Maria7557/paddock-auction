@@ -426,6 +426,42 @@ function createIdempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+export type WalletBalanceResponse = {
+  availableBalance: string;
+  lockedBalance: string;
+  pendingWithdrawalBalance: string;
+  currency: string;
+};
+
+export type WalletTopupResponse = {
+  clientSecret: string;
+  paymentIntentId: string;
+};
+
+export async function getWalletBalance(options?: RequestInit): Promise<WalletBalanceResponse> {
+  return getRequest<WalletBalanceResponse>("/api/wallet", options);
+}
+
+export async function initiateTopup(
+  amount: number,
+  idempotencyKey: string,
+  options?: RequestInit,
+): Promise<WalletTopupResponse> {
+  const headers = new Headers(options?.headers);
+  headers.set("Idempotency-Key", idempotencyKey);
+
+  return postJson<WalletTopupResponse>(
+    "/api/wallet/topup",
+    {
+      amount,
+    },
+    {
+      ...options,
+      headers,
+    },
+  );
+}
+
 export const api = {
   auth: {
     login: async (email: string, password: string): Promise<{ user: ApiUser }> =>
@@ -777,27 +813,15 @@ export const api = {
     },
   },
   wallet: {
-    get: async <T = unknown>(options?: RequestInit): Promise<T> =>
-      getRequest<T>("/api/wallet", options),
-    topup: async <T = unknown>(
+    get: async <T = WalletBalanceResponse>(options?: RequestInit): Promise<T> =>
+      getWalletBalance(options) as Promise<T>,
+    topup: async <T = WalletTopupResponse>(
       amount: number,
       options?: RequestInit,
     ): Promise<T> => {
       const idempotencyKey = createIdempotencyKey();
 
-      return postJson<T>(
-        "/api/wallet/topup",
-        {
-          amount,
-        },
-        {
-          ...options,
-          headers: {
-            ...Object.fromEntries(new Headers(options?.headers).entries()),
-            "idempotency-key": idempotencyKey,
-          },
-        },
-      );
+      return initiateTopup(amount, idempotencyKey, options) as Promise<T>;
     },
     deposit: async <T = unknown>(amount: number, idempotencyKey: string, options?: RequestInit): Promise<T> =>
       postJson<T>("/api/wallet/deposit", { amount, idempotencyKey }, options),
