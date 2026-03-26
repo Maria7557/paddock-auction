@@ -1,4 +1,4 @@
-CREATE TABLE "deposit_wallets" (
+CREATE TABLE IF NOT EXISTS "deposit_wallets" (
   "id" TEXT NOT NULL,
   "company_id" TEXT NOT NULL,
   "currency" TEXT NOT NULL DEFAULT 'AED',
