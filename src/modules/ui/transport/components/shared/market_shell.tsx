@@ -89,7 +89,7 @@ export function MarketShell({
                   </Link>
 
                   <Link href="/register" className="button button-primary">
-                    Register Company
+                    Register
                   </Link>
                 </div>
               </div>

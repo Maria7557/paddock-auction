@@ -25,6 +25,7 @@ export function AdminNav({ locale }: AdminNavProps) {
     { href: "/admin/vehicles", label: t.nav.vehicles },
     { href: "/admin/events", label: t.nav.events },
     { href: "/admin/buyers", label: t.nav.buyers },
+    { href: "/admin/invoices", label: t.nav.invoices },
   ];
 
   return (

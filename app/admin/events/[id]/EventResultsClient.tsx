@@ -14,24 +14,59 @@ type EventResultsClientProps = {
   results: EventResultEntry[];
 };
 
-function getStatusLabel(status: EventResultEntry["status"]): string {
-  if (status === "SOLD_DEFAULTED") {
-    return "SOLD (DEFAULTED)";
-  }
-
-  return status;
+function formatAuctionStateValue(value: string): string {
+  return value.trim().replaceAll("_", " ");
 }
 
-function getStatusClassName(status: EventResultEntry["status"]): string {
-  if (status === "UNSOLD") {
-    return styles.statusMuted;
+function getAuctionStateDisplay(auctionState: string): { label: string; className: string } {
+  const normalized = auctionState.trim().toUpperCase();
+
+  if (normalized === "PAYMENT_PENDING") {
+    return {
+      label: "Awaiting Payment",
+      className: styles.statusWarning,
+    };
   }
 
-  if (status === "SOLD_DEFAULTED") {
-    return styles.statusDanger;
+  if (normalized === "AWAITING_SELLER_DECISION") {
+    return {
+      label: "Awaiting Seller",
+      className: styles.statusWarning,
+    };
   }
 
-  return styles.statusSuccess;
+  if (normalized === "PAID" || normalized === "SETTLED") {
+    return {
+      label: "Sold",
+      className: styles.statusSuccess,
+    };
+  }
+
+  if (normalized === "RELISTED") {
+    return {
+      label: "Relisted",
+      className: styles.statusMuted,
+    };
+  }
+
+  if (normalized === "DEFAULTED") {
+    return {
+      label: "Defaulted",
+      className: styles.statusDanger,
+    };
+  }
+
+  if (normalized === "CANCELED") {
+    return {
+      label: "Cancelled",
+      className: styles.statusMuted,
+    };
+  }
+
+  return {
+    label: formatAuctionStateValue(normalized || "ENDED"),
+    className: styles.statusMuted,
+  };
 }
 
 export function EventResultsClient({ eventTitle, scheduledAt, results }: EventResultsClientProps) {
@@ -71,11 +106,12 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
 
   function downloadCsv(): void {
     const rows = [
-      ["#", "Vehicle", "Status", "Winning Bid", "Bids", "Buyer Company", "Payment"],
+      ["#", "Vehicle", "Seller Company", "Status", "Winning Bid", "Bids", "Buyer Company", "Payment"],
       ...results.map((result) => [
         String(result.position + 1),
         result.vehicle,
-        getStatusLabel(result.status),
+        result.sellerCompany ?? "",
+        getAuctionStateDisplay(result.auctionState).label,
         String(result.winningBid),
         String(result.bids),
         result.buyerCompany ?? "",
@@ -129,6 +165,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               <tr>
                 <th>#</th>
                 <th>Vehicle</th>
+                <th>Seller Company</th>
                 <th>Status</th>
                 <th>Winning Bid</th>
                 <th>Bids</th>
@@ -141,10 +178,15 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
                 <tr key={result.lotId}>
                   <td className={styles.mono}>#{result.position + 1}</td>
                   <td>{result.vehicle}</td>
+                  <td>{result.sellerCompany ?? "—"}</td>
                   <td>
                     <div className={styles.statusActions}>
-                      <span className={`${styles.statusBadge} ${getStatusClassName(result.status)}`}>
-                        {getStatusLabel(result.status)}
+                      <span
+                        className={`${styles.statusBadge} ${
+                          getAuctionStateDisplay(result.auctionState).className
+                        }`}
+                      >
+                        {getAuctionStateDisplay(result.auctionState).label}
                       </span>
                       {result.status === "UNSOLD" ? (
                         <button
@@ -169,7 +211,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               ))}
               {results.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     No results yet.
                   </td>
                 </tr>

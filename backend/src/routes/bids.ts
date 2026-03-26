@@ -6,7 +6,6 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import {
-  createIssuedInvoice,
   ensureAuctionDepositLock,
   releaseAuctionDepositLocks,
 } from "../lib/auction-deposit-locks";
@@ -51,7 +50,7 @@ type AuctionLockRow = {
   ends_at: Date | string;
 };
 
-const BUY_NOW_PAYMENT_WINDOW_HOURS = 48;
+const SELLER_DECISION_WINDOW_HOURS = 24;
 const PUBLIC_AUCTION_STATES = ["SCHEDULED", "LIVE", "EXTENDED"] as const;
 
 const placeBidSchema = z.object({
@@ -1132,11 +1131,15 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
             const updatedRows = await tx.$executeRaw`
               UPDATE auctions
-              SET state = ${"PAYMENT_PENDING"}::"AuctionState",
+              SET state = ${"AWAITING_SELLER_DECISION"}::"AuctionState",
                   current_price = ${buyNowPrice},
                   last_bid_sequence = ${nextSequenceNo},
                   highest_bid_id = ${bidRecord.id},
                   winner_company_id = ${buyerAccess.companyId},
+                  decision_deadline_at = ${await addHours(new Date(), SELLER_DECISION_WINDOW_HOURS)},
+                  seller_decision = NULL,
+                  seller_decided_at = NULL,
+                  seller_decided_by = NULL,
                   closed_at = NOW(),
                   version = version + 1,
                   updated_at = NOW()
@@ -1152,7 +1155,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               data: {
                 auctionId: parsedParams.data.id,
                 fromState: "SCHEDULED",
-                toState: "PAYMENT_PENDING",
+                toState: "AWAITING_SELLER_DECISION",
                 trigger: "BUY_NOW",
                 actorId: buyerAccess.userId,
                 reason: JSON.stringify({
@@ -1166,14 +1169,6 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
               auctionId: parsedParams.data.id,
               winnerCompanyId: buyerAccess.companyId,
               reason: "BUY_NOW_RELEASE",
-            });
-
-            await createIssuedInvoice(tx, {
-              auctionId: parsedParams.data.id,
-              buyerCompanyId: buyerAccess.companyId,
-              sellerCompanyId: auction.seller_company_id,
-              subtotal: buyNowPrice,
-              dueAt: await addHours(new Date(), BUY_NOW_PAYMENT_WINDOW_HOURS),
             });
 
             return {

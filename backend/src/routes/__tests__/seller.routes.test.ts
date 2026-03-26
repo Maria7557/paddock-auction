@@ -15,12 +15,19 @@ const { mockPrisma } = vi.hoisted(() => ({
     auction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     company: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
     },
     bid: {
       findMany: vi.fn(),
+    },
+    idempotencyKey: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
     $disconnect: vi.fn(),
@@ -55,6 +62,7 @@ async function makeToken(payload: {
 
 function buildSellerTx(overrides: Record<string, unknown> = {}) {
   return {
+    $queryRaw: vi.fn(),
     vehicle: {
       create: vi.fn(),
       update: vi.fn(),
@@ -64,6 +72,25 @@ function buildSellerTx(overrides: Record<string, unknown> = {}) {
       create: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
+    },
+    company: {
+      findUnique: vi.fn(),
+    },
+    invoice: {
+      create: vi.fn(),
+    },
+    paymentDeadline: {
+      create: vi.fn(),
+    },
+    depositLock: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn(),
+    },
+    wallet: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    walletLedger: {
+      create: vi.fn(),
     },
     auctionStateTransition: {
       create: vi.fn(),
@@ -115,6 +142,13 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
+  mockPrisma.idempotencyKey.create.mockResolvedValue({
+    id: "idem-1",
+  });
+  mockPrisma.idempotencyKey.updateMany.mockResolvedValue({
+    count: 1,
+  });
 });
 
 describe("seller auth guard", () => {
@@ -199,6 +233,278 @@ describe("GET /api/seller/dashboard", () => {
   });
 });
 
+describe("seller decision flow", () => {
+  it("returns pending seller decisions", async () => {
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "auction-1",
+        currentPrice: "125000.00",
+        decisionDeadlineAt: new Date("2026-03-25T08:00:00.000Z"),
+        winnerCompanyId: "abcd-buyer-company",
+        vehicle: {
+          brand: "Toyota",
+          model: "Land Cruiser",
+          images: ["https://img.example/lot-1.jpg"],
+        },
+      },
+    ]);
+
+    const res = await request
+      .get("/api/seller/decisions/pending")
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      pending: [
+        {
+          auctionId: "auction-1",
+          lotTitle: "Toyota Land Cruiser",
+          imageUrl: "https://img.example/lot-1.jpg",
+          winningBidAmount: 125000,
+          buyerAlias: "Buyer #ABCD",
+          decisionDeadlineIso: "2026-03-25T08:00:00.000Z",
+          status: "AWAITING_SELLER_DECISION",
+        },
+      ],
+    });
+  });
+
+  it("accepts a seller decision and issues an invoice", async () => {
+    const tx = buildSellerTx({
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: "auction-1",
+          state: "AWAITING_SELLER_DECISION",
+          seller_company_id: sellerCompanyId,
+          winner_company_id: "buyer-company-1",
+          current_price: "120000.00",
+          seller_decision: null,
+        },
+      ]),
+      company: {
+        findUnique: vi.fn().mockResolvedValue({
+          buyerTier: "VIP",
+        }),
+      },
+      invoice: {
+        create: vi.fn().mockResolvedValue({
+          id: "invoice-1",
+        }),
+      },
+      paymentDeadline: {
+        create: vi.fn().mockResolvedValue({
+          id: "deadline-1",
+        }),
+      },
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback, options) => {
+      expect(options).toEqual({
+        isolationLevel: "Serializable",
+      });
+
+      return callback(tx);
+    });
+
+    const res = await request
+      .post("/api/seller/auctions/auction-1/decision")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Idempotency-Key", "seller-decision-1")
+      .send({
+        decision: "accept",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      auctionId: "auction-1",
+      newStatus: "PAYMENT_PENDING",
+      invoiceId: "invoice-1",
+    });
+    expect(tx.invoice.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "auction-1",
+        buyerCompanyId: "buyer-company-1",
+        sellerCompanyId: sellerCompanyId,
+        subtotal: 120000,
+        commission: 4800,
+        vat: 6240,
+        total: 131040,
+        currency: "AED",
+        status: "ISSUED",
+        issuedAt: expect.any(Date),
+        dueAt: expect.any(Date),
+      }),
+      select: {
+        id: true,
+      },
+    });
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "auction-1",
+      },
+      data: expect.objectContaining({
+        state: "PAYMENT_PENDING",
+        sellerDecision: "accepted",
+        sellerDecidedAt: expect.any(Date),
+        sellerDecidedBy: sellerUserId,
+      }),
+    });
+    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "auction-1",
+        fromState: "AWAITING_SELLER_DECISION",
+        toState: "PAYMENT_PENDING",
+        trigger: "SELLER_ACCEPTED",
+        actorId: sellerUserId,
+      }),
+    });
+  });
+
+  it("declines a seller decision and releases the winner lock", async () => {
+    const tx = buildSellerTx({
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: "auction-2",
+          state: "AWAITING_SELLER_DECISION",
+          seller_company_id: sellerCompanyId,
+          winner_company_id: "buyer-company-2",
+          current_price: "90000.00",
+          seller_decision: null,
+        },
+      ]),
+      depositLock: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "lock-1",
+            walletId: "wallet-1",
+            amount: "5000.00",
+          },
+        ]),
+        update: vi.fn().mockResolvedValue({
+          id: "lock-1",
+        }),
+      },
+      wallet: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      walletLedger: {
+        create: vi.fn().mockResolvedValue({
+          id: "ledger-1",
+        }),
+      },
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/seller/auctions/auction-2/decision")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Idempotency-Key", "seller-decision-2")
+      .send({
+        decision: "decline",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      auctionId: "auction-2",
+      newStatus: "RELISTED",
+      invoiceId: null,
+    });
+    expect(tx.depositLock.update).toHaveBeenCalledWith({
+      where: {
+        id: "lock-1",
+      },
+      data: expect.objectContaining({
+        status: "RELEASED",
+        releasedAt: expect.any(Date),
+        resolutionReason: "SELLER_DECLINED",
+      }),
+    });
+    expect(tx.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "auction-2",
+      },
+      data: expect.objectContaining({
+        state: "RELISTED",
+        sellerDecision: "declined",
+        sellerDecidedAt: expect.any(Date),
+        sellerDecidedBy: sellerUserId,
+      }),
+    });
+  });
+
+  it("returns 409 when a decision is already recorded", async () => {
+    const tx = buildSellerTx({
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: "auction-3",
+          state: "AWAITING_SELLER_DECISION",
+          seller_company_id: sellerCompanyId,
+          winner_company_id: "buyer-company-3",
+          current_price: "50000.00",
+          seller_decision: "accepted",
+        },
+      ]),
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/seller/auctions/auction-3/decision")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Idempotency-Key", "seller-decision-3")
+      .send({
+        decision: "accept",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("DECISION_ALREADY_MADE");
+  });
+
+  it("allows admin force-decision without seller auth", async () => {
+    const tx = buildSellerTx({
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: "auction-4",
+          state: "AWAITING_SELLER_DECISION",
+          seller_company_id: "seller-company-2",
+          winner_company_id: "buyer-company-4",
+          current_price: "100000.00",
+          seller_decision: null,
+        },
+      ]),
+      company: {
+        findUnique: vi.fn().mockResolvedValue({
+          buyerTier: "STANDARD",
+        }),
+      },
+      invoice: {
+        create: vi.fn().mockResolvedValue({
+          id: "invoice-4",
+        }),
+      },
+      paymentDeadline: {
+        create: vi.fn().mockResolvedValue({
+          id: "deadline-4",
+        }),
+      },
+    });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const res = await request
+      .post("/api/admin/auctions/auction-4/force-decision")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        decision: "accept",
+        reason: "Manual compliance override",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      auctionId: "auction-4",
+      newStatus: "PAYMENT_PENDING",
+      invoiceId: "invoice-4",
+    });
+  });
+});
+
 describe("GET /api/seller/vehicles", () => {
   it("returns 200 with vehicles array for seller", async () => {
     mockPrisma.vehicle.findMany.mockResolvedValue([
@@ -218,6 +524,7 @@ describe("GET /api/seller/vehicles", () => {
             createdAt: new Date("2026-03-14T08:00:00.000Z"),
             startsAt: new Date("2026-03-14T08:00:00.000Z"),
             endsAt: new Date("2026-03-14T10:00:00.000Z"),
+            decisionDeadlineAt: new Date("2026-03-15T10:00:00.000Z"),
           },
         ],
       },
@@ -231,6 +538,7 @@ describe("GET /api/seller/vehicles", () => {
     expect(res.body.total).toBe(1);
     expect(res.body.vehicles[0].id).toBe("v1");
     expect(res.body.vehicles[0].latestAuction.currentPrice).toBe(10000);
+    expect(res.body.vehicles[0].latestAuction.decisionDeadlineAt).toBe("2026-03-15T10:00:00.000Z");
   });
 
   it("returns empty array when seller has no vehicles", async () => {

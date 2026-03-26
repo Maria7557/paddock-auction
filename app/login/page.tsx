@@ -53,7 +53,7 @@ export default function LoginPage() {
               Work email
               <input
                 type="email"
-                placeholder="admin@fleetbid.ae"
+                placeholder="user@gmail.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -80,7 +80,7 @@ export default function LoginPage() {
               Buyer Login
             </Link>
             <Link href="/login/seller" className="button button-secondary">
-              Company Login
+              Seller Login
             </Link>
           </div>
 

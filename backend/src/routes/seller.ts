@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
+import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { prisma } from "../db";
-import { requireSellerAuth } from "../lib/auth";
+import { releaseAuctionDepositLocks } from "../lib/auction-deposit-locks";
+import { requireAuth, requireSellerAuth } from "../lib/auth";
 
 type DecimalLike =
   | number
@@ -17,8 +19,35 @@ type DecimalLike =
       valueOf?: () => unknown;
     };
 
-type JsonObject = Record<string, unknown>;
+type IdempotencyResponseBody = Record<string, unknown>;
 const DEFAULT_SELLER_AUCTION_MIN_INCREMENT = 500;
+const PAYMENT_WINDOW_HOURS = 48;
+
+type LockedAuctionDecisionRow = {
+  id: string;
+  state: string;
+  seller_company_id: string;
+  winner_company_id: string | null;
+  current_price: DecimalLike;
+  seller_decision: string | null;
+};
+
+type SellerDecisionSuccess = {
+  auctionId: string;
+  newStatus: "PAYMENT_PENDING" | "RELISTED";
+  invoiceId: string | null;
+};
+
+type SellerDecisionResult =
+  | {
+      kind: "success";
+      response: SellerDecisionSuccess;
+    }
+  | {
+      kind: "error";
+      statusCode: number;
+      body: IdempotencyResponseBody;
+    };
 
 const sellerVehicleSchema = z.object({
   brand: z.string().trim().min(1),
@@ -84,6 +113,19 @@ const sellerAuctionListQuerySchema = z.object({
   q: z.string().trim().optional(),
   status: z.string().trim().optional(),
   sort: z.enum(["newest", "oldest", "price_asc", "price_desc"]).optional(),
+});
+
+const auctionDecisionParamsSchema = z.object({
+  auctionId: z.string().trim().min(1),
+});
+
+const sellerDecisionBodySchema = z.object({
+  decision: z.enum(["accept", "decline"]),
+});
+
+const adminForceDecisionBodySchema = z.object({
+  decision: z.enum(["accept", "decline"]),
+  reason: z.string().trim().min(1),
 });
 
 async function toNumberValue(value: DecimalLike): Promise<number> {
@@ -152,6 +194,44 @@ async function normalizeVin(vin: string): Promise<string> {
   return vin.trim().toUpperCase();
 }
 
+async function normalizeMoney(value: number): Promise<number> {
+  return Number(value.toFixed(2));
+}
+
+function buildLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  fallbackId: string,
+): string {
+  const parts = [brand?.trim(), model?.trim()].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
+}
+
+function buildBuyerAlias(companyId: string | null | undefined): string {
+  const normalized = companyId?.trim();
+
+  if (!normalized) {
+    return "Buyer #UNKN";
+  }
+
+  return `Buyer #${normalized.slice(0, 4).toUpperCase()}`;
+}
+
+async function addHours(base: Date, hours: number): Promise<Date> {
+  const next = new Date(base);
+
+  next.setUTCHours(next.getUTCHours() + hours);
+
+  return next;
+}
+
 async function toVehicleMediaCreateInput(input: {
   images: string[];
   mulkiyaFrontUrl?: string;
@@ -214,8 +294,155 @@ async function createPayloadHash(payload: unknown): Promise<string> {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
-async function toStoredJson(payload: unknown): Promise<any> {
-  return JSON.parse(JSON.stringify(payload));
+async function toStoredJson(payload: unknown): Promise<Prisma.InputJsonValue> {
+  return JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue;
+}
+
+async function getIdempotencyExpiry(): Promise<Date> {
+  return addHours(new Date(), 24);
+}
+
+async function getRequiredIdempotencyKey(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
+
+  if (!idempotencyKey) {
+    await reply.code(400).send({
+      error: "MISSING_IDEMPOTENCY_KEY",
+    });
+    return null;
+  }
+
+  return idempotencyKey;
+}
+
+async function readStoredIdempotencyBody(value: string | null): Promise<IdempotencyResponseBody | null> {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as IdempotencyResponseBody;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveExistingIdempotentResponse(input: {
+  actorId: string;
+  endpoint: string;
+  idempotencyKey: string;
+  requestHash: string;
+}): Promise<{
+  statusCode: number;
+  body: IdempotencyResponseBody;
+} | null> {
+  const existing = await prisma.idempotencyKey.findFirst({
+    where: {
+      actorId: input.actorId,
+      endpoint: input.endpoint,
+      idempotencyKey: input.idempotencyKey,
+    },
+    select: {
+      requestHash: true,
+      status: true,
+      responseStatus: true,
+      responseBody: true,
+    },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.requestHash !== input.requestHash) {
+    throw new Error("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD");
+  }
+
+  if (existing.status !== "PENDING" && existing.responseStatus) {
+    const body = await readStoredIdempotencyBody(existing.responseBody ?? null);
+
+    if (body) {
+      return {
+        statusCode: existing.responseStatus,
+        body,
+      };
+    }
+  }
+
+  if (existing.status === "PENDING") {
+    throw new Error("IDEMPOTENCY_KEY_IN_PROGRESS");
+  }
+
+  return null;
+}
+
+async function createPendingIdempotencyKey(input: {
+  actorId: string;
+  endpoint: string;
+  idempotencyKey: string;
+  requestHash: string;
+}): Promise<void> {
+  await prisma.idempotencyKey.create({
+    data: {
+      actorId: input.actorId,
+      endpoint: input.endpoint,
+      idempotencyKey: input.idempotencyKey,
+      requestHash: input.requestHash,
+      status: "PENDING",
+      expiresAt: await getIdempotencyExpiry(),
+    },
+  });
+}
+
+async function completeIdempotencyKey(input: {
+  actorId: string;
+  endpoint: string;
+  idempotencyKey: string;
+  responseStatus: number;
+  responseBody: IdempotencyResponseBody;
+}): Promise<void> {
+  await prisma.idempotencyKey.updateMany({
+    where: {
+      actorId: input.actorId,
+      endpoint: input.endpoint,
+      idempotencyKey: input.idempotencyKey,
+    },
+    data: {
+      status: "COMPLETED",
+      responseStatus: input.responseStatus,
+      responseBody: JSON.stringify(input.responseBody),
+    },
+  });
+}
+
+async function failIdempotencyKey(input: {
+  actorId: string;
+  endpoint: string;
+  idempotencyKey: string;
+  responseStatus: number;
+  responseBody: IdempotencyResponseBody;
+}): Promise<void> {
+  await prisma.idempotencyKey.updateMany({
+    where: {
+      actorId: input.actorId,
+      endpoint: input.endpoint,
+      idempotencyKey: input.idempotencyKey,
+    },
+    data: {
+      status: "FAILED",
+      responseStatus: input.responseStatus,
+      responseBody: JSON.stringify(input.responseBody),
+    },
+  });
 }
 
 async function createAuditLog(
@@ -227,7 +454,7 @@ async function createAuditLog(
           action: string;
           entityType: string;
           entityId: string;
-          payload: any;
+          payload: Prisma.InputJsonValue;
           payloadHash: string;
         };
       }) => Promise<unknown>;
@@ -251,6 +478,248 @@ async function createAuditLog(
       payloadHash: await createPayloadHash(input.payload),
     },
   });
+}
+
+async function applyAuctionDecisionInTransaction(
+  tx: Prisma.TransactionClient,
+  input: {
+    auctionId: string;
+    decision: "accept" | "decline" | "expired";
+    actorId: string | null;
+    sellerCompanyId?: string;
+    auditAction: string;
+    trigger: string;
+    reason?: string | null;
+  },
+): Promise<SellerDecisionResult> {
+  const rows = await tx.$queryRaw<LockedAuctionDecisionRow[]>`
+    SELECT
+      id,
+      state,
+      seller_company_id,
+      winner_company_id,
+      current_price,
+      seller_decision
+    FROM auctions
+    WHERE id = ${input.auctionId}
+    FOR UPDATE
+  `;
+  const auction = rows[0];
+
+  if (!auction) {
+    return {
+      kind: "error",
+      statusCode: 404,
+      body: {
+        error: "AUCTION_NOT_FOUND",
+      },
+    };
+  }
+
+  if (input.sellerCompanyId && auction.seller_company_id !== input.sellerCompanyId) {
+    return {
+      kind: "error",
+      statusCode: 403,
+      body: {
+        error: "FORBIDDEN",
+      },
+    };
+  }
+
+  if (auction.seller_decision !== null) {
+    return {
+      kind: "error",
+      statusCode: 409,
+      body: {
+        error: "DECISION_ALREADY_MADE",
+      },
+    };
+  }
+
+  if (auction.state !== "AWAITING_SELLER_DECISION") {
+    return {
+      kind: "error",
+      statusCode: 422,
+      body: {
+        error: "AUCTION_NOT_AWAITING_SELLER_DECISION",
+      },
+    };
+  }
+
+  const now = new Date();
+
+  if (input.decision === "accept") {
+    const winnerCompanyId = auction.winner_company_id?.trim() ?? null;
+
+    if (!winnerCompanyId) {
+      return {
+        kind: "error",
+        statusCode: 422,
+        body: {
+          error: "AUCTION_HAS_NO_WINNER",
+        },
+      };
+    }
+
+    const buyerCompany = await tx.company.findUnique({
+      where: {
+        id: winnerCompanyId,
+      },
+      select: {
+        buyerTier: true,
+      },
+    });
+
+    if (!buyerCompany) {
+      throw new Error(`Winner company ${winnerCompanyId} not found`);
+    }
+
+    const subtotal = await toNumberValue(auction.current_price);
+    const commissionRate = buyerCompany.buyerTier === "VIP" ? 0.04 : 0.02;
+    const commission = await normalizeMoney(subtotal * commissionRate);
+    const vat = await normalizeMoney((subtotal + commission) * 0.05);
+    const total = await normalizeMoney(subtotal + commission + vat);
+    const dueAt = await addHours(now, PAYMENT_WINDOW_HOURS);
+    const invoice = await tx.invoice.create({
+      data: {
+        auctionId: auction.id,
+        buyerCompanyId: winnerCompanyId,
+        sellerCompanyId: auction.seller_company_id,
+        subtotal,
+        commission,
+        vat,
+        total,
+        currency: "AED",
+        status: "ISSUED",
+        issuedAt: now,
+        dueAt,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await tx.paymentDeadline.create({
+      data: {
+        auctionId: auction.id,
+        buyerCompanyId: winnerCompanyId,
+        dueAt,
+      },
+    });
+
+    await tx.auction.update({
+      where: {
+        id: auction.id,
+      },
+      data: {
+        state: "PAYMENT_PENDING",
+        sellerDecision: "accepted",
+        sellerDecidedAt: now,
+        sellerDecidedBy: input.actorId,
+      },
+    });
+
+    await tx.auctionStateTransition.create({
+      data: {
+        auctionId: auction.id,
+        fromState: "AWAITING_SELLER_DECISION",
+        toState: "PAYMENT_PENDING",
+        trigger: input.trigger,
+        actorId: input.actorId,
+        reason: JSON.stringify({
+          decision: "accept",
+          sellerCompanyId: auction.seller_company_id,
+          buyerCompanyId: winnerCompanyId,
+          invoiceId: invoice.id,
+          forcedReason: input.reason ?? null,
+        }),
+      },
+    });
+
+    await createAuditLog(tx, {
+      actorId: input.actorId ?? "system",
+      action: input.auditAction,
+      entityType: "Auction",
+      entityId: auction.id,
+      payload: {
+        auctionId: auction.id,
+        previousState: "AWAITING_SELLER_DECISION",
+        nextState: "PAYMENT_PENDING",
+        sellerCompanyId: auction.seller_company_id,
+        buyerCompanyId: winnerCompanyId,
+        invoiceId: invoice.id,
+        decision: "accept",
+        forcedReason: input.reason ?? null,
+      },
+    });
+
+    return {
+      kind: "success",
+      response: {
+        auctionId: auction.id,
+        newStatus: "PAYMENT_PENDING",
+        invoiceId: invoice.id,
+      },
+    };
+  }
+
+  await releaseAuctionDepositLocks(tx, {
+    auctionId: auction.id,
+    reason: input.decision === "decline" ? "SELLER_DECLINED" : "SELLER_DECISION_EXPIRED",
+  });
+
+  await tx.auction.update({
+    where: {
+      id: auction.id,
+    },
+    data: {
+      state: "RELISTED",
+      sellerDecision: input.decision === "decline" ? "declined" : "expired",
+      sellerDecidedAt: now,
+      sellerDecidedBy: input.actorId,
+    },
+  });
+
+  await tx.auctionStateTransition.create({
+    data: {
+      auctionId: auction.id,
+      fromState: "AWAITING_SELLER_DECISION",
+      toState: "RELISTED",
+      trigger: input.trigger,
+      actorId: input.actorId,
+      reason: JSON.stringify({
+        decision: input.decision,
+        sellerCompanyId: auction.seller_company_id,
+        buyerCompanyId: auction.winner_company_id,
+        forcedReason: input.reason ?? null,
+      }),
+    },
+  });
+
+  await createAuditLog(tx, {
+    actorId: input.actorId ?? "system",
+    action: input.auditAction,
+    entityType: "Auction",
+    entityId: auction.id,
+    payload: {
+      auctionId: auction.id,
+      previousState: "AWAITING_SELLER_DECISION",
+      nextState: "RELISTED",
+      sellerCompanyId: auction.seller_company_id,
+      buyerCompanyId: auction.winner_company_id,
+      decision: input.decision,
+      forcedReason: input.reason ?? null,
+    },
+  });
+
+  return {
+    kind: "success",
+    response: {
+      auctionId: auction.id,
+      newStatus: "RELISTED",
+      invoiceId: null,
+    },
+  };
 }
 
 async function mapZodIssues(
@@ -372,7 +841,82 @@ async function findSellerVehicle(
 }
 
 export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.addHook("preHandler", requireSellerAuth);
+  fastify.post<{ Params: { auctionId: string }; Body: unknown }>(
+    "/admin/auctions/:auctionId/force-decision",
+    {
+      preHandler: requireAuth,
+    },
+    async function forceAdminAuctionDecisionHandler(
+      request: FastifyRequest<{ Params: { auctionId: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const role = request.auth?.role;
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
+        await reply.code(403).send({ error: "Forbidden" });
+        return;
+      }
+
+      const parsedParams = auctionDecisionParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const parsedBody = adminForceDecisionBodySchema.safeParse(request.body);
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const result = await prisma.$transaction(
+        (tx) =>
+          applyAuctionDecisionInTransaction(tx, {
+            auctionId: parsedParams.data.auctionId,
+            decision: parsedBody.data.decision,
+            actorId,
+            auditAction:
+              parsedBody.data.decision === "accept"
+                ? "ADMIN_FORCE_DECISION_ACCEPTED"
+                : "ADMIN_FORCE_DECISION_DECLINED",
+            trigger: parsedBody.data.decision === "accept" ? "SELLER_ACCEPTED" : "SELLER_DECLINED",
+            reason: parsedBody.data.reason,
+          }),
+        {
+          isolationLevel: "Serializable",
+        },
+      );
+
+      if (result.kind === "error") {
+        await reply.code(result.statusCode).send(result.body);
+        return;
+      }
+
+      await reply.code(200).send(result.response);
+    },
+  );
+
+  fastify.addHook("preHandler", async function sellerAuthHook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const rawUrl = request.raw.url ?? "";
+    const routeUrl = request.routeOptions.url ?? "";
+
+    if (rawUrl.startsWith("/api/admin/") || routeUrl.startsWith("/admin/")) {
+      return;
+    }
+
+    await requireSellerAuth(request, reply);
+  });
 
   fastify.get("/seller/dashboard", async function sellerDashboardHandler(
     request: FastifyRequest,
@@ -448,6 +992,190 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
     });
   });
 
+  fastify.get("/seller/decisions/pending", async function getPendingSellerDecisionsHandler(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const companyId = request.auth?.companyId;
+
+    if (!companyId) {
+      await reply.code(401).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const auctions = await prisma.auction.findMany({
+      where: {
+        sellerCompanyId: companyId,
+        state: "AWAITING_SELLER_DECISION",
+      },
+      select: {
+        id: true,
+        currentPrice: true,
+        decisionDeadlineAt: true,
+        winnerCompanyId: true,
+        vehicle: {
+          select: {
+            brand: true,
+            model: true,
+            images: true,
+          },
+        },
+      },
+      orderBy: [{ decisionDeadlineAt: "asc" }, { id: "asc" }],
+    });
+
+    const pending = [];
+
+    for (const auction of auctions) {
+      const decisionDeadlineIso = await toIsoString(auction.decisionDeadlineAt);
+
+      if (!decisionDeadlineIso) {
+        continue;
+      }
+
+      pending.push({
+        auctionId: auction.id,
+        lotTitle: buildLotTitle(auction.vehicle?.brand, auction.vehicle?.model, auction.id),
+        imageUrl: auction.vehicle?.images[0] ?? null,
+        winningBidAmount: await toNumberValue(auction.currentPrice),
+        buyerAlias: buildBuyerAlias(auction.winnerCompanyId),
+        decisionDeadlineIso,
+        status: "AWAITING_SELLER_DECISION" as const,
+      });
+    }
+
+    await reply.code(200).send({
+      pending,
+    });
+  });
+
+  fastify.post<{ Params: { auctionId: string }; Body: unknown }>(
+    "/seller/auctions/:auctionId/decision",
+    async function postSellerAuctionDecisionHandler(
+      request: FastifyRequest<{ Params: { auctionId: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const companyId = request.auth?.companyId;
+
+      if (!actorId || !companyId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      const parsedParams = auctionDecisionParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const parsedBody = sellerDecisionBodySchema.safeParse(request.body);
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const idempotencyKey = await getRequiredIdempotencyKey(request, reply);
+
+      if (!idempotencyKey) {
+        return;
+      }
+
+      const endpoint = `/seller/auctions/${parsedParams.data.auctionId}/decision`;
+      const requestHash = await createPayloadHash(parsedBody.data);
+
+      try {
+        const replay = await resolveExistingIdempotentResponse({
+          actorId,
+          endpoint,
+          idempotencyKey,
+          requestHash,
+        });
+
+        if (replay) {
+          await reply.code(replay.statusCode).send(replay.body);
+          return;
+        }
+
+        await createPendingIdempotencyKey({
+          actorId,
+          endpoint,
+          idempotencyKey,
+          requestHash,
+        });
+
+        const result = await prisma.$transaction(
+          (tx) =>
+            applyAuctionDecisionInTransaction(tx, {
+              auctionId: parsedParams.data.auctionId,
+              decision: parsedBody.data.decision,
+              actorId,
+              sellerCompanyId: companyId,
+              auditAction:
+                parsedBody.data.decision === "accept"
+                  ? "SELLER_DECISION_ACCEPTED"
+                  : "SELLER_DECISION_DECLINED",
+              trigger: parsedBody.data.decision === "accept" ? "SELLER_ACCEPTED" : "SELLER_DECLINED",
+            }),
+          {
+            isolationLevel: "Serializable",
+          },
+        );
+
+        if (result.kind === "error") {
+          await failIdempotencyKey({
+            actorId,
+            endpoint,
+            idempotencyKey,
+            responseStatus: result.statusCode,
+            responseBody: result.body,
+          });
+
+          await reply.code(result.statusCode).send(result.body);
+          return;
+        }
+
+        await completeIdempotencyKey({
+          actorId,
+          endpoint,
+          idempotencyKey,
+          responseStatus: 200,
+          responseBody: result.response,
+        });
+
+        await reply.code(200).send(result.response);
+      } catch (error) {
+        if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_IN_PROGRESS") {
+          await reply.code(409).send({
+            error: "REQUEST_IN_PROGRESS",
+          });
+          return;
+        }
+
+        if (error instanceof Error && error.message === "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD") {
+          await reply.code(409).send({
+            error: "IDEMPOTENCY_CONFLICT",
+          });
+          return;
+        }
+
+        await failIdempotencyKey({
+          actorId,
+          endpoint,
+          idempotencyKey,
+          responseStatus: 500,
+          responseBody: {
+            error: "INTERNAL_SERVER_ERROR",
+          },
+        }).catch(() => undefined);
+
+        throw error;
+      }
+    },
+  );
+
   fastify.get<{ Querystring: { q?: string; status?: string; sort?: string } }>(
     "/seller/vehicles",
     async function sellerVehiclesHandler(
@@ -501,6 +1229,15 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
                     ? [{ currentPrice: "desc" }, { id: "asc" }]
                     : [{ createdAt: "desc" }, { id: "desc" }],
             take: 1,
+            select: {
+              id: true,
+              state: true,
+              currentPrice: true,
+              createdAt: true,
+              startsAt: true,
+              endsAt: true,
+              decisionDeadlineAt: true,
+            },
           },
         },
         orderBy: [{ brand: "asc" }, { model: "asc" }, { year: "desc" }],
@@ -545,6 +1282,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             createdAt: latestAuction.createdAt.toISOString(),
             startsAt: latestAuction.startsAt.toISOString(),
             endsAt: latestAuction.endsAt.toISOString(),
+            decisionDeadlineAt: latestAuction.decisionDeadlineAt?.toISOString() ?? null,
           },
         });
       }
@@ -1395,7 +2133,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           await tx.auctionStateTransition.create({
             data: {
               auctionId: id,
-              fromState: auction.state as any,
+              fromState: auction.state as "DRAFT" | "SCHEDULED" | "LIVE" | "EXTENDED",
               toState: "CANCELED",
               trigger: "AUCTION_CANCELED",
               actorId,

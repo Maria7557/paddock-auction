@@ -82,6 +82,8 @@ export type EventResultEntry = {
   position: number;
   auctionId: string;
   vehicle: string;
+  sellerCompany: string | null;
+  auctionState: string;
   status: "QUEUED" | "ON_BLOCK" | "SOLD" | "UNSOLD" | "SOLD_DEFAULTED";
   winningBid: number;
   bids: number;
@@ -97,6 +99,55 @@ export type AdminEventResultsResponse = {
     state: string;
   };
   results: EventResultEntry[];
+};
+
+export type AdminInvoiceStatus =
+  | "ISSUED"
+  | "PAID_PENDING_CONFIRMATION"
+  | "PAID"
+  | "DEFAULTED"
+  | "CANCELED";
+
+export type AdminInvoiceListItem = {
+  id: string;
+  auctionId: string;
+  lotTitle: string;
+  auctionClosedAt: string;
+  subtotal: number;
+  commission: number;
+  commissionRate: number;
+  vat: number;
+  total: number;
+  status: AdminInvoiceStatus;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  urgency: "normal" | "warning" | "critical";
+  seller: {
+    companyId: string;
+    name: string;
+    phone: string | null;
+    registrationNumber: string;
+    country: string;
+  };
+  buyer: {
+    companyId: string;
+    name: string;
+    phone: string | null;
+    registrationNumber: string;
+    country: string;
+  };
+};
+
+export type AdminInvoicesResponse = {
+  invoices: AdminInvoiceListItem[];
+  total: number;
+};
+
+export type AdminInvoiceConfirmPaymentResponse = {
+  invoiceId: string;
+  status: "PAID";
+  paidAt: string;
 };
 
 export class ApiError extends Error {
@@ -541,6 +592,26 @@ export const api = {
         getRequest<T>(`/api/seller/auctions/${id}`, options),
       update: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         patchJson<T>(`/api/seller/auctions/${id}`, payload, options),
+      decision: async <T = unknown>(
+        id: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(
+          `/api/seller/auctions/${id}/decision`,
+          payload,
+          {
+            ...options,
+            headers: {
+              ...Object.fromEntries(new Headers(options?.headers).entries()),
+              "idempotency-key": createIdempotencyKey(),
+            },
+          },
+        ),
+    },
+    decisions: {
+      pending: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/seller/decisions/pending", options),
     },
     company: {
       get: async <T = unknown>(options?: RequestInit): Promise<T> =>
@@ -575,6 +646,23 @@ export const api = {
     auctions: {
       relist: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
         patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+      relistInvoiceAuction: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+      forceDecision: async <T = unknown>(
+        auctionId: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(`/api/admin/auctions/${auctionId}/force-decision`, payload, options),
+    },
+    invoices: {
+      list: async <T = AdminInvoicesResponse>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
+        getRequest<T>(appendSearchParams("/api/admin/invoices", query), options),
+      confirmPayment: async <T = AdminInvoiceConfirmPaymentResponse>(
+        invoiceId: string,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(`/api/admin/invoices/${invoiceId}/confirm-payment`, undefined, options),
     },
     vehicles: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>

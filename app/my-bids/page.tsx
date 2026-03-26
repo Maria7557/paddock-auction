@@ -1,30 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { IconTag } from "@/components/ui/icons";
-import { api } from "@/src/lib/api-client";
-import { requireBuyerSession } from "@/src/lib/buyer_session";
-import { withServerCookies } from "@/src/lib/server-api-options";
-import { formatAed } from "@/src/lib/utils";
+import { BidWatchCard } from "@/src/components/bidding/BidWatchCard";
+import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
+import type { MyBidsResponse } from "@/src/types/auction";
 
 import styles from "./page.module.css";
-
-export const dynamic = "force-dynamic";
-
-type BuyerMyBidsResponse = {
-  items: Array<{
-    auctionId: string;
-    lotNumber: string;
-    lotTitle: string;
-    city: string;
-    startsAt: string | null;
-    endsAt: string | null;
-    currentBid: number;
-    myBid: number;
-    status: "WINNING" | "OUTBID" | "WON_PAYMENT_DUE" | "PAID";
-    invoiceId: string | null;
-  }>;
-};
 
 type BuyerDashboardResponse = {
   metrics: {
@@ -37,188 +23,262 @@ type BuyerDashboardResponse = {
 
 type BuyerAuthResponse = {
   user?: {
+    role?: string;
     email?: string;
+    companyUsers?: Array<{
+      companyId?: string;
+      role?: string;
+      company?: {
+        name?: string;
+        buyerTier?: "STANDARD" | "VIP" | null;
+      } | null;
+    }>;
   };
 };
 
-function formatCountdownLabel(startsAt: string | null, endsAt: string | null, status: string): string {
-  const targetValue = status === "PAID" || status === "WON_PAYMENT_DUE" ? null : endsAt ?? startsAt;
+type ShellState = {
+  companyName: string;
+  companyEmail: string;
+  tier: "STANDARD" | "VIP";
+  invoicesDue: number;
+};
 
-  if (!targetValue) {
-    return "Time unavailable";
-  }
+const EMPTY_BIDS: MyBidsResponse = {
+  live: [],
+  scheduled: [],
+  wonPending: [],
+  wonInvoice: [],
+  ended: [],
+};
 
-  const target = new Date(targetValue).getTime();
-  const diffMs = target - Date.now();
+const DEFAULT_SHELL: ShellState = {
+  companyName: "Buyer company",
+  companyEmail: "buyer@fleetbid.ae",
+  tier: "STANDARD",
+  invoicesDue: 0,
+};
 
-  if (diffMs <= 0) {
-    return "Closing soon";
-  }
-
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) {
-    return `${days}d ${hours}h left`;
-  }
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m left`;
-  }
-
-  return `${Math.max(minutes, 1)}m left`;
+function normalizeMyBidsResponse(payload: Partial<MyBidsResponse> | null | undefined): MyBidsResponse {
+  return {
+    live: Array.isArray(payload?.live) ? payload.live : [],
+    scheduled: Array.isArray(payload?.scheduled) ? payload.scheduled : [],
+    wonPending: Array.isArray(payload?.wonPending) ? payload.wonPending : [],
+    wonInvoice: Array.isArray(payload?.wonInvoice) ? payload.wonInvoice : [],
+    ended: Array.isArray(payload?.ended) ? payload.ended : [],
+  };
 }
 
-function getStatusBadgeClass(status: BuyerMyBidsResponse["items"][number]["status"]): string {
-  if (status === "WINNING" || status === "PAID") {
-    return styles.statusSuccess;
-  }
+function buildShellState(
+  authResponse: BuyerAuthResponse,
+  dashboard: BuyerDashboardResponse,
+): ShellState {
+  const companyUser =
+    authResponse.user?.companyUsers?.find(
+      (candidate) => candidate.role === "BUYER_BIDDER" && candidate.companyId,
+    ) ??
+    authResponse.user?.companyUsers?.[0] ??
+    null;
 
-  return styles.statusDanger;
+  return {
+    companyName: companyUser?.company?.name?.trim() || DEFAULT_SHELL.companyName,
+    companyEmail: authResponse.user?.email?.trim() || DEFAULT_SHELL.companyEmail,
+    tier:
+      dashboard.vipStatus?.tier === "VIP" || companyUser?.company?.buyerTier === "VIP"
+        ? "VIP"
+        : "STANDARD",
+    invoicesDue: dashboard.metrics?.invoicesDue ?? 0,
+  };
 }
 
-function getStatusLabel(status: BuyerMyBidsResponse["items"][number]["status"]): string {
-  if (status === "WINNING") {
-    return "Winning";
+export default function MyBidsPage() {
+  const router = useRouter();
+  const [shellState, setShellState] = useState<ShellState>(DEFAULT_SHELL);
+  const [bids, setBids] = useState<MyBidsResponse>(EMPTY_BIDS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadPageData(): Promise<void> {
+    try {
+      setError(null);
+
+      const authResponse = await api.auth.me<BuyerAuthResponse>({ cache: "no-store" });
+
+      if (authResponse.user?.role !== "BUYER") {
+        router.replace("/login?next=/my-bids");
+        return;
+      }
+
+      const [dashboard, myBids] = await Promise.all([
+        api.buyer.dashboard<BuyerDashboardResponse>({ cache: "no-store" }),
+        api.buyer.myBids<MyBidsResponse>({ cache: "no-store" }),
+      ]);
+
+      setShellState(buildShellState(authResponse, dashboard));
+      setBids(normalizeMyBidsResponse(myBids));
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.statusCode === 401) {
+        router.replace("/login?next=/my-bids");
+        return;
+      }
+
+      setError(getApiErrorMessage(fetchError, "Unable to load your bids right now."));
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  if (status === "OUTBID") {
-    return "Outbid";
-  }
+  const loadLiveSection = useEffectEvent(async () => {
+    if (typeof document === "undefined" || document.visibilityState !== "visible") {
+      return;
+    }
 
-  if (status === "WON_PAYMENT_DUE") {
-    return "Won · payment due";
-  }
+    if (bids.live.length === 0) {
+      return;
+    }
 
-  return "Paid";
-}
+    try {
+      const nextBids = await api.buyer.myBids<MyBidsResponse>({ cache: "no-store" });
 
-export default async function MyBidsPage() {
-  const session = await requireBuyerSession("/my-bids");
-  const requestOptions = await withServerCookies({ cache: "no-store" });
+      setBids((current) => ({
+        ...current,
+        live: normalizeMyBidsResponse(nextBids).live,
+      }));
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.statusCode === 401) {
+        router.replace("/login?next=/my-bids");
+      }
+    }
+  });
 
-  const [bidsResponse, dashboard, authResponse] = await Promise.all([
-    api.buyer.myBids<BuyerMyBidsResponse>(requestOptions),
-    api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
-    api.auth.me<BuyerAuthResponse>(requestOptions),
-  ]);
+  const loadPageDataEvent = useEffectEvent(async () => {
+    await loadPageData();
+  });
 
-  const companyName = session.companyName?.trim() || "Buyer company";
-  const companyEmail = authResponse.user?.email?.trim() || "buyer@fleetbid.ae";
+  useEffect(() => {
+    void loadPageDataEvent();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadLiveSection();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const hasAnyBids =
+    bids.live.length > 0 ||
+    bids.scheduled.length > 0 ||
+    bids.wonPending.length > 0 ||
+    bids.wonInvoice.length > 0 ||
+    bids.ended.length > 0;
 
   return (
     <BuyerShell
       activePage="my-bids"
-      invoicesDue={dashboard.metrics.invoicesDue}
-      companyName={companyName}
-      companyEmail={companyEmail}
-      tier={dashboard.vipStatus.tier}
+      invoicesDue={shellState.invoicesDue}
+      companyName={shellState.companyName}
+      companyEmail={shellState.companyEmail}
+      tier={shellState.tier}
     >
       <div className={styles.page}>
         <header className={styles.header}>
-          <h1>My bids</h1>
-          <p>Follow your winning and outbid positions in real time</p>
+          <h1>My Bids</h1>
+          <p>Track active auctions, pre-bids, and closed results from one watchlist.</p>
         </header>
 
-        {bidsResponse.items.length === 0 ? (
+        {isLoading ? (
+          <section className={styles.loadingState}>
+            <p>Loading your bids...</p>
+          </section>
+        ) : error ? (
+          <section className={styles.errorState}>
+            <div className={styles.errorCopy}>
+              <h2>Unable to load your bids</h2>
+              <p>{error}</p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => {
+                setIsLoading(true);
+                void loadPageData();
+              }}
+            >
+              Try Again
+            </button>
+          </section>
+        ) : !hasAnyBids ? (
           <section className={styles.emptyState}>
             <span className={styles.emptyIcon} aria-hidden="true">
               <IconTag size={24} strokeWidth={2} />
             </span>
-            <h2>No bids yet</h2>
-            <p>Browse live auctions to place your first bid.</p>
+            <h2>You haven&apos;t placed any bids yet</h2>
+            <p>Start with live inventory or place pre-bids before the next auction opens.</p>
             <Link href="/auctions" className="btn btn-primary">
-              Browse auctions
+              Browse Auctions
             </Link>
           </section>
         ) : (
-          <div className={styles.list}>
-            {bidsResponse.items.map((item) => (
-              <article key={item.auctionId} className={styles.card}>
-                <div className={styles.infoCol}>
-                  <span className={styles.lotNumber}>{item.lotNumber}</span>
-                  <h2 className={styles.lotTitle}>{item.lotTitle}</h2>
-
-                  <div className={styles.metaRow}>
-                    <span className={`${styles.statusTag} ${getStatusBadgeClass(item.status)}`}>
-                      {getStatusLabel(item.status)}
-                    </span>
-                    <span className={styles.metaText}>
-                      {item.city} · {formatCountdownLabel(item.startsAt, item.endsAt, item.status)}
-                    </span>
-                  </div>
-
-                  {item.status === "OUTBID" ? (
-                    <p className={styles.supportingMeta}>
-                      Current price {formatAed(item.currentBid)}
-                    </p>
-                  ) : null}
+          <>
+            {bids.live.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Active Auctions</h2>
+                <div className={styles.cardGrid}>
+                  {bids.live.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="live" item={item} />
+                  ))}
                 </div>
+              </section>
+            ) : null}
 
-                <div className={styles.actionCol}>
-                  <div className={styles.amountBlock}>
-                    <strong
-                      className={`${styles.amountValue} ${
-                        item.status === "OUTBID" || item.status === "WON_PAYMENT_DUE"
-                          ? styles.amountDanger
-                          : ""
-                      }`}
-                    >
-                      {formatAed(item.myBid)}
-                    </strong>
-                    <span className={styles.amountLabel}>
-                      {item.status === "WINNING"
-                        ? "your bid · highest"
-                        : item.status === "OUTBID"
-                          ? "your last bid"
-                          : item.status === "WON_PAYMENT_DUE"
-                            ? "invoice amount due"
-                            : "payment completed"}
-                    </span>
-                  </div>
-
-                  <div className={styles.actions}>
-                    {item.status === "OUTBID" ? (
-                      <>
-                        <Link href={`/auctions/${item.auctionId}`} className="btn btn-primary">
-                          Bid again
-                        </Link>
-                        <Link href={`/auctions/${item.auctionId}`} className="btn btn-outline">
-                          Open lot
-                        </Link>
-                      </>
-                    ) : null}
-
-                    {item.status === "WINNING" ? (
-                      <Link href={`/auctions/${item.auctionId}`} className="btn btn-outline">
-                        Open lot
-                      </Link>
-                    ) : null}
-
-                    {item.status === "WON_PAYMENT_DUE" ? (
-                      <Link
-                        href={item.invoiceId ? `/invoices#${item.invoiceId}` : "/invoices"}
-                        className="btn btn-primary"
-                      >
-                        Pay invoice
-                      </Link>
-                    ) : null}
-
-                    {item.status === "PAID" ? (
-                      <Link
-                        href={item.invoiceId ? `/invoices#${item.invoiceId}` : "/invoices"}
-                        className="btn btn-outline"
-                      >
-                        Download PDF
-                      </Link>
-                    ) : null}
-                  </div>
+            {bids.scheduled.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Pre-Bids</h2>
+                <div className={styles.cardGrid}>
+                  {bids.scheduled.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="scheduled" item={item} />
+                  ))}
                 </div>
-              </article>
-            ))}
-          </div>
+              </section>
+            ) : null}
+
+            {bids.wonPending.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Won · Awaiting Seller</h2>
+                <div className={styles.cardGrid}>
+                  {bids.wonPending.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="won-pending" item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {bids.wonInvoice.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Won · Pay Now</h2>
+                <div className={styles.cardGrid}>
+                  {bids.wonInvoice.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="won-invoice" item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {bids.ended.length > 0 ? (
+              <section className={styles.section}>
+                <h2 className={styles.sectionHeading}>Closed Auctions</h2>
+                <div className={styles.cardGrid}>
+                  {bids.ended.map((item) => (
+                    <BidWatchCard key={item.auctionId} mode="ended" item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
         )}
       </div>
     </BuyerShell>

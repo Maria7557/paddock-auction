@@ -54,7 +54,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .table th,
@@ -181,6 +181,12 @@
   border-color: rgba(17, 106, 67, 0.18);
   background: rgba(17, 106, 67, 0.1);
   color: var(--green-700);
+}
+
+.statusWarning {
+  border-color: rgba(155, 105, 20, 0.18);
+  background: rgba(155, 105, 20, 0.1);
+  color: var(--amber-600);
 }
 
 .statusMuted {
