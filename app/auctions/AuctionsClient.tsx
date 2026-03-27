@@ -345,7 +345,7 @@ export function AuctionsClient({
   viewerBuyerTier: BuyerTier | null;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/auctions";
   const [isPending, startTransition] = useTransition();
   const [resolvedViewerBuyerTier, setResolvedViewerBuyerTier] = useState<BuyerTier | null>(viewerBuyerTier);
   const canUseVipEarlyAccessFilter = resolvedViewerBuyerTier === "VIP";

@@ -156,8 +156,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     endsAt: "",
     buyNowPriceAed: "",
   });
-  const created = searchParams.get("created") === "1";
-  const partialSetup = searchParams.get("setup") === "partial";
+  const created = searchParams?.get("created") === "1";
+  const partialSetup = searchParams?.get("setup") === "partial";
 
   const loadAuction = useCallback(
     async ({ silent = false, syncForm = true }: { silent?: boolean; syncForm?: boolean } = {}) => {

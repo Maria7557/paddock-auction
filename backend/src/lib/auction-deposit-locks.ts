@@ -16,8 +16,6 @@ type WalletLockRow = {
   locked_balance: DecimalLike;
 };
 
-export const REQUIRED_BID_DEPOSIT_AED = 5_000;
-
 async function toNumberValue(value: DecimalLike): Promise<number> {
   if (typeof value === "number") {
     return value;
@@ -79,7 +77,9 @@ export async function ensureAuctionDepositLock(
     amount?: number;
   },
 ): Promise<{ kind: "locked" | "existing" } | { kind: "deposit_required" }> {
-  const amount = await normalizeMoney(input.amount ?? REQUIRED_BID_DEPOSIT_AED);
+  // controlled via MIN_DEPOSIT_AED env var — set to 5000 in production
+  const minDepositAed = Number(process.env.MIN_DEPOSIT_AED ?? 5000);
+  const amount = await normalizeMoney(input.amount ?? minDepositAed);
   const existingLock = await tx.depositLock.findFirst({
     where: {
       auctionId: input.auctionId,

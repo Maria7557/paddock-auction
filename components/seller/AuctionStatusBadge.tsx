@@ -4,6 +4,7 @@ type AuctionStateValue =
   | "LIVE"
   | "EXTENDED"
   | "CLOSED"
+  | "AWAITING_SELLER_DECISION"
   | "PAYMENT_PENDING"
   | "PAID"
   | "DEFAULTED"
@@ -51,6 +52,10 @@ export function AuctionStatusBadge({ state }: AuctionStatusBadgeProps) {
 
   if (normalized === "PAYMENT_PENDING") {
     return <span className="seller-status seller-status-payment">PAYMENT_PENDING</span>;
+  }
+
+  if (normalized === "AWAITING_SELLER_DECISION") {
+    return <span className="seller-status seller-status-payment">AWAITING SELLER</span>;
   }
 
   if (normalized === "CANCELED") {

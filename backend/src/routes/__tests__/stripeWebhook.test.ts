@@ -78,9 +78,6 @@ describe("stripeWebhookRoutes", () => {
         create: vi.fn().mockResolvedValue({
           id: "evt-row-1",
         }),
-        update: vi.fn().mockResolvedValue({
-          id: "evt-row-1",
-        }),
       },
       depositWallet: {
         upsert: vi.fn().mockResolvedValue({
@@ -88,6 +85,11 @@ describe("stripeWebhookRoutes", () => {
         }),
         update: vi.fn().mockResolvedValue({
           id: "wallet-1",
+        }),
+      },
+      wallet: {
+        upsert: vi.fn().mockResolvedValue({
+          id: "legacy-wallet-1",
         }),
       },
       $queryRaw: vi.fn().mockResolvedValue([]),
@@ -103,6 +105,7 @@ describe("stripeWebhookRoutes", () => {
           amount_received: 500000,
           metadata: {
             companyId: "company-1",
+            userId: "user-1",
             purpose: "deposit_topup",
           },
         },
@@ -160,13 +163,18 @@ describe("stripeWebhookRoutes", () => {
         },
       },
     });
-    expect(txMock.paymentWebhookEvent.update).toHaveBeenCalledWith({
+    expect(txMock.wallet.upsert).toHaveBeenCalledWith({
       where: {
-        stripeEventId: "evt_success_1",
+        userId: "user-1",
       },
-      data: {
-        status: "PROCESSED",
-        processedAt: expect.any(Date),
+      create: {
+        userId: "user-1",
+        balance: "5000.00",
+      },
+      update: {
+        balance: {
+          increment: "5000.00",
+        },
       },
     });
 
@@ -180,13 +188,13 @@ describe("stripeWebhookRoutes", () => {
         create: vi.fn().mockResolvedValue({
           id: "evt-row-2",
         }),
-        update: vi.fn().mockResolvedValue({
-          id: "evt-row-2",
-        }),
       },
       depositWallet: {
         upsert: vi.fn(),
         update: vi.fn(),
+      },
+      wallet: {
+        upsert: vi.fn(),
       },
       $queryRaw: vi.fn(),
     };
@@ -223,11 +231,12 @@ describe("stripeWebhookRoutes", () => {
     expect(response.statusCode).toBe(200);
     expect(txMock.depositWallet.upsert).not.toHaveBeenCalled();
     expect(txMock.depositWallet.update).not.toHaveBeenCalled();
-    expect(txMock.paymentWebhookEvent.update).toHaveBeenCalledWith({
-      where: {
-        stripeEventId: "evt_ignore_1",
-      },
+    expect(txMock.wallet.upsert).not.toHaveBeenCalled();
+    expect(txMock.paymentWebhookEvent.create).toHaveBeenCalledWith({
       data: {
+        stripeEventId: "evt_ignore_1",
+        eventType: "payment_intent.succeeded",
+        payloadHash: expect.any(String),
         status: "IGNORED",
         processedAt: expect.any(Date),
       },
@@ -243,13 +252,13 @@ describe("stripeWebhookRoutes", () => {
         create: vi.fn().mockResolvedValue({
           id: "evt-row-3",
         }),
-        update: vi.fn().mockResolvedValue({
-          id: "evt-row-3",
-        }),
       },
       depositWallet: {
         upsert: vi.fn(),
         update: vi.fn(),
+      },
+      wallet: {
+        upsert: vi.fn(),
       },
       $queryRaw: vi.fn(),
     };
@@ -264,6 +273,7 @@ describe("stripeWebhookRoutes", () => {
           amount_received: 0,
           metadata: {
             companyId: "company-1",
+            userId: "user-1",
             purpose: "deposit_topup",
           },
           last_payment_error: {
@@ -290,11 +300,12 @@ describe("stripeWebhookRoutes", () => {
     expect(response.statusCode).toBe(200);
     expect(txMock.depositWallet.upsert).not.toHaveBeenCalled();
     expect(txMock.depositWallet.update).not.toHaveBeenCalled();
-    expect(txMock.paymentWebhookEvent.update).toHaveBeenCalledWith({
-      where: {
-        stripeEventId: "evt_failed_1",
-      },
+    expect(txMock.wallet.upsert).not.toHaveBeenCalled();
+    expect(txMock.paymentWebhookEvent.create).toHaveBeenCalledWith({
       data: {
+        stripeEventId: "evt_failed_1",
+        eventType: "payment_intent.payment_failed",
+        payloadHash: expect.any(String),
         status: "PROCESSED",
         processedAt: expect.any(Date),
       },

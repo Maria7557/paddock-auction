@@ -8,6 +8,7 @@ type AdminLocaleCopy = {
     vehicles: string;
     events: string;
     buyers: string;
+    invoices: string;
   };
   filtersAriaLabel: string;
   status: {
@@ -55,18 +56,22 @@ type AdminLocaleCopy = {
       pending: string;
       all: string;
     };
-      table: {
-        name: string;
-        phone: string;
-        email: string;
-        accountStatus: string;
-        depositStatus: string;
-        registrationDate: string;
-        actions: string;
-      };
-      actions: {
-        view: string;
-      };
+    table: {
+      name: string;
+      phone: string;
+      email: string;
+      accountStatus: string;
+      depositStatus: string;
+      walletBalance: string;
+      registrationDate: string;
+      actions: string;
+    };
+    actions: {
+      view: string;
+      approve: string;
+      reject: string;
+      noPendingAction: string;
+    };
     empty: string;
   };
   vehicles: {
@@ -169,6 +174,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       vehicles: "Vehicles",
       events: "Events",
       buyers: "Buyers",
+      invoices: "Invoices",
     },
     filtersAriaLabel: "Filters",
     status: {
@@ -222,11 +228,15 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         email: "Email",
         accountStatus: "Account Status",
         depositStatus: "Deposit Status",
+        walletBalance: "Wallet Balance",
         registrationDate: "Registration Date",
         actions: "Actions",
       },
       actions: {
         view: "View",
+        approve: "Approve",
+        reject: "Reject",
+        noPendingAction: "No pending action",
       },
       empty: "No buyers found for this filter.",
     },
@@ -328,6 +338,7 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
       vehicles: "Автомобили",
       events: "События",
       buyers: "Покупатели",
+      invoices: "Счета",
     },
     filtersAriaLabel: "Фильтры",
     status: {
@@ -381,11 +392,15 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         email: "Email",
         accountStatus: "Статус аккаунта",
         depositStatus: "Статус депозита",
+        walletBalance: "Баланс кошелька",
         registrationDate: "Дата регистрации",
         actions: "Действия",
       },
       actions: {
         view: "Открыть",
+        approve: "Одобрить",
+        reject: "Отклонить",
+        noPendingAction: "Нет ожидающих действий",
       },
       empty: "Для этого фильтра покупатели не найдены.",
     },

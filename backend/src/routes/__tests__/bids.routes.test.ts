@@ -948,6 +948,18 @@ describe("GET /api/auctions/:id", () => {
     expect(res.body.error).toBe("Auction not found");
   });
 
+  it("returns 404 when auction is sold and no longer public", async () => {
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      ...makeAuctionDetails(),
+      state: "PAYMENT_PENDING",
+    });
+
+    const res = await request.get(`/api/auctions/${auctionId}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Auction not found");
+  });
+
   it("returns 404 for a regular buyer during VIP early access", async () => {
     const now = new Date();
 

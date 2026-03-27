@@ -1,15 +1,16 @@
 import Link from "next/link";
 
+import { isLiveAuctionState } from "@/src/lib/auction-display";
 import { withLocalePath } from "@/src/i18n/routing";
 import { type DisplaySettings } from "@/src/lib/money";
-import type { Lot } from "@/src/types/auction";
+import type { AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
 
 import { LotCard } from "@/components/auction/LotCard";
 
 import styles from "./LotsSection.module.css";
 
 interface Props {
-  lots: Lot[];
+  lots: AuctionLot[];
   totalCount: number;
   display?: DisplaySettings;
 }
@@ -19,6 +20,10 @@ const DEFAULT_DISPLAY: DisplaySettings = {
   currency: "AED",
   usdPerAed: 1 / 3.6725,
 };
+
+function getRegionSpec(lot: AuctionLot): string | undefined {
+  return lot.specs.find((spec) => spec.label.toLowerCase() === "region")?.value ?? undefined;
+}
 
 export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLAY }: Props) {
   const isRu = display.locale === "ru";
@@ -59,14 +64,17 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
                 title={lot.title}
                 year={lot.year}
                 mileage={lot.mileageKm}
-                regionSpec={lot.regionSpec || undefined}
-                imageUrl={lot.imageUrl}
+                regionSpec={getRegionSpec(lot)}
+                imageUrl={lot.images[0] ?? "/vehicle-photo.svg"}
                 currentBid={lot.currentBidAed}
                 buyNowPrice={lot.buyNowPriceAed ?? undefined}
                 marketPrice={lot.marketPriceAed ?? undefined}
                 status={lot.status}
-                totalBids={lot.totalBids}
-                endTime={lot.status === "LIVE" ? lot.endsAt : lot.startsAt}
+                endTime={
+                  isLiveAuctionState(lot.status)
+                    ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()
+                    : lot.startsAt ?? lot.endsAt ?? new Date().toISOString()
+                }
                 display={display}
                 showWishlistControl
               />

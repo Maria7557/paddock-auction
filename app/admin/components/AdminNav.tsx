@@ -18,13 +18,14 @@ type AdminNavProps = {
 };
 
 export function AdminNav({ locale }: AdminNavProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const t = getAdminCopy(locale);
   const navItems: NavItem[] = [
     { href: "/admin/companies", label: t.nav.companies },
     { href: "/admin/vehicles", label: t.nav.vehicles },
     { href: "/admin/events", label: t.nav.events },
     { href: "/admin/buyers", label: t.nav.buyers },
+    { href: "/admin/invoices", label: t.nav.invoices },
   ];
 
   return (

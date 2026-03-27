@@ -7,7 +7,7 @@ import { BuyersTable } from "./BuyersTable";
 export const dynamic = "force-dynamic";
 
 type DepositStatus = "NONE" | "APPROVED" | "REJECTED";
-type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
+type AccountStatus = "PENDING_APPROVAL" | "PENDING_KYC" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
   id: string;

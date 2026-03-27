@@ -1,0 +1,250 @@
+.card {
+  --green: var(--green-600);
+  --green-lt: var(--green-100);
+  --amber: var(--amber-600);
+  --amber-lt: var(--amber-100);
+  --subtle: var(--bg-subtle);
+  --ink-sec: var(--ink-secondary);
+
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lift);
+}
+
+.main {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.thumb {
+  width: 80px;
+  height: 60px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: #f0f3f6;
+}
+
+.copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.meta,
+.vin,
+.statusText,
+.countdownFallback {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-sec);
+}
+
+.side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  width: min(340px, 100%);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 31px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--subtle);
+  color: var(--ink-sec);
+}
+
+.decisionBadge {
+  background: var(--amber-lt);
+  color: var(--amber);
+}
+
+.soldBadge {
+  background: var(--green);
+  color: #fff;
+}
+
+.relistedBadge {
+  background: var(--subtle);
+  color: var(--ink-sec);
+}
+
+.deadlineRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deadlineLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-sec);
+}
+
+.countdown {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.countdown :global(strong) {
+  font-weight: 700;
+}
+
+.actionStack {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.actionButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.primaryButton {
+  background: var(--green);
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--green-700);
+}
+
+.secondaryButton {
+  background: #fff;
+  color: var(--ink-primary);
+  border-color: var(--line-strong);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--ink-primary);
+}
+
+.declineButton {
+  background: transparent;
+  color: var(--red-600);
+  border-color: rgba(180, 61, 54, 0.24);
+}
+
+.declineButton:hover:not(:disabled) {
+  border-color: rgba(180, 61, 54, 0.44);
+  background: var(--red-100);
+}
+
+.confirmationBox {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg-subtle);
+}
+
+.confirmationText {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-sec);
+}
+
+.confirmationActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.errorText {
+  width: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--red-600);
+}
+
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.inlineLink:hover {
+  color: var(--green-700);
+}
+
+@media (max-width: 760px) {
+  .card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .side {
+    justify-items: start;
+    width: 100%;
+  }
+
+  .deadlineRow {
+    justify-content: flex-start;
+  }
+
+  .confirmationActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

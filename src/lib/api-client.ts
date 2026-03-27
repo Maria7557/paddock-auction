@@ -73,6 +73,7 @@ export type AdminEventLotsResponse = {
     auctionId: string;
     title: string;
     startingPrice: number;
+    imageUrl: string | null;
   }>;
 };
 
@@ -81,6 +82,8 @@ export type EventResultEntry = {
   position: number;
   auctionId: string;
   vehicle: string;
+  sellerCompany: string | null;
+  auctionState: string;
   status: "QUEUED" | "ON_BLOCK" | "SOLD" | "UNSOLD" | "SOLD_DEFAULTED";
   winningBid: number;
   bids: number;
@@ -98,6 +101,54 @@ export type AdminEventResultsResponse = {
   results: EventResultEntry[];
 };
 
+export type AdminInvoiceStatus =
+  | "ISSUED"
+  | "PAID_PENDING_CONFIRMATION"
+  | "PAID"
+  | "DEFAULTED"
+  | "CANCELED";
+
+export type AdminInvoiceListItem = {
+  id: string;
+  auctionId: string;
+  lotTitle: string;
+  auctionClosedAt: string;
+  subtotal: number;
+  commission: number;
+  commissionRate: number;
+  vat: number;
+  total: number;
+  status: AdminInvoiceStatus;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  urgency: "normal" | "warning" | "critical";
+  seller: {
+    companyId: string;
+    name: string;
+    phone: string | null;
+    registrationNumber: string;
+    country: string;
+  };
+  buyer: {
+    companyId: string;
+    name: string;
+    phone: string | null;
+    registrationNumber: string;
+    country: string;
+  };
+};
+
+export type AdminInvoicesResponse = {
+  invoices: AdminInvoiceListItem[];
+  total: number;
+};
+
+export type AdminInvoiceConfirmPaymentResponse = {
+  invoiceId: string;
+  status: "PAID";
+  paidAt: string;
+};
 export class ApiError extends Error {
   statusCode: number;
   payload: unknown;
@@ -374,6 +425,42 @@ function createIdempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+export type WalletBalanceResponse = {
+  availableBalance: string;
+  lockedBalance: string;
+  pendingWithdrawalBalance: string;
+  currency: string;
+};
+
+export type WalletTopupResponse = {
+  clientSecret: string;
+  paymentIntentId: string;
+};
+
+export async function getWalletBalance(options?: RequestInit): Promise<WalletBalanceResponse> {
+  return getRequest<WalletBalanceResponse>("/api/wallet", options);
+}
+
+export async function initiateTopup(
+  amount: number,
+  idempotencyKey: string,
+  options?: RequestInit,
+): Promise<WalletTopupResponse> {
+  const headers = new Headers(options?.headers);
+  headers.set("Idempotency-Key", idempotencyKey);
+
+  return postJson<WalletTopupResponse>(
+    "/api/wallet/topup",
+    {
+      amount,
+    },
+    {
+      ...options,
+      headers,
+    },
+  );
+}
+
 export const api = {
   auth: {
     login: async (email: string, password: string): Promise<{ user: ApiUser }> =>
@@ -540,6 +627,26 @@ export const api = {
         getRequest<T>(`/api/seller/auctions/${id}`, options),
       update: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         patchJson<T>(`/api/seller/auctions/${id}`, payload, options),
+      decision: async <T = unknown>(
+        id: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(
+          `/api/seller/auctions/${id}/decision`,
+          payload,
+          {
+            ...options,
+            headers: {
+              ...Object.fromEntries(new Headers(options?.headers).entries()),
+              "idempotency-key": createIdempotencyKey(),
+            },
+          },
+        ),
+    },
+    decisions: {
+      pending: async <T = unknown>(options?: RequestInit): Promise<T> =>
+        getRequest<T>("/api/seller/decisions/pending", options),
     },
     company: {
       get: async <T = unknown>(options?: RequestInit): Promise<T> =>
@@ -571,6 +678,27 @@ export const api = {
     },
   },
   admin: {
+    auctions: {
+      relist: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
+        patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+      relistInvoiceAuction: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
+        postJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+      forceDecision: async <T = unknown>(
+        auctionId: string,
+        payload: Record<string, unknown>,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(`/api/admin/auctions/${auctionId}/force-decision`, payload, options),
+    },
+    invoices: {
+      list: async <T = AdminInvoicesResponse>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
+        getRequest<T>(appendSearchParams("/api/admin/invoices", query), options),
+      confirmPayment: async <T = AdminInvoiceConfirmPaymentResponse>(
+        invoiceId: string,
+        options?: RequestInit,
+      ): Promise<T> =>
+        postJson<T>(`/api/admin/invoices/${invoiceId}/confirm-payment`, undefined, options),
+    },
     vehicles: {
       list: async <T = unknown>(query?: SearchParamsInput, options?: RequestInit): Promise<T> =>
         getRequest<T>(appendSearchParams("/api/admin/vehicles", query), options),
@@ -678,16 +806,16 @@ export const api = {
     },
   },
   wallet: {
-    get: async <T = unknown>(options?: RequestInit): Promise<T> =>
-      getRequest<T>("/api/wallet", options),
-    topup: async <T = unknown>(
+    get: async <T = WalletBalanceResponse>(options?: RequestInit): Promise<T> =>
+      getWalletBalance(options) as Promise<T>,
+    topup: async <T = WalletTopupResponse>(
       amount: number,
       options?: RequestInit,
-    ): Promise<T> =>
-      postJson<T>("/api/wallet/topup", {
-        amount,
-        idempotencyKey: createIdempotencyKey(),
-      }, options),
+    ): Promise<T> => {
+      const idempotencyKey = createIdempotencyKey();
+
+      return initiateTopup(amount, idempotencyKey, options) as Promise<T>;
+    },
     deposit: async <T = unknown>(amount: number, idempotencyKey: string, options?: RequestInit): Promise<T> =>
       postJson<T>("/api/wallet/deposit", { amount, idempotencyKey }, options),
     withdraw: async <T = unknown>(amount: number, options?: RequestInit): Promise<T> =>

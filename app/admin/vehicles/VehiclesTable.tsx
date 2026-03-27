@@ -314,28 +314,28 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                       >
                         {t.vehicles.actions.view}
                       </button>
-                    {row.status === "PENDING" ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === row.id}
-                          onClick={() => void mutateVehicle(row.id, "approve")}
-                        >
-                          {t.vehicles.actions.approve}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          disabled={busyId === row.id}
-                          onClick={() => void mutateVehicle(row.id, "reject")}
-                        >
-                          {t.vehicles.actions.reject}
-                        </button>
-                      </>
-                    ) : (
-                      <span className={styles.metaText}>{t.vehicles.actions.noPendingAction}</span>
-                    )}
+                      {row.status === "PENDING" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={busyId === row.id}
+                            onClick={() => void mutateVehicle(row.id, "approve")}
+                          >
+                            {t.vehicles.actions.approve}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            disabled={busyId === row.id}
+                            onClick={() => void mutateVehicle(row.id, "reject")}
+                          >
+                            {t.vehicles.actions.reject}
+                          </button>
+                        </>
+                      ) : (
+                        <span className={styles.metaText}>{t.vehicles.actions.noPendingAction}</span>
+                      )}
                     </div>
                   </td>
                 </tr>

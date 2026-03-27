@@ -1,4 +1,13 @@
+import { resolve } from "node:path";
+
 import { PrismaClient } from "@prisma/client";
+import { config } from "dotenv";
+
+config({ path: resolve(process.cwd(), ".env"), quiet: true });
+
+if (!process.env.DATABASE_URL) {
+  config({ path: resolve(process.cwd(), "..", ".env"), quiet: true });
+}
 
 type GlobalForPrisma = typeof globalThis & {
   prisma?: PrismaClient;

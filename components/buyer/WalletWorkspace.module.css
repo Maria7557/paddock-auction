@@ -3,6 +3,15 @@
   gap: var(--space-4);
 }
 
+.successBanner {
+  padding: 12px 16px;
+  background: var(--green-100);
+  color: var(--green-600);
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -28,6 +37,11 @@
   font-size: 30px;
   line-height: 1;
   font-weight: 700;
+}
+
+.metricDetail {
+  font-size: 12px;
+  color: var(--ink-muted);
 }
 
 .metricValuePositive {
@@ -59,6 +73,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.topupFormWrap {
+  display: grid;
+  justify-content: start;
 }
 
 .tableCard {

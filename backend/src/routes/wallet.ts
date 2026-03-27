@@ -41,7 +41,7 @@ const depositSchema = z.object({
 });
 
 const topupSchema = z.object({
-  amount: z.coerce.number().finite().positive().min(5000),
+  amount: z.coerce.number().finite().positive(),
 });
 
 const withdrawSchema = z.object({
@@ -159,45 +159,6 @@ async function toDecimalStringValue(value: DecimalLike): Promise<string> {
   }
 
   throw new Error("Unable to convert value to decimal string");
-}
-
-async function loadBuyerContextOrReply(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<Awaited<ReturnType<typeof loadBuyerAccessContext>>> {
-  const buyerContext = await loadBuyerAccessContext(request);
-
-  if (!buyerContext) {
-    await reply.code(401).send({
-      error: "Unauthorized",
-    });
-    return null;
-  }
-
-  return buyerContext;
-}
-
-async function getRequiredIdempotencyKey(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<string | null> {
-  const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
-
-  if (!idempotencyKey) {
-    await reply.code(400).send({
-      error: "MISSING_IDEMPOTENCY_KEY",
-    });
-    return null;
-  }
-
-  return idempotencyKey;
-}
-
-function convertAedAmountToFils(amount: number): number {
-  const normalizedAmount = amount.toFixed(2);
-  const [wholePart, fractionalPart = "00"] = normalizedAmount.split(".");
-
-  return Number.parseInt(`${wholePart}${fractionalPart.padEnd(2, "0").slice(0, 2)}`, 10);
 }
 
 function buildLotTitle(
@@ -334,8 +295,47 @@ async function getAuthenticatedUserId(
   return userId;
 }
 
+async function loadBuyerContextOrReply(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<Awaited<ReturnType<typeof loadBuyerAccessContext>>> {
+  const buyerContext = await loadBuyerAccessContext(request);
+
+  if (!buyerContext) {
+    await reply.code(401).send({
+      error: "Unauthorized",
+    });
+    return null;
+  }
+
+  return buyerContext;
+}
+
 async function getIdempotencyExpiry(): Promise<Date> {
   return new Date(Date.now() + 24 * 60 * 60 * 1000);
+}
+
+async function getRequiredIdempotencyKey(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<string | null> {
+  const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
+
+  if (!idempotencyKey) {
+    await reply.code(400).send({
+      error: "MISSING_IDEMPOTENCY_KEY",
+    });
+    return null;
+  }
+
+  return idempotencyKey;
+}
+
+function convertAedAmountToFils(amount: number): number {
+  const normalizedAmount = amount.toFixed(2);
+  const [wholePart, fractionalPart = "00"] = normalizedAmount.split(".");
+
+  return Number.parseInt(`${wholePart}${fractionalPart.padEnd(2, "0").slice(0, 2)}`, 10);
 }
 
 async function readStoredIdempotencyBody(value: string | null): Promise<IdempotencyResponseBody | null> {
@@ -721,10 +721,10 @@ async function createStripeIntent(input: {
 export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook("preHandler", requireAuth);
 
-  fastify.get(
+  fastify.get<{ Querystring: { limit?: string } }>(
     "/wallet",
     async function getWalletHandler(
-      request: FastifyRequest,
+      request: FastifyRequest<{ Querystring: { limit?: string } }>,
       reply: FastifyReply,
     ): Promise<void> {
       const buyerContext = await loadBuyerContextOrReply(request, reply);
@@ -777,9 +777,9 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       request: FastifyRequest<{ Body: unknown }>,
       reply: FastifyReply,
     ): Promise<void> {
-      const buyerContext = await loadBuyerContextOrReply(request, reply);
+      const buyerAccess = await requireActiveBuyerAccount(request, reply);
 
-      if (!buyerContext) {
+      if (!buyerAccess) {
         return;
       }
 
@@ -787,6 +787,18 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (!parsedBody.success) {
         await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const minTopup = Number(process.env.MIN_TOPUP_AED ?? 5000);
+
+      if (parsedBody.data.amount < minTopup) {
+        await sendValidationError(reply, [
+          {
+            path: "amount",
+            message: `Minimum deposit is AED ${minTopup}`,
+          },
+        ]);
         return;
       }
 
@@ -803,8 +815,8 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
             amount: convertAedAmountToFils(parsedBody.data.amount),
             currency: DEPOSIT_WALLET_CURRENCY.toLowerCase(),
             metadata: {
-              companyId: buyerContext.companyId,
-              userId: buyerContext.userId,
+              companyId: buyerAccess.companyId,
+              userId: buyerAccess.userId,
               purpose: DEPOSIT_TOPUP_PURPOSE,
             },
             automatic_payment_methods: {
@@ -820,7 +832,8 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
           request.log.error(
             {
               paymentIntentId: paymentIntent.id,
-              companyId: buyerContext.companyId,
+              companyId: buyerAccess.companyId,
+              userId: buyerAccess.userId,
             },
             "Stripe payment intent did not include a client secret",
           );
@@ -838,8 +851,8 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
         request.log.error(
           {
             err: error,
-            companyId: buyerContext.companyId,
-            userId: buyerContext.userId,
+            companyId: buyerAccess.companyId,
+            userId: buyerAccess.userId,
           },
           "Stripe payment intent creation failed",
         );

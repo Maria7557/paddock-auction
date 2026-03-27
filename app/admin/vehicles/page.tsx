@@ -32,7 +32,9 @@ type EventOption = {
   status: string;
 };
 
-async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
+async function getVehiclesData(
+  locale: SupportedLocale,
+): Promise<{ rows: VehicleRow[]; events: EventOption[] }> {
   const requestOptions = await withServerCookies({ cache: "no-store" });
   const [vehiclesPayload, eventsPayload] = await Promise.all([
     api.admin.vehicles.list<{
@@ -52,15 +54,17 @@ async function getVehiclesData(locale: SupportedLocale): Promise<{ rows: Vehicle
         approvalStatusLabel?: string | null;
       }>;
     }>({ status: "ALL" }, requestOptions),
-    api.admin.events.list<{
-      events?: Array<{
-        id: string;
-        title: string;
-        startsAt: string;
-        endsAt: string;
-        status: string;
-      }>;
-    }>(undefined, requestOptions).catch(() => ({ events: [] })),
+    api.admin.events
+      .list<{
+        events?: Array<{
+          id: string;
+          title: string;
+          startsAt: string;
+          endsAt: string;
+          status: string;
+        }>;
+      }>(undefined, requestOptions)
+      .catch(() => ({ events: [] })),
   ]);
   const t = getAdminCopy(locale);
   const events: EventOption[] = (eventsPayload.events ?? [])

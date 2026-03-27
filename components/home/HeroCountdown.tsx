@@ -14,7 +14,7 @@ interface HeroCountdownProps {
 
 export default function HeroCountdown({ targetAt, locale = "en" }: HeroCountdownProps) {
   const targetMs = new Date(targetAt).getTime();
-  const [cd, setCd] = useState(() => formatCountdown(targetMs - Date.now()));
+  const [cd, setCd] = useState(() => formatCountdown(0));
 
   useEffect(() => {
     const updateCountdown = () => {

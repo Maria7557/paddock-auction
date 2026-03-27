@@ -57,6 +57,7 @@ export type AuctionLot = {
   status: AuctionStatus;
   currentBidAed: number;
   marketPriceAed?: number | null;
+  buyNowPriceAed?: number | null;
   minimumStepAed: number;
   endsAt: string;
   startsAt: string;
@@ -83,7 +84,7 @@ export type AuctionLot = {
 
 export type WalletLockReadModel = {
   lockId: string;
-  auctionId: string;
+  auctionId: string | null;
   lotNumber: string;
   amountAed: number;
   status: "ACTIVE" | "RELEASED" | "BURNED";
@@ -105,7 +106,7 @@ export type WalletReadModel = {
   transactions: WalletTransactionReadModel[];
 };
 
-export type InvoiceStatus = "ISSUED" | "PAID" | "DEFAULTED" | "CANCELED";
+export type InvoiceStatus = "ISSUED" | "PAID_PENDING_CONFIRMATION" | "PAID" | "DEFAULTED" | "CANCELED";
 
 export type InvoiceReadModel = {
   id: string;
@@ -300,6 +301,10 @@ function buildLotTitle(
 }
 
 function normalizeInvoiceStatus(status: DbInvoiceStatus): InvoiceStatus {
+  if (String(status) === "PAID_PENDING_CONFIRMATION") {
+    return "PAID";
+  }
+
   if (status === "CANCELED") {
     return "CANCELED";
   }
@@ -443,11 +448,13 @@ function toAuctionLot({
     status,
     currentBidAed,
     marketPriceAed: vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : null,
+    buyNowPriceAed: auction.buyNowPrice === null ? null : Number(auction.buyNowPrice.toString()),
     minimumStepAed,
     endsAt: auction.endsAt.toISOString(),
     startsAt: auction.startsAt.toISOString(),
     listedAt: auction.createdAt.toISOString(),
     depositRequiredAed: 5000,
+    // TODO: dead code until the public lot detail flow is wired to real buyer deposit status.
     depositReady: true,
     watchlisted: false,
     images: deriveLotImages(vehicle, index),
@@ -660,7 +667,7 @@ export async function readWallet(input: Pick<BuyerReadQueryInput, "userId">): Pr
     activeLocks: activeLocks.map((lock) => ({
       lockId: lock.id,
       auctionId: lock.auctionId,
-      lotNumber: deriveLotNumber(lock.auctionId),
+      lotNumber: lock.auctionId ? deriveLotNumber(lock.auctionId) : "GLOBAL",
       amountAed: Number(lock.amount.toString()),
       status: lock.status,
     })),

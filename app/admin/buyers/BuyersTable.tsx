@@ -6,11 +6,12 @@ import { FilterTabs } from "@/app/admin/components/FilterTabs";
 import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
 import { getAdminCopy } from "@/app/admin/i18n";
 import type { SupportedLocale } from "@/src/i18n/routing";
+import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
 
 type DepositStatus = "NONE" | "APPROVED" | "REJECTED";
-type AccountStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED" | "REJECTED";
+type AccountStatus = "PENDING_APPROVAL" | "PENDING_KYC" | "ACTIVE" | "BLOCKED" | "REJECTED";
 
 type BuyerRow = {
   id: string;
@@ -38,7 +39,9 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
       return buyers;
     }
 
-    return buyers.filter((buyer) => buyer.accountStatus === "PENDING_APPROVAL");
+    return buyers.filter(
+      (buyer) => buyer.accountStatus === "PENDING_APPROVAL" || buyer.accountStatus === "PENDING_KYC",
+    );
   }, [buyers, tab]);
 
   return (
@@ -66,6 +69,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                 <th>{t.buyers.table.phone}</th>
                 <th>{t.buyers.table.email}</th>
                 <th>{t.buyers.table.accountStatus}</th>
+                <th>{t.buyers.table.walletBalance}</th>
                 <th>{t.buyers.table.depositStatus}</th>
                 <th>{t.buyers.table.registrationDate}</th>
                 <th>{t.buyers.table.actions}</th>
@@ -78,7 +82,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                   <td>{buyer.phone}</td>
                   <td>{buyer.email}</td>
                   <td>
-                    {buyer.accountStatus === "PENDING_APPROVAL" ? (
+                    {buyer.accountStatus === "PENDING_APPROVAL" || buyer.accountStatus === "PENDING_KYC" ? (
                       <span className="pill pill-sched">{t.status.pending}</span>
                     ) : null}
                     {buyer.accountStatus === "ACTIVE" ? (
@@ -87,6 +91,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
                     {buyer.accountStatus === "BLOCKED" ? <span className="pill">{t.status.blocked}</span> : null}
                     {buyer.accountStatus === "REJECTED" ? <span className="pill">{t.status.rejected}</span> : null}
                   </td>
+                  <td>{formatAed(buyer.amountAed)}</td>
                   <td>
                     {buyer.depositStatus === "NONE" ? <span className="pill">{t.status.none}</span> : null}
                     {buyer.depositStatus === "APPROVED" ? (
@@ -110,7 +115,7 @@ export function BuyersTable({ buyers, locale }: BuyersTableProps) {
               ))}
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     {t.buyers.empty}
                   </td>
                 </tr>

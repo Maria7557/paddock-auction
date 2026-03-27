@@ -28,7 +28,7 @@ function isLinkActive(pathname: string, href: string): boolean {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
 
   return (
     <>

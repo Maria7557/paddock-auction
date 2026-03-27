@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { GalleryLightbox } from "@/components/gallery/GalleryLightbox";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useAuctionLiveSocket } from "@/src/hooks/useAuctionLiveSocket";
 import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
@@ -619,14 +620,19 @@ function buildAuctionPlan(lot: LotDetail, upcomingLots: UpcomingLot[]): AuctionP
 function Gallery({ lotKey, photos, title }: GalleryProps) {
   const [active, setActive] = useState(0);
   const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     setActive(0);
     setFailedPhotoIds([]);
+    setIsExpanded(false);
   }, [lotKey]);
 
   const activePhoto = photos[active] ?? photos[0];
   const isPhotoBroken = (photo: GalleryPhoto): boolean => failedPhotoIds.includes(photo.id);
+  const markPhotoFailed = (photoId: string): void => {
+    setFailedPhotoIds((current) => (current.includes(photoId) ? current : [...current, photoId]));
+  };
 
   if (!activePhoto) {
     return null;
@@ -641,7 +647,7 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
             alt={`${title} — ${activePhoto.label}`}
             className={styles.galleryImage}
             onError={() => {
-              setFailedPhotoIds((current) => (current.includes(activePhoto.id) ? current : [...current, activePhoto.id]));
+              markPhotoFailed(activePhoto.id);
             }}
           />
         ) : (
@@ -654,6 +660,19 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
         <div className={styles.galleryCounter}>
           {active + 1} / {photos.length}
         </div>
+
+        <button
+          type="button"
+          className={styles.galleryExpandButton}
+          onClick={() => setIsExpanded(true)}
+          aria-label="Expand gallery"
+          aria-haspopup="dialog"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
+          </svg>
+          Expand
+        </button>
 
         {active > 0 ? (
           <button
@@ -698,7 +717,7 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
                 alt={photo.label}
                 className={styles.thumbnailImage}
                 onError={() => {
-                  setFailedPhotoIds((current) => (current.includes(photo.id) ? current : [...current, photo.id]));
+                  markPhotoFailed(photo.id);
                 }}
               />
             ) : (
@@ -707,6 +726,19 @@ function Gallery({ lotKey, photos, title }: GalleryProps) {
           </button>
         ))}
       </div>
+
+      <GalleryLightbox
+        isOpen={isExpanded}
+        title={title}
+        photos={photos}
+        activeIndex={active}
+        failedPhotoIds={failedPhotoIds}
+        onSelect={setActive}
+        onClose={() => setIsExpanded(false)}
+        onPhotoError={(photo) => {
+          markPhotoFailed(photo.id);
+        }}
+      />
     </div>
   );
 }

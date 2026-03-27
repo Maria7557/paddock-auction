@@ -103,6 +103,7 @@ function mapToHomeLot(lot: AuctionLot): Lot {
     currentBidAed: lot.currentBidAed,
     startingBidAed: lot.currentBidAed,
     marketPriceAed: lot.marketPriceAed ?? null,
+    buyNowPriceAed: lot.buyNowPriceAed ?? null,
     minStepAed: lot.minimumStepAed,
     startsAt: lot.startsAt,
     endsAt: lot.endsAt,
@@ -180,7 +181,8 @@ function buildHomepageCategories(lots: Lot[]): HomeCategory[] {
 
 export default async function HomePage() {
   const display = await getPublicDisplaySettings();
-  const lots = sortHomeLots((await readHomepageLots()).map(mapToHomeLot));
+  const homepageAuctionLots = await readHomepageLots();
+  const lots = sortHomeLots(homepageAuctionLots.map(mapToHomeLot));
   const tickerEvent = buildTickerEvent(lots);
   const heroLot = lots.find((lot) => lot.status === "LIVE") ?? lots.find((lot) => lot.status === "SCHEDULED") ?? null;
   const categories = buildHomepageCategories(lots);
@@ -189,7 +191,7 @@ export default async function HomePage() {
     <>
       {tickerEvent ? <AuctionTicker event={tickerEvent} display={display} /> : null}
       <HeroSection stats={PLATFORM_STATS} heroLot={heroLot} display={display} />
-      <LotsSection lots={lots} totalCount={lots.length} display={display} />
+      <LotsSection lots={homepageAuctionLots} totalCount={homepageAuctionLots.length} display={display} />
       <WhatSection locale={display.locale} />
       <WhySection locale={display.locale} />
       <HowSection locale={display.locale} />

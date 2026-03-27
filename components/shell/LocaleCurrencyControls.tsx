@@ -31,7 +31,7 @@ function setCookie(name: string, value: string) {
 
 export function LocaleCurrencyControls({ locale, currency, labels }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const searchParams = useSearchParams();
 
   const [selectedCurrency, setSelectedCurrency] = useState<DisplayCurrency>(currency);
@@ -41,7 +41,7 @@ export function LocaleCurrencyControls({ locale, currency, labels }: Props) {
     return derived ?? locale ?? getLocaleFromPathname(pathname);
   }, [locale, pathname]);
 
-  const currentQuery = searchParams.toString();
+  const currentQuery = searchParams?.toString() ?? "";
 
   const updateLocale = (nextLocale: SupportedLocale) => {
     setCookie("fb_locale", nextLocale);

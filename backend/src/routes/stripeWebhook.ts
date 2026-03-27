@@ -12,6 +12,63 @@ type StripeWebhookRequest = FastifyRequest<{
   Body: Buffer | string;
 }>;
 
+type WebhookTx = {
+  paymentWebhookEvent: {
+    create: (input: {
+      data: {
+        stripeEventId: string;
+        eventType: string;
+        payloadHash: string;
+        status: "PROCESSED" | "IGNORED" | "FAILED";
+        processedAt: Date;
+      };
+    }) => Promise<unknown>;
+  };
+  depositWallet: {
+    upsert: (input: {
+      where: {
+        companyId_currency: {
+          companyId: string;
+          currency: string;
+        };
+      };
+      update: {};
+      create: {
+        companyId: string;
+        currency: string;
+      };
+      select: {
+        id: true;
+      };
+    }) => Promise<{ id: string }>;
+    update: (input: {
+      where: { id: string };
+      data: {
+        availableBalance: {
+          increment: string;
+        };
+      };
+    }) => Promise<unknown>;
+  };
+  wallet: {
+    upsert: (input: {
+      where: {
+        userId: string;
+      };
+      create: {
+        userId: string;
+        balance: string;
+      };
+      update: {
+        balance: {
+          increment: string;
+        };
+      };
+    }) => Promise<unknown>;
+  };
+  $queryRaw: <T = unknown>(query: TemplateStringsArray, ...values: unknown[]) => Promise<T>;
+};
+
 function getStripeWebhookSecret(): string {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
 
@@ -77,100 +134,74 @@ function formatFilsAsAed(amountInFils: number): string {
   return `${whole}.${fractional}`;
 }
 
-async function markWebhookEvent(
-  tx: {
-    paymentWebhookEvent: {
-      update: (input: {
-        where: { stripeEventId: string };
-        data: {
-          status: "PROCESSED" | "IGNORED" | "FAILED";
-          processedAt: Date;
-        };
-      }) => Promise<unknown>;
-    };
+async function persistWebhookEvent(
+  tx: WebhookTx,
+  input: {
+    stripeEventId: string;
+    eventType: string;
+    payloadHash: string;
+    status: "PROCESSED" | "IGNORED" | "FAILED";
   },
-  stripeEventId: string,
-  status: "PROCESSED" | "IGNORED" | "FAILED",
 ): Promise<void> {
-  await tx.paymentWebhookEvent.update({
-    where: {
-      stripeEventId,
-    },
+  await tx.paymentWebhookEvent.create({
     data: {
-      status,
+      stripeEventId: input.stripeEventId,
+      eventType: input.eventType,
+      payloadHash: input.payloadHash,
+      status: input.status,
       processedAt: new Date(),
     },
   });
 }
 
 async function handlePaymentIntentSucceeded(
-  tx: {
-    paymentWebhookEvent: {
-      update: (input: {
-        where: { stripeEventId: string };
-        data: {
-          status: "PROCESSED" | "IGNORED" | "FAILED";
-          processedAt: Date;
-        };
-      }) => Promise<unknown>;
-    };
-    depositWallet: {
-      upsert: (input: {
-        where: {
-          companyId_currency: {
-            companyId: string;
-            currency: string;
-          };
-        };
-        update: {};
-        create: {
-          companyId: string;
-          currency: string;
-        };
-        select: {
-          id: true;
-        };
-      }) => Promise<{ id: string }>;
-      update: (input: {
-        where: { id: string };
-        data: {
-          availableBalance: {
-            increment: string;
-          };
-        };
-      }) => Promise<unknown>;
-    };
-    $queryRaw: <T = unknown>(query: TemplateStringsArray, ...values: unknown[]) => Promise<T>;
+  tx: WebhookTx,
+  input: {
+    stripeEventId: string;
+    eventType: string;
+    payloadHash: string;
+    paymentIntent: Stripe.PaymentIntent;
   },
-  stripeEventId: string,
-  paymentIntent: Stripe.PaymentIntent,
-  reply: FastifyReply,
+  request: StripeWebhookRequest,
 ): Promise<void> {
-  const purpose = paymentIntent.metadata?.purpose?.trim();
+  const purpose = input.paymentIntent.metadata?.purpose?.trim();
 
   if (purpose !== DEPOSIT_TOPUP_PURPOSE) {
-    await markWebhookEvent(tx, stripeEventId, "IGNORED");
+    await persistWebhookEvent(tx, {
+      stripeEventId: input.stripeEventId,
+      eventType: input.eventType,
+      payloadHash: input.payloadHash,
+      status: "IGNORED",
+    });
     return;
   }
 
-  const companyId = paymentIntent.metadata?.companyId?.trim();
-  const amountInFils = getSucceededAmountInFils(paymentIntent);
+  const companyId = input.paymentIntent.metadata?.companyId?.trim();
+  const userId = input.paymentIntent.metadata?.userId?.trim();
+  const amountInFils = getSucceededAmountInFils(input.paymentIntent);
 
-  if (!companyId || !amountInFils) {
-    reply.log.error(
+  if (!companyId || !userId || !amountInFils) {
+    request.log.error(
       {
-        stripeEventId,
-        paymentIntentId: paymentIntent.id,
+        stripeEventId: input.stripeEventId,
+        paymentIntentId: input.paymentIntent.id,
         companyId,
+        userId,
         amountInFils,
       },
       "Stripe deposit top-up metadata was invalid",
     );
 
-    await markWebhookEvent(tx, stripeEventId, "FAILED");
+    await persistWebhookEvent(tx, {
+      stripeEventId: input.stripeEventId,
+      eventType: input.eventType,
+      payloadHash: input.payloadHash,
+      status: "FAILED",
+    });
     return;
   }
 
+  const amountAed = formatFilsAsAed(amountInFils);
   const wallet = await tx.depositWallet.upsert({
     where: {
       companyId_currency: {
@@ -201,42 +232,62 @@ async function handlePaymentIntentSucceeded(
     },
     data: {
       availableBalance: {
-        increment: formatFilsAsAed(amountInFils),
+        increment: amountAed,
       },
     },
   });
 
-  await markWebhookEvent(tx, stripeEventId, "PROCESSED");
+  await tx.wallet.upsert({
+    where: {
+      userId,
+    },
+    create: {
+      userId,
+      balance: amountAed,
+    },
+    update: {
+      balance: {
+        increment: amountAed,
+      },
+    },
+  });
+
+  await persistWebhookEvent(tx, {
+    stripeEventId: input.stripeEventId,
+    eventType: input.eventType,
+    payloadHash: input.payloadHash,
+    status: "PROCESSED",
+  });
 }
 
 async function handlePaymentIntentFailed(
-  tx: {
-    paymentWebhookEvent: {
-      update: (input: {
-        where: { stripeEventId: string };
-        data: {
-          status: "PROCESSED" | "IGNORED" | "FAILED";
-          processedAt: Date;
-        };
-      }) => Promise<unknown>;
-    };
+  tx: WebhookTx,
+  input: {
+    stripeEventId: string;
+    eventType: string;
+    payloadHash: string;
+    paymentIntent: Stripe.PaymentIntent;
   },
-  stripeEventId: string,
-  paymentIntent: Stripe.PaymentIntent,
-  reply: FastifyReply,
+  request: StripeWebhookRequest,
 ): Promise<void> {
-  reply.log.warn(
+  request.log.warn(
     {
-      stripeEventId,
-      paymentIntentId: paymentIntent.id,
-      companyId: paymentIntent.metadata?.companyId?.trim() || null,
-      failureCode: paymentIntent.last_payment_error?.code || null,
-      failureMessage: paymentIntent.last_payment_error?.message || null,
+      stripeEventId: input.stripeEventId,
+      paymentIntentId: input.paymentIntent.id,
+      companyId: input.paymentIntent.metadata?.companyId?.trim() || null,
+      userId: input.paymentIntent.metadata?.userId?.trim() || null,
+      failureCode: input.paymentIntent.last_payment_error?.code || null,
+      failureMessage: input.paymentIntent.last_payment_error?.message || null,
     },
     "Stripe deposit top-up payment failed",
   );
 
-  await markWebhookEvent(tx, stripeEventId, "PROCESSED");
+  await persistWebhookEvent(tx, {
+    stripeEventId: input.stripeEventId,
+    eventType: input.eventType,
+    payloadHash: input.payloadHash,
+    status: "PROCESSED",
+  });
 }
 
 export async function stripeWebhookRoutes(fastify: FastifyInstance): Promise<void> {
@@ -258,23 +309,27 @@ export async function stripeWebhookRoutes(fastify: FastifyInstance): Promise<voi
       reply: FastifyReply,
     ): Promise<void> {
       const signature = getStripeSignature(request);
+      const rawBody = getRawBodyBuffer(request.body);
 
-      if (!signature) {
+      if (!signature || rawBody.length === 0) {
         await reply.code(400).send({
           error: "invalid_signature",
         });
         return;
       }
 
-      const rawBody = getRawBodyBuffer(request.body);
       let event: Stripe.Event;
 
       try {
         const { stripe } = await import("../lib/stripe");
-
         event = stripe.webhooks.constructEvent(rawBody, signature, getStripeWebhookSecret());
       } catch (error) {
-        request.log.warn({ err: error }, "Stripe webhook signature verification failed");
+        request.log.warn(
+          {
+            err: error,
+          },
+          "Stripe webhook signature verification failed",
+        );
         await reply.code(400).send({
           error: "invalid_signature",
         });
@@ -284,38 +339,47 @@ export async function stripeWebhookRoutes(fastify: FastifyInstance): Promise<voi
       const payloadHash = hashPayload(rawBody);
 
       try {
-        await prisma.$transaction(async (tx) => {
-          await tx.paymentWebhookEvent.create({
-            data: {
-              stripeEventId: event.id,
-              eventType: event.type,
-              payloadHash,
-            },
-          });
+        if (event.type === "payment_intent.succeeded") {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-          switch (event.type) {
-            case "payment_intent.succeeded":
+          await prisma.$transaction(
+            async (tx) => {
               await handlePaymentIntentSucceeded(
-                tx,
-                event.id,
-                event.data.object as Stripe.PaymentIntent,
-                reply,
+                tx as unknown as WebhookTx,
+                {
+                  stripeEventId: event.id,
+                  eventType: event.type,
+                  payloadHash,
+                  paymentIntent,
+                },
+                request,
               );
-              return;
+            },
+            {
+              isolationLevel: "Serializable",
+            },
+          );
+        } else if (event.type === "payment_intent.payment_failed") {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-            case "payment_intent.payment_failed":
+          await prisma.$transaction(
+            async (tx) => {
               await handlePaymentIntentFailed(
-                tx,
-                event.id,
-                event.data.object as Stripe.PaymentIntent,
-                reply,
+                tx as unknown as WebhookTx,
+                {
+                  stripeEventId: event.id,
+                  eventType: event.type,
+                  payloadHash,
+                  paymentIntent,
+                },
+                request,
               );
-              return;
-
-            default:
-              await markWebhookEvent(tx, event.id, "IGNORED");
-          }
-        });
+            },
+            {
+              isolationLevel: "Serializable",
+            },
+          );
+        }
       } catch (error) {
         if (isUniqueConstraintError(error)) {
           await reply.code(200).send({

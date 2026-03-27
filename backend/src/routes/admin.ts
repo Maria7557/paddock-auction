@@ -6,7 +6,21 @@ import { z } from "zod";
 
 import { prisma } from "../db";
 import { requireAdminAuth } from "../lib/auth";
-import { sendNewEventAnnouncementEmail } from "../lib/email";
+import {
+  sendAccountApprovedEmail,
+  sendAccountRejectedEmail,
+  sendDepositApprovedEmail,
+  sendNewEventAnnouncementEmail,
+  sendVehicleApprovedEmail,
+} from "../lib/email";
+import { releaseWinnerBidAfterPayment } from "../modules/deposits/application/deposit_commands";
+import {
+  buildInvoicePdfHtml,
+  formatInvoiceAmount,
+  formatInvoiceDate,
+  formatInvoiceDateTime,
+  renderInvoicePdf,
+} from "./finance";
 import {
   evaluateVipAccess,
   readTrustedCurrentTime,
@@ -42,6 +56,19 @@ type PendingRequestRow = {
   id: string;
   amount: DecimalLike;
   reference: string | null;
+};
+
+type LockedCompanyDepositWalletRow = {
+  id: string;
+  available_balance: Prisma.Decimal;
+  locked_balance: Prisma.Decimal;
+};
+
+type LockedCompanyDepositLockRow = {
+  id: string;
+  amount: Prisma.Decimal;
+  status: "ACTIVE" | "RELEASED" | "BURNED";
+  created_at: Date;
 };
 
 type EventMeta = {
@@ -81,6 +108,8 @@ const auctionStates = [
   "RELISTED",
   "ENDED",
 ] as const;
+
+const DEFAULT_ADMIN_APPROVAL_AUCTION_MIN_INCREMENT = 500;
 
 const adminVehicleQuerySchema = z.object({
   status: z.enum(["ALL", "PENDING", "APPROVED", "REJECTED"]).optional(),
@@ -173,6 +202,28 @@ const eventVehicleSchema = z.object({
 
 const eventOrderSchema = z.object({
   vehicleIds: z.array(z.string().trim().min(1)).default([]),
+});
+
+const invoiceStatusSchema = z.enum([
+  "ISSUED",
+  "PAID_PENDING_CONFIRMATION",
+  "PAID",
+  "DEFAULTED",
+  "CANCELED",
+]);
+
+const adminInvoiceQuerySchema = z.object({
+  status: invoiceStatusSchema.optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+const invoiceIdParamsSchema = z.object({
+  invoiceId: z.string().trim().min(1),
+});
+
+const auctionIdParamsSchema = z.object({
+  auctionId: z.string().trim().min(1),
 });
 
 async function toNumberValue(value: DecimalLike): Promise<number> {
@@ -292,6 +343,40 @@ async function sendValidationError(
     error: "INVALID_REQUEST",
     issues,
   });
+}
+
+function buildAdminLotTitle(
+  brand: string | null | undefined,
+  model: string | null | undefined,
+  year: number | null | undefined,
+  fallbackId: string,
+): string {
+  const parts = [brand?.trim(), model?.trim(), typeof year === "number" ? String(year) : null].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return `Lot ${fallbackId.slice(0, 8).toUpperCase()}`;
+}
+
+function resolveInvoiceUrgency(
+  dueAt: Date,
+  now: Date,
+): "normal" | "warning" | "critical" {
+  const diffMs = dueAt.getTime() - now.getTime();
+
+  if (diffMs <= 12 * 60 * 60 * 1000) {
+    return "critical";
+  }
+
+  if (diffMs <= 24 * 60 * 60 * 1000) {
+    return "warning";
+  }
+
+  return "normal";
 }
 
 async function parseEventMeta(reason: string | null): Promise<EventMeta> {
@@ -454,6 +539,34 @@ function isSchemaDriftPrismaError(error: unknown): boolean {
 
   const code = (error as { code?: unknown }).code;
   return code === "P2021" || code === "P2022";
+}
+
+function readJsonRecord(value: Prisma.JsonValue | null | undefined): JsonRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as JsonRecord;
+}
+
+function readJsonString(record: JsonRecord | null, key: string): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readJsonNumber(record: JsonRecord | null, key: string): number | null {
+  const value = record?.[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 type AdminVehicleListRow = {
@@ -1260,14 +1373,92 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
-      if (!vehicle || vehicle.auctions.length === 0) {
+      if (!vehicle) {
         await reply.code(404).send({
           error: "VEHICLE_NOT_FOUND",
         });
         return;
       }
 
-      const latestAuction = vehicle.auctions[0];
+      let latestAuction = vehicle.auctions[0] ?? null;
+
+      if (!latestAuction) {
+        const vehicleCreatedLog = await prisma.auditLog.findFirst({
+          where: {
+            entityType: "Vehicle",
+            entityId: id,
+            action: "SELLER_VEHICLE_CREATED",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            payload: true,
+          },
+        });
+        const vehiclePayload = readJsonRecord(vehicleCreatedLog?.payload);
+        const sellerCompanyId = readJsonString(vehiclePayload, "companyId");
+
+        if (!sellerCompanyId) {
+          await reply.code(409).send({
+            error: "VEHICLE_OWNER_NOT_FOUND",
+          });
+          return;
+        }
+
+        const now = new Date();
+        const draftEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const startingPrice = readJsonNumber(vehiclePayload, "startingPrice") ?? 0;
+        const buyNowPrice = readJsonNumber(vehiclePayload, "buyNowPrice");
+        const inspectionDropoffDateValue = readJsonString(vehiclePayload, "inspectionDropoffDate");
+        const inspectionDropoffDate =
+          inspectionDropoffDateValue && !Number.isNaN(Date.parse(inspectionDropoffDateValue))
+            ? new Date(inspectionDropoffDateValue)
+            : null;
+
+        latestAuction = await prisma.$transaction(async (tx) => {
+          const auction = await tx.auction.create({
+            data: {
+              vehicleId: id,
+              sellerCompanyId,
+              state: "DRAFT",
+              startsAt: now,
+              endsAt: draftEndsAt,
+              inspectionDropoffDate,
+              viewingEndsAt: null,
+              auctionStartsAt: null,
+              auctionEndsAt: null,
+              startingPrice,
+              currentPrice: startingPrice,
+              buyNowPrice,
+              minIncrement: DEFAULT_ADMIN_APPROVAL_AUCTION_MIN_INCREMENT,
+            },
+          });
+
+          await tx.auctionStateTransition.create({
+            data: {
+              auctionId: auction.id,
+              fromState: "DRAFT",
+              toState: "DRAFT",
+              trigger: "AUCTION_CREATED",
+              actorId,
+              reason: JSON.stringify({
+                sellerCompanyId,
+                vehicleId: id,
+                source: "ADMIN_VEHICLE_APPROVE",
+              }),
+            },
+          });
+
+          return {
+            id: auction.id,
+            state: auction.state,
+            approvedAt: null,
+            vipAccessPolicy: "NONE",
+            vipReleaseAt: null,
+            approvedByUserId: null,
+            vipPolicyReason: null,
+          };
+        });
+      }
 
       if (latestAuction.approvedAt) {
         await reply.code(200).send({
@@ -1276,6 +1467,8 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      let vipApprovalMetadata: VipApprovalMetadata | null = null;
+
       await prisma.$transaction(async (tx) => {
         const approvalTimestamp = await readDatabaseCurrentTime(tx as {
           $queryRaw: <T = unknown>(
@@ -1283,7 +1476,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             ...values: unknown[]
           ) => Promise<T>;
         });
-        const vipApprovalMetadata = await createVipApprovalMetadata(approvalTimestamp);
+        vipApprovalMetadata = await createVipApprovalMetadata(approvalTimestamp);
 
         await tx.auction.update({
           where: {
@@ -1331,6 +1524,74 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const approvedVehicle = await prisma.vehicle.findUnique({
+            where: { id },
+            select: {
+              brand: true,
+              model: true,
+              year: true,
+              auctions: {
+                where: {
+                  transitions: {
+                    none: {
+                      trigger: "EVENT_META",
+                    },
+                  },
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: 1,
+                select: {
+                  id: true,
+                  startsAt: true,
+                  sellerCompanyId: true,
+                },
+              },
+            },
+          });
+
+          const vehicleAuction = approvedVehicle?.auctions[0];
+
+          if (!vehicleAuction) {
+            return;
+          }
+
+          const sellerUsers = await prisma.companyUser.findMany({
+            where: {
+              companyId: vehicleAuction.sellerCompanyId,
+              role: "SELLER_MANAGER",
+            },
+            select: {
+              user: {
+                select: {
+                  email: true,
+                },
+              },
+            },
+          });
+
+          const vehicleTitle = approvedVehicle
+            ? `${approvedVehicle.brand} ${approvedVehicle.model} ${approvedVehicle.year}`
+            : id;
+
+          for (const sellerUser of sellerUsers) {
+            void sendVehicleApprovedEmail(
+              {
+                email: sellerUser.user.email,
+                name: sellerUser.user.email,
+                vehicleTitle,
+                auctionDate: vehicleAuction.startsAt,
+                auctionId: vehicleAuction.id,
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -1546,6 +1807,550 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
 
       await reply.code(200).send({
         success: true,
+      });
+    },
+  );
+
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/auctions/:id/relist",
+    async function relistAdminAuctionHandler(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const auction = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.id,
+        },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!auction) {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (auction.state !== "ENDED") {
+        await reply.code(409).send({
+          error: "AUCTION_NOT_RELISTABLE",
+        });
+        return;
+      }
+
+      const startsAt = new Date();
+      const endsAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auctionEventLot.deleteMany({
+          where: {
+            auctionId: auction.id,
+          },
+        });
+
+        await tx.auction.update({
+          where: {
+            id: auction.id,
+          },
+          data: {
+            state: "DRAFT",
+            startsAt,
+            endsAt,
+            auctionStartsAt: null,
+            auctionEndsAt: null,
+            winnerCompanyId: null,
+            closedAt: null,
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: auction.id,
+            fromState: "ENDED",
+            toState: "DRAFT",
+            trigger: "RELISTED",
+            actorId: request.auth?.userId ?? "system",
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        success: true,
+      });
+    },
+  );
+
+  fastify.get<{ Querystring: { status?: string; page?: string; limit?: string } }>(
+    "/admin/invoices",
+    async function getAdminInvoicesHandler(
+      request: FastifyRequest<{ Querystring: { status?: string; page?: string; limit?: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedQuery = adminInvoiceQuerySchema.safeParse(request.query ?? {});
+
+      if (!parsedQuery.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedQuery.error.issues));
+        return;
+      }
+
+      const status = parsedQuery.data.status;
+      const page = parsedQuery.data.page ?? 1;
+      const limit = parsedQuery.data.limit ?? 50;
+      const where = status ? { status } : undefined;
+
+      const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+          where,
+          orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            auctionId: true,
+            buyerCompanyId: true,
+            sellerCompanyId: true,
+            subtotal: true,
+            commission: true,
+            vat: true,
+            total: true,
+            status: true,
+            issuedAt: true,
+            dueAt: true,
+            paidAt: true,
+            auction: {
+              select: {
+                id: true,
+                closedAt: true,
+                vehicle: {
+                  select: {
+                    brand: true,
+                    model: true,
+                    year: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.invoice.count({ where }),
+      ]);
+
+      const companyIds = Array.from(
+        new Set(
+          invoices.flatMap((invoice) => [invoice.sellerCompanyId, invoice.buyerCompanyId]).filter(
+            (companyId): companyId is string => typeof companyId === "string" && companyId.length > 0,
+          ),
+        ),
+      );
+      const companies = companyIds.length
+        ? await prisma.company.findMany({
+            where: {
+              id: {
+                in: companyIds,
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              registrationNumber: true,
+              country: true,
+            },
+          })
+        : [];
+      const companyById = new Map(companies.map((company) => [company.id, company]));
+      const now = new Date();
+
+      await reply.code(200).send({
+        invoices: await Promise.all(
+          invoices.map(async (invoice) => {
+            const subtotal = await toNumberValue(invoice.subtotal);
+            const commission = await toNumberValue(invoice.commission);
+            const vat = await toNumberValue(invoice.vat);
+            const totalAmount = await toNumberValue(invoice.total);
+            const commissionRate = subtotal > 0 ? Number((commission / subtotal).toFixed(4)) : 0;
+            const seller = companyById.get(invoice.sellerCompanyId);
+            const buyer = companyById.get(invoice.buyerCompanyId);
+
+            return {
+              id: invoice.id,
+              auctionId: invoice.auctionId,
+              lotTitle: buildAdminLotTitle(
+                invoice.auction.vehicle?.brand,
+                invoice.auction.vehicle?.model,
+                invoice.auction.vehicle?.year,
+                invoice.auction.id,
+              ),
+              auctionClosedAt: (invoice.auction.closedAt ?? invoice.issuedAt).toISOString(),
+              subtotal,
+              commission,
+              commissionRate,
+              vat,
+              total: totalAmount,
+              status: invoice.status,
+              issuedAt: invoice.issuedAt.toISOString(),
+              dueAt: invoice.dueAt.toISOString(),
+              paidAt: invoice.paidAt?.toISOString() ?? null,
+              urgency: resolveInvoiceUrgency(invoice.dueAt, now),
+              seller: {
+                companyId: invoice.sellerCompanyId,
+                name: seller?.name ?? "Seller Company",
+                phone: seller?.phone ?? null,
+                registrationNumber: seller?.registrationNumber ?? "—",
+                country: seller?.country ?? "—",
+              },
+              buyer: {
+                companyId: invoice.buyerCompanyId,
+                name: buyer?.name ?? "Buyer Company",
+                phone: buyer?.phone ?? null,
+                registrationNumber: buyer?.registrationNumber ?? "—",
+                country: buyer?.country ?? "—",
+              },
+            };
+          }),
+        ),
+        total,
+      });
+    },
+  );
+
+  fastify.get<{ Params: { invoiceId: string } }>(
+    "/admin/invoices/:invoiceId/pdf",
+    async function getAdminInvoicePdfHandler(
+      request: FastifyRequest<{ Params: { invoiceId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = invoiceIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          id: parsedParams.data.invoiceId,
+        },
+        select: {
+          id: true,
+          auctionId: true,
+          buyerCompanyId: true,
+          subtotal: true,
+          commission: true,
+          vat: true,
+          total: true,
+          status: true,
+          issuedAt: true,
+          dueAt: true,
+          auction: {
+            select: {
+              id: true,
+              closedAt: true,
+              endsAt: true,
+              vehicle: {
+                select: {
+                  brand: true,
+                  model: true,
+                  year: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        await reply.code(404).send({
+          error: "INVOICE_NOT_FOUND",
+        });
+        return;
+      }
+
+      const buyerCompany = await prisma.company.findUnique({
+        where: {
+          id: invoice.buyerCompanyId,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      const subtotal = await toNumberValue(invoice.subtotal);
+      const commission = await toNumberValue(invoice.commission);
+      const vat = await toNumberValue(invoice.vat);
+      const totalAmount = await toNumberValue(invoice.total);
+      const invoiceNumber = invoice.id.slice(0, 8).toUpperCase();
+      const normalizedStatus = invoice.status.trim().toUpperCase();
+      const isPaid = normalizedStatus === "PAID" || normalizedStatus === "CONFIRMED";
+      const closedAtSource = invoice.auction.closedAt ?? invoice.auction.endsAt ?? invoice.issuedAt;
+      const html = buildInvoicePdfHtml({
+        invoiceNumber,
+        issuedAt: formatInvoiceDate(invoice.issuedAt),
+        statusClass: isPaid ? "status-paid" : "status-pending",
+        statusLabel: isPaid ? "Paid" : "Payment Pending",
+        lotTitle: buildAdminLotTitle(
+          invoice.auction.vehicle?.brand,
+          invoice.auction.vehicle?.model,
+          invoice.auction.vehicle?.year,
+          invoice.auction.id,
+        ),
+        lotNumber: invoice.auctionId.slice(0, 8).toUpperCase(),
+        closedAt: formatInvoiceDate(closedAtSource),
+        subtotal: formatInvoiceAmount(subtotal),
+        commissionPct: subtotal > 0 ? ((commission / subtotal) * 100).toFixed(0) : "0",
+        commission: formatInvoiceAmount(commission),
+        vat: formatInvoiceAmount(vat),
+        total: formatInvoiceAmount(totalAmount),
+        dueAt: formatInvoiceDateTime(invoice.dueAt),
+        buyerCompanyName: buyerCompany?.name?.trim() || "Buyer Company",
+        invoiceId: invoice.id,
+      });
+      const pdfBuffer = await renderInvoicePdf(html);
+
+      await reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `attachment; filename="invoice-${invoiceNumber}.pdf"`)
+        .send(pdfBuffer);
+    },
+  );
+
+  fastify.post<{ Params: { invoiceId: string } }>(
+    "/admin/invoices/:invoiceId/confirm-payment",
+    async function confirmAdminInvoicePaymentHandler(
+      request: FastifyRequest<{ Params: { invoiceId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = invoiceIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const actorId = request.auth?.userId ?? "system";
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          id: parsedParams.data.invoiceId,
+        },
+        select: {
+          id: true,
+          auctionId: true,
+          status: true,
+          auction: {
+            select: {
+              state: true,
+              winnerCompanyId: true,
+              currentPrice: true,
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        await reply.code(404).send({
+          error: "INVOICE_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (invoice.status === "PAID") {
+        await reply.code(409).send({
+          error: "INVOICE_ALREADY_PAID",
+        });
+        return;
+      }
+
+      if (invoice.status === "CANCELED") {
+        await reply.code(409).send({
+          error: "INVOICE_CANCELED",
+        });
+        return;
+      }
+
+      const paidAt = new Date();
+      const winnerCompanyId = invoice.auction.winnerCompanyId?.trim() ?? null;
+
+      if (!winnerCompanyId) {
+        await reply.code(422).send({
+          error: "INVOICE_AUCTION_HAS_NO_WINNER",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.invoice.update({
+          where: {
+            id: invoice.id,
+          },
+          data: {
+            status: "PAID",
+            paidAt,
+          },
+        });
+
+        await releaseWinnerBidAfterPayment(tx, winnerCompanyId, invoice.auction.currentPrice);
+
+        await tx.auction.update({
+          where: {
+            id: invoice.auctionId,
+          },
+          data: {
+            state: "PAID",
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: invoice.auctionId,
+            fromState: invoice.auction.state,
+            toState: "PAID",
+            trigger: "ADMIN_PAYMENT_CONFIRMED",
+            actorId,
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "ADMIN_PAYMENT_CONFIRMED",
+          entityType: "Invoice",
+          entityId: invoice.id,
+          correlationId: request.id,
+          payload: {
+            invoiceId: invoice.id,
+            auctionId: invoice.auctionId,
+            previousInvoiceStatus: invoice.status,
+            nextInvoiceStatus: "PAID",
+            previousAuctionState: invoice.auction.state,
+            nextAuctionState: "PAID",
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        invoiceId: invoice.id,
+        status: "PAID",
+        paidAt: paidAt.toISOString(),
+      });
+    },
+  );
+
+  fastify.post<{ Params: { auctionId: string } }>(
+    "/admin/auctions/:auctionId/relist",
+    async function relistAdminInvoiceAuctionHandler(
+      request: FastifyRequest<{ Params: { auctionId: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const parsedParams = auctionIdParamsSchema.safeParse(request.params);
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const actorId = request.auth?.userId ?? "system";
+      const auction = await prisma.auction.findUnique({
+        where: {
+          id: parsedParams.data.auctionId,
+        },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!auction) {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findUnique({
+        where: {
+          auctionId: auction.id,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (auction.state === "RELISTED") {
+        await reply.code(200).send({
+          auctionId: auction.id,
+          newStatus: "RELISTED",
+        });
+        return;
+      }
+
+      if (auction.state === "PAID" || invoice?.status === "PAID") {
+        await reply.code(409).send({
+          error: "AUCTION_ALREADY_PAID",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auction.update({
+          where: {
+            id: auction.id,
+          },
+          data: {
+            state: "RELISTED",
+          },
+        });
+
+        if (invoice && invoice.status !== "CANCELED") {
+          await tx.invoice.update({
+            where: {
+              id: invoice.id,
+            },
+            data: {
+              status: "CANCELED",
+            },
+          });
+        }
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: auction.id,
+            fromState: auction.state,
+            toState: "RELISTED",
+            trigger: "ADMIN_RELISTED",
+            actorId,
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "ADMIN_RELISTED",
+          entityType: "Auction",
+          entityId: auction.id,
+          correlationId: request.id,
+          payload: {
+            auctionId: auction.id,
+            previousAuctionState: auction.state,
+            nextAuctionState: "RELISTED",
+            invoiceId: invoice?.id ?? null,
+            previousInvoiceStatus: invoice?.status ?? null,
+            nextInvoiceStatus: invoice ? "CANCELED" : null,
+          },
+        });
+      });
+
+      await reply.code(200).send({
+        auctionId: auction.id,
+        newStatus: "RELISTED",
       });
     },
   );
@@ -1825,6 +2630,45 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const approvedCompany = await prisma.company.findUnique({
+            where: { id },
+            select: {
+              name: true,
+              users: {
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                      role: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!approvedCompany) {
+            return;
+          }
+
+          for (const membership of approvedCompany.users) {
+            void sendAccountApprovedEmail(
+              {
+                email: membership.user.email,
+                name: membership.user.email,
+                companyName: approvedCompany.name,
+                role: membership.user.role as "SELLER" | "BUYER",
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -1918,6 +2762,45 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       await reply.code(200).send({
         success: true,
       });
+
+      void (async () => {
+        try {
+          const rejectedCompany = await prisma.company.findUnique({
+            where: { id },
+            select: {
+              name: true,
+              users: {
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!rejectedCompany) {
+            return;
+          }
+
+          for (const membership of rejectedCompany.users) {
+            void sendAccountRejectedEmail(
+              {
+                email: membership.user.email,
+                name: membership.user.email,
+                companyName: rejectedCompany.name,
+                rejectionReason:
+                  "Your application did not meet our current requirements. Please contact support for details.",
+              },
+              fastify.log,
+            );
+          }
+        } catch {
+          // Fire-and-forget email dispatch must never affect the rejection flow.
+        }
+      })();
     },
   );
 
@@ -2211,6 +3094,44 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         status: "ACTIVE",
       });
+
+      void (async () => {
+        try {
+          const approvedUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              role: true,
+              companyUsers: {
+                select: {
+                  company: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          });
+
+          if (!approvedUser) {
+            return;
+          }
+
+          void sendAccountApprovedEmail(
+            {
+              email: approvedUser.email,
+              name: approvedUser.email,
+              companyName: approvedUser.companyUsers[0]?.company?.name ?? "your company",
+              role: approvedUser.role as "SELLER" | "BUYER",
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the approval flow.
+        }
+      })();
     },
   );
 
@@ -2318,6 +3239,44 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         status: "REJECTED",
       });
+
+      void (async () => {
+        try {
+          const rejectedUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              companyUsers: {
+                select: {
+                  company: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          });
+
+          if (!rejectedUser) {
+            return;
+          }
+
+          void sendAccountRejectedEmail(
+            {
+              email: rejectedUser.email,
+              name: rejectedUser.email,
+              companyName: rejectedUser.companyUsers[0]?.company?.name ?? "your company",
+              rejectionReason:
+                "Your application did not meet our current requirements. Please contact support for details.",
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the rejection flow.
+        }
+      })();
     },
   );
 
@@ -2396,6 +3355,40 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         userId: id,
         kycVerified: true,
       });
+
+      void (async () => {
+        try {
+          const kycUser = await prisma.user.findUnique({
+            where: { id },
+            select: {
+              email: true,
+              wallet: {
+                select: {
+                  balance: true,
+                },
+              },
+            },
+          });
+
+          if (!kycUser) {
+            return;
+          }
+
+          const balanceAed =
+            kycUser.wallet?.balance == null ? 0 : await toNumberValue(kycUser.wallet.balance);
+
+          void sendDepositApprovedEmail(
+            {
+              email: kycUser.email,
+              name: kycUser.email,
+              amountAed: balanceAed,
+            },
+            fastify.log,
+          );
+        } catch {
+          // Fire-and-forget email dispatch must never affect the KYC flow.
+        }
+      })();
     },
   );
 
@@ -2645,59 +3638,18 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const endsAt = new Date(startsAt.getTime() + 2 * 60 * 60 * 1000);
-    const seedAuction = await prisma.auction.findFirst({
-      where: {
-        transitions: {
-          none: {
-            trigger: "EVENT_META",
-          },
-        },
-      },
-      select: {
-        vehicleId: true,
-        sellerCompanyId: true,
-        minIncrement: true,
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
 
-    if (!seedAuction) {
-      await reply.code(400).send({
-        error: "NO_BASE_VEHICLE",
-      });
-      return;
-    }
-
-    const createdAuction = await prisma.$transaction(async (tx) => {
-      const auction = await tx.auction.create({
+    const createdEvent = await prisma.$transaction(async (tx) => {
+      const event = await tx.auctionEvent.create({
         data: {
-          vehicleId: seedAuction.vehicleId,
-          sellerCompanyId: seedAuction.sellerCompanyId,
-          state: "DRAFT",
-          startsAt,
-          endsAt,
-          startingPrice: 0,
-          currentPrice: 0,
-          minIncrement: seedAuction.minIncrement,
-        },
-      });
-
-      await tx.auctionStateTransition.create({
-        data: {
-          auctionId: auction.id,
-          fromState: "DRAFT",
-          toState: "DRAFT",
-          trigger: "EVENT_META",
-          reason: JSON.stringify({
-            title: parsedBody.data.title,
-            description: parsedBody.data.description ?? "",
-          }),
-          actorId,
+          title: parsedBody.data.title,
+          scheduledAt: startsAt,
+          state: "SCHEDULED",
         },
       });
 
       await createAuctionEventRecord(tx, {
-        id: auction.id,
+        id: event.id,
         title: parsedBody.data.title,
         scheduledAt: startsAt,
       });
@@ -2706,9 +3658,9 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         actorId,
         action: "EVENT_CREATED",
         entityType: "Event",
-        entityId: auction.id,
+        entityId: event.id,
         payload: {
-          eventId: auction.id,
+          eventId: event.id,
           title: parsedBody.data.title,
           date: parsedBody.data.date ?? startsAt.toISOString().slice(0, 10),
           time: startTime,
@@ -2716,7 +3668,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
 
-      return auction;
+      return event;
     });
 
     const activeUsers = await prisma.user.findMany({
@@ -2735,7 +3687,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       {
         description: parsedBody.data.description ?? "",
         endsAt,
-        eventId: createdAuction.id,
+        eventId: createdEvent.id,
         recipients: activeUsers.map((user) => user.email),
         startsAt,
         title: parsedBody.data.title,
@@ -2744,10 +3696,10 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     );
 
     await reply.code(201).send({
-      id: createdAuction.id,
+      id: createdEvent.id,
       success: true,
       event: {
-        id: createdAuction.id,
+        id: createdEvent.id,
         title: parsedBody.data.title,
         scheduledAt: startsAt.toISOString(),
         state: "SCHEDULED",
@@ -3199,6 +4151,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3328,6 +4285,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3449,6 +4411,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         select: {
           id: true,
           role: true,
+          companyUsers: {
+            select: {
+              companyId: true,
+            },
+          },
         },
       });
 
@@ -3482,32 +4449,122 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const activeLock = await prisma.depositLock.findFirst({
-        where: {
-          auctionId: parsedBody.data.auctionId,
-          walletId: wallet.id,
-          status: "ACTIVE",
-        },
-        select: {
-          id: true,
-          amount: true,
-        },
-      });
-
-      if (!activeLock) {
-        await reply.code(400).send({
-          error: "NO_ACTIVE_DEPOSIT_LOCK",
-        });
-        return;
-      }
-
       const correlationId = request.headers["x-correlation-id"]?.toString().trim();
       const idempotencyKey = request.headers["idempotency-key"]?.toString().trim();
-      const lockAmount = await toNumberValue(activeLock.amount);
       const result = await prisma.$transaction(async (tx) => {
+        const auction = await tx.auction.findUnique({
+          where: {
+            id: parsedBody.data.auctionId,
+          },
+          select: {
+            id: true,
+            state: true,
+          },
+        });
+
+        if (!auction) {
+          return {
+            kind: "auction-not-found",
+          } as const;
+        }
+
+        if (auction.state !== "DEFAULTED") {
+          return {
+            kind: "auction-not-defaulted",
+          } as const;
+        }
+
+        const winningBid = await tx.bid.findFirst({
+          where: {
+            auctionId: parsedBody.data.auctionId,
+          },
+          orderBy: [{ amount: "desc" }, { sequenceNo: "desc" }, { createdAt: "desc" }],
+          select: {
+            id: true,
+            userId: true,
+            companyId: true,
+            amount: true,
+          },
+        });
+
+        if (!winningBid) {
+          return {
+            kind: "winning-bid-not-found",
+          } as const;
+        }
+
+        const buyerCompanyIds = new Set(buyer.companyUsers.map((entry) => entry.companyId));
+        const belongsToWinningCompany =
+          winningBid.userId === normalizedUserId || buyerCompanyIds.has(winningBid.companyId);
+
+        if (!belongsToWinningCompany) {
+          return {
+            kind: "winner-company-mismatch",
+          } as const;
+        }
+
+        await releaseWinnerBidAfterPayment(tx, winningBid.companyId, winningBid.amount);
+
+        const depositWalletRows = await tx.$queryRaw<LockedCompanyDepositWalletRow[]>`
+          SELECT
+            id,
+            available_balance,
+            locked_balance
+          FROM deposit_wallets
+          WHERE company_id = ${winningBid.companyId}
+            AND currency = 'AED'
+          FOR UPDATE
+        `;
+        const depositWallet = depositWalletRows[0];
+
+        if (!depositWallet) {
+          return {
+            kind: "deposit-wallet-not-found",
+          } as const;
+        }
+
+        const burnableLocks = await tx.$queryRaw<LockedCompanyDepositLockRow[]>`
+          SELECT
+            id,
+            amount,
+            status,
+            created_at
+          FROM deposit_locks
+          WHERE company_id = ${winningBid.companyId}
+            AND status IN ('ACTIVE', 'RELEASED')
+          ORDER BY
+            CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END,
+            created_at DESC
+          FOR UPDATE
+        `;
+        const burnableLock = burnableLocks[0];
+
+        if (!burnableLock) {
+          return {
+            kind: "lock-not-found",
+          } as const;
+        }
+
+        const lockAmount = burnableLock.amount;
+        const walletAmount = lockAmount.toFixed(2);
+        const updatedDepositWalletRows = await tx.$queryRaw<Array<{ id: string }>>`
+          UPDATE deposit_wallets
+          SET available_balance = available_balance - ${lockAmount},
+              updated_at = NOW()
+          WHERE id = ${depositWallet.id}
+            AND available_balance >= ${lockAmount}
+          RETURNING id
+        `;
+
+        if (updatedDepositWalletRows.length === 0) {
+          return {
+            kind: "insufficient-deposit-wallet-balance",
+          } as const;
+        }
+
         await tx.depositLock.update({
           where: {
-            id: activeLock.id,
+            id: burnableLock.id,
           },
           data: {
             status: "BURNED",
@@ -3520,26 +4577,19 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           where: {
             id: wallet.id,
             balance: {
-              gte: lockAmount,
-            },
-            lockedBalance: {
-              gte: lockAmount,
+              gte: walletAmount,
             },
           },
           data: {
             balance: {
-              decrement: lockAmount,
-            },
-            lockedBalance: {
-              decrement: lockAmount,
+              decrement: walletAmount,
             },
           },
         });
 
         if (updatedWallet.count === 0) {
           return {
-            insufficientWalletBalance: true,
-            burnedAmount: 0,
+            kind: "insufficient-wallet-balance",
           } as const;
         }
 
@@ -3547,7 +4597,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           data: {
             walletId: wallet.id,
             type: "DEPOSIT_BURN",
-            amount: lockAmount * -1,
+            amount: Number(lockAmount.negated().toFixed(2)),
             reference: parsedBody.data.auctionId,
           },
         });
@@ -3562,19 +4612,66 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           payload: {
             userId: normalizedUserId,
             auctionId: parsedBody.data.auctionId,
-            burnedAmount: lockAmount,
+            companyId: winningBid.companyId,
+            winningBidAmount: winningBid.amount.toFixed(2),
+            burnedAmount: walletAmount,
             reason: parsedBody.data.reason,
-            depositLockId: activeLock.id,
+            depositLockId: burnableLock.id,
           },
         });
 
         return {
-          insufficientWalletBalance: false,
-          burnedAmount: lockAmount,
+          kind: "burned",
+          burnedAmount: Number(walletAmount),
         } as const;
       });
 
-      if (result.insufficientWalletBalance) {
+      if (result.kind === "auction-not-found") {
+        await reply.code(404).send({
+          error: "AUCTION_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "auction-not-defaulted") {
+        await reply.code(409).send({
+          error: "AUCTION_NOT_DEFAULTED",
+        });
+        return;
+      }
+
+      if (result.kind === "winning-bid-not-found") {
+        await reply.code(404).send({
+          error: "WINNING_BID_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "winner-company-mismatch") {
+        await reply.code(409).send({
+          error: "USER_NOT_WINNING_BUYER",
+        });
+        return;
+      }
+
+      if (result.kind === "deposit-wallet-not-found") {
+        await reply.code(404).send({
+          error: "DEPOSIT_WALLET_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (result.kind === "lock-not-found") {
+        await reply.code(400).send({
+          error: "NO_ACTIVE_DEPOSIT_LOCK",
+        });
+        return;
+      }
+
+      if (
+        result.kind === "insufficient-deposit-wallet-balance" ||
+        result.kind === "insufficient-wallet-balance"
+      ) {
         await reply.code(409).send({
           error: "INSUFFICIENT_WALLET_BALANCE_FOR_BURN",
         });

@@ -35,6 +35,7 @@
     "backend",
     "scripts",
     "tests",
+    ".next-stale-*",
     "**/*.test.ts",
     "**/*.test.tsx",
     "src/infrastructure/database"
