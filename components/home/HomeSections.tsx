@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/icons";
 import { toIntlLocale, type SupportedLocale, withLocalePath } from "@/src/i18n/routing";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
+import { getAuctionCategoryLabel, type AuctionCategory } from "@/src/modules/ui/domain/auction_category";
 import type { AuctionWeekEvent } from "@/src/types/auction";
 
 import WeekCountdown from "./WeekCountdown";
@@ -26,13 +27,6 @@ import styles from "./HomeSections.module.css";
 
 type LocaleProps = {
   locale?: SupportedLocale;
-};
-
-const CATEGORY_RU: Record<string, string> = {
-  luxury: "Премиум-класс",
-  suv: "SUV",
-  sedan: "Седаны",
-  sports: "Спорт и купе",
 };
 
 const SELL_STEPS_EN = [
@@ -532,7 +526,7 @@ export function CatsSection({
   categories,
   locale = "en",
 }: {
-  categories: { slug: string; label: string; sub: string; image: string; href?: string }[];
+  categories: { slug: AuctionCategory; label: string; sub: string; image: string; href?: string }[];
   locale?: SupportedLocale;
 }) {
   const isRu = locale === "ru";
@@ -548,8 +542,7 @@ export function CatsSection({
         </div>
         <div className={styles.catsGrid}>
           {categories.map((category) => {
-            const translated = CATEGORY_RU[category.slug];
-            const label = isRu && translated ? translated : category.label;
+            const label = getAuctionCategoryLabel(category.slug, locale);
             const sub = category.sub;
 
             return (

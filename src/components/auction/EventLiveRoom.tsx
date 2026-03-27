@@ -227,16 +227,10 @@ function mapBidFeed(entries: UiAuctionBidHistoryEntry[]): BidFeedEntry[] {
   }));
 }
 
-function Gallery({ lotKey, photos, title }: { lotKey: string; photos: GalleryPhoto[]; title: string }) {
+function Gallery({ photos, title }: { photos: GalleryPhoto[]; title: string }) {
   const [active, setActive] = useState(0);
   const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
-
-  useEffect(() => {
-    setActive(0);
-    setFailedPhotoIds([]);
-    setIsExpanded(false);
-  }, [lotKey]);
 
   const activePhoto = photos[active] ?? photos[0];
 
@@ -854,11 +848,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                     </div>
                   </section>
 
-                  <Gallery
-                    lotKey={`${runtime.currentLot?.lotId ?? "none"}-${lotView.auctionId}`}
-                    photos={photos}
-                    title={lotView.title}
-                  />
+                  <Gallery key={`${runtime.currentLot?.lotId ?? "none"}-${lotView.auctionId}`} photos={photos} title={lotView.title} />
 
                   <section className={styles.block}>
                     <div className={styles.blockLabel}>Vehicle Details</div>

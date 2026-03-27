@@ -1,32 +1,20 @@
 "use client";
 
-import { useState } from "react";
-
 import type { SupportedLocale } from "@/src/i18n/routing";
 import { toIntlLocale } from "@/src/i18n/routing";
 
 import styles from "./Sections.module.css";
 
 type Props = {
-  auctionId: string;
   startsAt: string;
   locale: SupportedLocale;
 };
 
-export function InspectionSection({ auctionId, startsAt, locale }: Props) {
-  const [requested, setRequested] = useState(false);
-  const [scheduled, setScheduled] = useState(false);
-
+export function InspectionSection({ startsAt, locale }: Props) {
   const isRu = locale === "ru";
   const viewDate = new Date(startsAt);
   const viewEnd = new Date(viewDate.getTime() - 86_400_000);
   const viewStart = new Date(viewDate.getTime() - 2 * 86_400_000);
-
-  const handleDownload = () => {
-    window.open(`/api/auctions/${auctionId}/inspection-report`, "_blank");
-  };
-  const handleRequest = () => setRequested(true);
-  const handleSchedule = () => setScheduled(true);
 
   return (
     <section className={styles.card} aria-labelledby="ins-heading">
@@ -50,26 +38,14 @@ export function InspectionSection({ auctionId, startsAt, locale }: Props) {
         </div>
 
         <div className={styles.inspectActions}>
-          <button className={`btn btn-primary ${styles.inspectBtn}`} onClick={handleDownload}>
-            {isRu ? "Скачать отчёт инспекции" : "Download Inspection Report"}
-          </button>
-
+          {/* TEMP(inspection-actions, 2026-03-26): Product requested that this widget show only the scheduled-viewing state. Remove when inspection download/request actions are re-enabled here. */}
           <button
-            className={`btn btn-outline ${styles.inspectBtn}`}
-            onClick={handleRequest}
-            disabled={requested}
-            aria-pressed={requested}
+            type="button"
+            className={`btn btn-primary ${styles.inspectBtn} ${styles.inspectStatusBtn}`}
+            disabled
+            aria-pressed={true}
           >
-            {requested ? (isRu ? "Запрос отправлен" : "Inspection Requested") : isRu ? "Запросить инспекцию" : "Request Inspection"}
-          </button>
-
-          <button
-            className={`btn btn-outline ${styles.inspectBtn}`}
-            onClick={handleSchedule}
-            disabled={scheduled}
-            aria-pressed={scheduled}
-          >
-            {scheduled ? (isRu ? "Просмотр запланирован" : "Viewing Scheduled") : isRu ? "Запланировать просмотр" : "Schedule Viewing"}
+            {isRu ? "Просмотр запланирован" : "Viewing Scheduled"}
           </button>
         </div>
       </div>

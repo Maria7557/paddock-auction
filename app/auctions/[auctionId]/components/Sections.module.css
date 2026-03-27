@@ -315,6 +315,15 @@
   border-radius: var(--radius-control) !important;
   font-size: 14px !important;
 }
+.inspectStatusBtn {
+  background: var(--green-600) !important;
+  color: #fff !important;
+  cursor: default;
+  opacity: 1;
+}
+.inspectStatusBtn:hover {
+  background: var(--green-600) !important;
+}
 
 /* ── Responsive ── */
 @media (max-width: 740px) {
