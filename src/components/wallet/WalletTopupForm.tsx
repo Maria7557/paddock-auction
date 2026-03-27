@@ -213,6 +213,7 @@ export default function WalletTopupForm({ onSuccess, onCancel }: WalletTopupForm
   };
 
   const currentAmount = confirmedAmount ?? resolveAmount(selectedPreset, customAmount);
+  const amountInputValue = customAmount || (selectedPreset !== null ? String(selectedPreset) : "");
 
   return (
     <div className={styles.card}>
@@ -250,7 +251,7 @@ export default function WalletTopupForm({ onSuccess, onCancel }: WalletTopupForm
               inputMode="decimal"
               className={styles.input}
               placeholder="Or enter amount"
-              value={customAmount}
+              value={amountInputValue}
               onChange={(event) => handleCustomAmountChange(event.target.value)}
             />
 
