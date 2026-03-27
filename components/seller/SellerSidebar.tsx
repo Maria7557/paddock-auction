@@ -36,7 +36,7 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 export function SellerSidebar({ mobileOpen, onNavigate }: SellerSidebarProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const className = ["seller-sidebar", mobileOpen ? "mobile-open" : ""].filter(Boolean).join(" ");
 
   return (

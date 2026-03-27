@@ -166,6 +166,11 @@ model Auction {
   vehicleId             String                   @map("vehicle_id")
   sellerCompanyId       String                   @map("seller_company_id")
   state                 AuctionState             @default(DRAFT)
+  approvedAt            DateTime?                @map("approved_at") @db.Timestamptz(6)
+  vipAccessPolicy       VipAccessPolicy          @default(NONE) @map("vip_access_policy")
+  vipReleaseAt          DateTime?                @map("vip_release_at") @db.Timestamptz(6)
+  approvedByUserId      String?                  @map("approved_by_user_id")
+  vipPolicyReason       String?                  @map("vip_policy_reason")
   version               Int                      @default(0)
   startsAt              DateTime                 @map("starts_at") @db.Timestamptz(6)
   endsAt                DateTime                 @map("ends_at") @db.Timestamptz(6)
@@ -199,6 +204,8 @@ model Auction {
   savedBy               SavedLot[]
 
   @@index([state, endsAt], map: "auctions_state_ends_at_idx")
+  @@index([vipAccessPolicy, vipReleaseAt], map: "auctions_vip_access_policy_vip_release_at_idx")
+  @@index([state, vipReleaseAt], map: "auctions_state_vip_release_at_idx")
   @@map("auctions")
 }
 
@@ -512,6 +519,12 @@ enum CompanyUserRole {
   OWNER
   MANAGER
   MEMBER
+}
+
+enum VipAccessPolicy {
+  NONE
+  VIP_EARLY_ACCESS_24H
+  UNDETERMINED_RESTRICTED
 }
 
 enum AuctionState {

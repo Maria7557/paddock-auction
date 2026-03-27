@@ -24,6 +24,7 @@ export type BuyerAccessContext = {
   userStatus: string;
   companyStatus: string;
   kycVerified: boolean;
+  buyerTier: "STANDARD" | "VIP";
 };
 
 declare module "fastify" {
@@ -209,6 +210,7 @@ export async function loadBuyerAccessContext(
           company: {
             select: {
               status: true,
+              buyerTier: true,
             },
           },
         },
@@ -234,6 +236,7 @@ export async function loadBuyerAccessContext(
     userStatus: user.status,
     companyStatus,
     kycVerified: user.kycVerified,
+    buyerTier: membership.company?.buyerTier === "VIP" ? "VIP" : "STANDARD",
   };
 }
 

@@ -881,6 +881,44 @@ describe("GET /api/seller/auctions", () => {
     expect(res.body.total).toBe(1);
     expect(res.body.auctions[0].id).toBe("a1");
   });
+
+  it("surfaces VIP early-access approval status for seller auctions", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "a1",
+        state: "SCHEDULED",
+        vehicleId: "v1",
+        currentPrice: 10000,
+        startingPrice: 10000,
+        minIncrement: 500,
+        buyNowPrice: null,
+        startsAt: new Date("2026-03-14T08:00:00.000Z"),
+        endsAt: new Date("2026-03-14T10:00:00.000Z"),
+        approvedAt: new Date(now.getTime() - 60 * 60 * 1000),
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        vehicle: {
+          id: "v1",
+          brand: "Toyota",
+          model: "Land Cruiser",
+          year: 2022,
+          vin: "VIN001",
+        },
+        _count: {
+          bids: 0,
+        },
+      },
+    ]);
+
+    const res = await request
+      .get("/api/seller/auctions")
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auctions[0].approvalStatusLabel).toBe("Approved – VIP Early Access");
+  });
 });
 
 describe("POST /api/seller/auctions", () => {
@@ -1008,6 +1046,48 @@ describe("GET /api/seller/auctions/:id", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("AUCTION_NOT_FOUND");
+  });
+
+  it("returns seller-facing approval status in auction detail", async () => {
+    const now = new Date();
+
+    mockPrisma.auction.findFirst.mockResolvedValue({
+      id: "a1",
+      state: "SCHEDULED",
+      vehicleId: "v1",
+      startsAt: new Date("2026-03-14T08:00:00.000Z"),
+      endsAt: new Date("2026-03-14T10:00:00.000Z"),
+      inspectionDropoffDate: null,
+      viewingEndsAt: null,
+      auctionStartsAt: null,
+      auctionEndsAt: null,
+      startingPrice: 10000,
+      currentPrice: 10000,
+      buyNowPrice: null,
+      minIncrement: 500,
+      approvedAt: new Date(now.getTime() - 60 * 60 * 1000),
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+      _count: {
+        bids: 0,
+      },
+      vehicle: {
+        id: "v1",
+        brand: "Toyota",
+        model: "Land Cruiser",
+        year: 2022,
+        vin: "VIN001",
+      },
+    });
+    mockPrisma.bid.findMany.mockResolvedValue([]);
+    mockPrisma.company.findMany.mockResolvedValue([]);
+
+    const res = await request
+      .get("/api/seller/auctions/a1")
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.auction.approvalStatusLabel).toBe("Approved – VIP Early Access");
   });
 });
 

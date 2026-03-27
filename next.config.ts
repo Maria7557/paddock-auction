@@ -4,6 +4,9 @@ const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000").repl
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    root: process.cwd(),
+  },
   experimental: {
     proxyClientMaxBodySize: "150mb",
   },

@@ -86,7 +86,7 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
   const [editing, setEditing] = useState(false);
   const [busyDelete, setBusyDelete] = useState(false);
 
-  const created = searchParams.get("created") === "1";
+  const created = searchParams?.get("created") === "1";
 
   const loadDetail = useCallback(async () => {
     setLoading(true);

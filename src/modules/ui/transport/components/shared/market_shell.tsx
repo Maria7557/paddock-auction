@@ -41,7 +41,7 @@ export function MarketShell({
   shellClassName,
   mainClassName,
 }: MarketShellProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const shellClasses = ["market-shell", shellClassName].filter(Boolean).join(" ");
   const mainClasses = ["market-main", mainClassName].filter(Boolean).join(" ");
 

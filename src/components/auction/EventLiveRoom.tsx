@@ -618,7 +618,7 @@ async function loadLotView(auctionId: string): Promise<EventLotView | null> {
 }
 
 export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const router = useRouter();
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
   const [socketEnabled, setSocketEnabled] = useState(initialRuntime.state !== "CLOSED");

@@ -7,10 +7,10 @@ import { withLocalePath } from "@/src/i18n/routing";
 import { api } from "@/src/lib/api-client";
 import { isScheduledWithoutBids } from "@/src/lib/auction-display";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
-import { getLot } from "@/src/lib/lot-detail";
 import { formatInteger, formatMoneyFromAed, type DisplaySettings } from "@/src/lib/money";
 import { MarketShell } from "@/src/modules/ui/transport/components/shared/market_shell";
 
+import { getLot } from "./lot-data";
 import { BidHistory } from "./components/BidHistory";
 import { BidPanel } from "./components/BidPanel";
 import { InspectionSection } from "./components/InspectionSection";
@@ -21,6 +21,7 @@ import { VehicleDesc } from "./components/VehicleDesc";
 import { VehicleFeatures } from "./components/VehicleFeatures";
 import { VehicleInfo } from "./components/VehicleInfo";
 import { VehicleSpecs } from "./components/VehicleSpecs";
+import { VipEarlyAccessCountdown } from "./components/VipEarlyAccessCountdown";
 
 import styles from "./page.module.css";
 
@@ -42,6 +43,8 @@ export type LotDetail = {
   lotNumber: string;
   auctionId: string;
   state: LotAuctionState;
+  showVipEarlyAccessBadge: boolean;
+  vipReleaseAt: string | null;
   title: string;
   make: string;
   model: string;
@@ -95,6 +98,7 @@ export type LotDetail = {
     currentBidAed: number;
     state: string;
     imageUrl: string;
+    showVipEarlyAccessBadge?: boolean;
   }>;
 };
 
@@ -152,6 +156,7 @@ function mapSimilarAuction(source: Record<string, unknown>): SimilarLot | null {
     currentBidAed: Number(source.currentPrice ?? source.currentBidAed ?? source.startingPrice ?? 0),
     state: String(source.state ?? "SCHEDULED"),
     imageUrl: buildSimilarImage(vehicle),
+    showVipEarlyAccessBadge: source.showVipEarlyAccessBadge === true,
   };
 }
 
@@ -302,6 +307,17 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
                     {pill}
                   </span>
                 ))}
+              </div>
+            ) : null}
+            {lot.showVipEarlyAccessBadge ? (
+              <div className={styles.statusPills}>
+                <span className={styles.vipBadge}>
+                  <svg className={styles.vipBadgeIcon} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 1.5l2.63 5.33 5.88.86-4.26 4.15 1 5.86L10 15l-5.25 2.7 1-5.86L1.5 7.69l5.88-.86L10 1.5z" />
+                  </svg>
+                  <span className={styles.vipBadgeText}>{isRu ? "24ч ранний доступ" : "24h Early Access"}</span>
+                </span>
+                {lot.vipReleaseAt ? <VipEarlyAccessCountdown targetIso={lot.vipReleaseAt} locale={display.locale} /> : null}
               </div>
             ) : null}
           </div>

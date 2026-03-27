@@ -1016,7 +1016,7 @@ function AuctionClosedOverlay({ heroImageUrl, stats }: AuctionClosedOverlayProps
 
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const searchParams = useSearchParams();
   const [socketEnabled, setSocketEnabled] = useState(true);
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId, socketEnabled);
@@ -1054,11 +1054,11 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const outcomeTriggerRef = useRef<string | null>(null);
   const previousStateRef = useRef(snapshot.state);
   const previousBidCountRef = useRef(initialSnapshot.totalBids);
-  const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams.get("launchAt")), [searchParams]);
+  const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams?.get("launchAt")), [searchParams]);
   const initialSessionStats = useMemo<SessionStats>(
     () => ({
-      soldLots: parseCountParam(searchParams.get("soldLots")),
-      bidsPlaced: parseCountParam(searchParams.get("placedBids")),
+      soldLots: parseCountParam(searchParams?.get("soldLots")),
+      bidsPlaced: parseCountParam(searchParams?.get("placedBids")),
     }),
     [searchParams],
   );

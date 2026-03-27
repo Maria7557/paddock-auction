@@ -105,6 +105,12 @@
   flex-wrap: wrap;
   margin-top: 10px;
 }
+.statusPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
 .pill {
   display: inline-flex;
   align-items: center;
@@ -115,6 +121,38 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--ink-secondary);
+}
+.vipBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vip-early-access-gold-border);
+  background-image: var(--vip-early-access-badge-gold-bg);
+  background-size: var(--vip-early-access-badge-gold-bg-size);
+  background-position: var(--vip-early-access-badge-gold-bg-position);
+  background-repeat: var(--vip-early-access-badge-gold-bg-repeat);
+  color: #fdf2cc;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.vipBadgeIcon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.vipBadgeText {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+  white-space: nowrap;
 }
 
 /* ── State pill ───────────────────────────────────────────────────────────── */

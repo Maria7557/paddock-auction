@@ -103,6 +103,11 @@
   gap: 8px;
 }
 
+.statusStack {
+  display: grid;
+  gap: 6px;
+}
+
 .metaText {
   font-size: 13px;
   color: var(--ink-muted);

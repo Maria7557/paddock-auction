@@ -22,6 +22,7 @@ type BackendAuctionDetailResponse = {
     buyNowPrice: number | null;
     currentPrice: number;
     bidsCount: number;
+    approvalStatusLabel?: string;
     vehicle: {
       id: string;
       brand: string;
@@ -52,6 +53,7 @@ type AuctionDetailResponse = {
     buyNowPriceAed: number | null;
     currentBidAed: number;
     totalBids: number;
+    approvalStatusLabel?: string;
     vehicle: {
       id: string;
       brand: string;
@@ -94,6 +96,7 @@ function normalizeAuctionDetailResponse(payload: BackendAuctionDetailResponse): 
       buyNowPriceAed: payload.auction.buyNowPrice,
       currentBidAed: payload.auction.currentPrice,
       totalBids: payload.auction.bidsCount,
+      approvalStatusLabel: payload.auction.approvalStatusLabel,
       vehicle: payload.auction.vehicle,
     },
     bids: payload.bids.map((bid) => ({
@@ -153,8 +156,8 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
     endsAt: "",
     buyNowPriceAed: "",
   });
-  const created = searchParams.get("created") === "1";
-  const partialSetup = searchParams.get("setup") === "partial";
+  const created = searchParams?.get("created") === "1";
+  const partialSetup = searchParams?.get("setup") === "partial";
 
   const loadAuction = useCallback(
     async ({ silent = false, syncForm = true }: { silent?: boolean; syncForm?: boolean } = {}) => {
@@ -302,6 +305,9 @@ export default function SellerAuctionDetailClient({ auctionId }: SellerAuctionDe
               </span>
             ) : null}
             <AuctionStatusBadge state={data.auction.state} />
+            {data.auction.approvalStatusLabel ? (
+              <span className="text-muted">{data.auction.approvalStatusLabel}</span>
+            ) : null}
           </div>
         </div>
 

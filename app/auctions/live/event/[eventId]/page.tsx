@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { EventLiveRoom } from "@/src/components/auction/EventLiveRoom";
 import { api } from "@/src/lib/api-client";
 import { mapServerLotToEventLotView } from "@/src/lib/event-live-lot";
-import { getLot } from "@/src/lib/lot-detail";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import type { EventRuntime } from "@/src/types/auction";
+import { getLot } from "@/app/auctions/[auctionId]/lot-data";
 
 type PageProps = {
   params: Promise<{

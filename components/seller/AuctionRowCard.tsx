@@ -10,6 +10,7 @@ type AuctionRow = {
   bidsCount: number;
   endsAt: string;
   vehicleLabel: string;
+  approvalStatusLabel?: string;
 };
 
 type AuctionRowCardProps = {
@@ -25,7 +26,12 @@ export function AuctionRowCard({ auction, onAction, busyActionId }: AuctionRowCa
     <tr>
       <td>{auction.vehicleLabel}</td>
       <td>
-        <AuctionStatusBadge state={normalizedState} />
+        <div style={{ display: "grid", gap: "4px" }}>
+          <AuctionStatusBadge state={normalizedState} />
+          {auction.approvalStatusLabel ? (
+            <span className="text-muted">{auction.approvalStatusLabel}</span>
+          ) : null}
+        </div>
       </td>
       <td>{formatSellerAuctionBid(auction.currentBidAed)}</td>
       <td>{auction.bidsCount}</td>

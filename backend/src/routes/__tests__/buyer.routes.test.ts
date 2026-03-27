@@ -39,6 +39,7 @@ const { mockPrisma } = vi.hoisted(() => ({
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $disconnect: vi.fn(),
   },
 }));
@@ -103,6 +104,11 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.$queryRaw.mockResolvedValue([
+    {
+      currentTime: new Date("2026-03-19T12:00:00.000Z"),
+    },
+  ]);
 
   mockPrisma.user.findUnique.mockResolvedValue({
     id: buyerUserId,
@@ -114,6 +120,7 @@ beforeEach(() => {
         companyId: buyerCompanyId,
         company: {
           status: "ACTIVE",
+          buyerTier: "STANDARD",
         },
       },
     ],
@@ -262,6 +269,109 @@ describe("GET /api/buyer/dashboard", () => {
     expect(res.status).toBe(200);
     expect(res.body.onboardingStep).toBe(1);
   });
+
+  it("hides restricted bid, watchlist, and recommendation data from regular buyers", async () => {
+    const approvedAt = new Date("2026-03-19T11:00:00.000Z");
+    const releaseAt = new Date("2026-03-20T11:00:00.000Z");
+
+    mockPrisma.bid.findMany
+      .mockResolvedValueOnce([
+        {
+          auctionId: "auction-hidden",
+          auction: {
+            sellerCompanyId: "seller-company-hidden",
+            approvedAt,
+            vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+            vipReleaseAt: releaseAt,
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "bid-hidden",
+          auctionId: "auction-hidden",
+          amount: 171500,
+          createdAt: new Date("2026-03-19T11:30:00.000Z"),
+          auction: {
+            id: "auction-hidden",
+            state: "LIVE",
+            highestBidId: "someone-else",
+            currentPrice: 172000,
+            sellerCompanyId: "seller-company-hidden",
+            approvedAt,
+            vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+            vipReleaseAt: releaseAt,
+            vehicle: {
+              brand: "BMW",
+              model: "X5 M",
+            },
+          },
+        },
+      ]);
+    mockPrisma.savedLot.findMany.mockResolvedValue([
+      {
+        id: "saved-hidden",
+        auctionId: "auction-hidden",
+        createdAt: new Date("2026-03-19T11:10:00.000Z"),
+        auction: {
+          id: "auction-hidden",
+          sellerCompanyId: "seller-company-hidden",
+          approvedAt,
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: releaseAt,
+          vehicle: {
+            brand: "BMW",
+            model: "X5 M",
+          },
+        },
+      },
+    ]);
+    mockPrisma.auction.findMany.mockResolvedValue([
+      {
+        id: "auction-hidden",
+        state: "LIVE",
+        currentPrice: 210000,
+        minIncrement: 500,
+        startingPrice: 200000,
+        buyNowPrice: 240000,
+        startsAt: new Date("2026-03-19T10:00:00.000Z"),
+        endsAt: new Date("2026-03-20T10:00:00.000Z"),
+        createdAt: new Date("2026-03-18T08:00:00.000Z"),
+        sellerCompanyId: "seller-company-hidden",
+        approvedAt,
+        vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+        vipReleaseAt: releaseAt,
+        vehicle: {
+          id: "vehicle-hidden",
+          brand: "BMW",
+          model: "M4",
+          year: 2024,
+          mileage: 46000,
+          marketPrice: 420000,
+          fuelType: "Petrol",
+          transmission: "Automatic",
+          bodyType: "Convertible",
+          regionSpec: "USA",
+          condition: "Good",
+          images: ["/uploads/bmw.jpg"],
+        },
+        _count: {
+          bids: 4,
+        },
+      },
+    ]);
+
+    const res = await request
+      .get("/api/buyer/dashboard")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.metrics.activeBids).toBe(0);
+    expect(res.body.metrics.watching).toBe(0);
+    expect(res.body.metrics.watchlistCount).toBe(0);
+    expect(res.body.recentActivity).toEqual([]);
+    expect(res.body.recommendedLots).toEqual([]);
+  });
 });
 
 describe("GET /api/buyer/watchlist", () => {
@@ -358,6 +468,100 @@ describe("GET /api/buyer/watchlist", () => {
     expect(res.body.lots[0].id).toBe("auction-1");
     expect(res.body.lots[0].isWatchlisted).toBe(true);
     expect(res.body.nextCursor).toBe(null);
+  });
+
+  it("filters restricted lots out of the watchlist for regular buyers", async () => {
+    mockPrisma.savedLot.findMany.mockResolvedValue([
+      {
+        id: "saved-hidden",
+        auctionId: "auction-hidden",
+        createdAt: new Date("2026-03-17T08:00:00.000Z"),
+        auction: {
+          id: "auction-hidden",
+          state: "SCHEDULED",
+          currentPrice: 240000,
+          minIncrement: 500,
+          startingPrice: 220000,
+          buyNowPrice: 260000,
+          startsAt: new Date("2026-03-20T08:00:00.000Z"),
+          endsAt: new Date("2026-03-21T08:00:00.000Z"),
+          createdAt: new Date("2026-03-16T08:00:00.000Z"),
+          sellerCompanyId: "seller-company-1",
+          approvedAt: new Date("2026-03-19T11:00:00.000Z"),
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: new Date("2026-03-20T11:00:00.000Z"),
+          vehicle: {
+            id: "vehicle-hidden",
+            brand: "Toyota",
+            model: "Camry",
+            year: 2024,
+            mileage: 12000,
+            marketPrice: 310000,
+            fuelType: "Petrol",
+            transmission: "Automatic",
+            bodyType: "Sedan",
+            regionSpec: "GCC",
+            condition: "Excellent",
+            images: ["/uploads/camry.jpg"],
+          },
+          _count: {
+            bids: 2,
+          },
+        },
+      },
+      {
+        id: "saved-visible",
+        auctionId: "auction-visible",
+        createdAt: new Date("2026-03-17T09:00:00.000Z"),
+        auction: {
+          id: "auction-visible",
+          state: "LIVE",
+          currentPrice: 250000,
+          minIncrement: 500,
+          startingPrice: 230000,
+          buyNowPrice: 290000,
+          startsAt: new Date("2026-03-18T08:00:00.000Z"),
+          endsAt: new Date("2026-03-19T20:00:00.000Z"),
+          createdAt: new Date("2026-03-15T08:00:00.000Z"),
+          sellerCompanyId: "seller-company-2",
+          approvedAt: null,
+          vipAccessPolicy: null,
+          vipReleaseAt: null,
+          vehicle: {
+            id: "vehicle-visible",
+            brand: "BMW",
+            model: "M4",
+            year: 2024,
+            mileage: 46000,
+            marketPrice: 420000,
+            fuelType: "Petrol",
+            transmission: "Automatic",
+            bodyType: "Convertible",
+            regionSpec: "USA",
+            condition: "Good",
+            images: ["/uploads/m4.jpg"],
+          },
+          _count: {
+            bids: 4,
+          },
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      {
+        id: "seller-company-2",
+        name: "Premium Seller",
+        country: "Abu Dhabi",
+      },
+    ]);
+
+    const res = await request
+      .get("/api/buyer/watchlist")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.lots).toHaveLength(1);
+    expect(res.body.lots[0].id).toBe("auction-visible");
   });
 });
 
@@ -612,12 +816,80 @@ describe("GET /api/buyer/my-bids", () => {
       isLeading: false,
     });
   });
+
+  it("hides restricted lots from my bids for regular buyers", async () => {
+    mockPrisma.bid.findMany.mockResolvedValue([
+      {
+        id: "bid-hidden",
+        auctionId: "auction-hidden",
+        amount: 171500,
+        createdAt: new Date("2026-03-17T08:00:00.000Z"),
+        auction: {
+          id: "auction-hidden",
+          state: "LIVE",
+          highestBidId: "someone-else",
+          currentPrice: 172000,
+          sellerCompanyId: "seller-company-hidden",
+          approvedAt: new Date("2026-03-19T11:00:00.000Z"),
+          vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+          vipReleaseAt: new Date("2026-03-20T11:00:00.000Z"),
+          startsAt: new Date("2026-03-18T08:00:00.000Z"),
+          endsAt: new Date("2026-03-19T18:00:00.000Z"),
+          vehicle: {
+            brand: "BMW",
+            model: "X5 M",
+          },
+        },
+      },
+      {
+        id: "bid-visible",
+        auctionId: "auction-visible",
+        amount: 240000,
+        createdAt: new Date("2026-03-17T09:00:00.000Z"),
+        auction: {
+          id: "auction-visible",
+          state: "LIVE",
+          highestBidId: "bid-visible",
+          currentPrice: 240000,
+          sellerCompanyId: "seller-company-visible",
+          approvedAt: null,
+          vipAccessPolicy: null,
+          vipReleaseAt: null,
+          startsAt: new Date("2026-03-18T08:00:00.000Z"),
+          endsAt: new Date("2026-03-20T08:00:00.000Z"),
+          vehicle: {
+            brand: "Toyota",
+            model: "Camry",
+          },
+        },
+      },
+    ]);
+    mockPrisma.company.findMany.mockResolvedValue([
+      { id: "seller-company-visible", name: "Seller Visible", country: "Abu Dhabi" },
+    ]);
+    mockPrisma.invoice.findMany.mockResolvedValue([]);
+
+    const res = await request
+      .get("/api/buyer/my-bids")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
+      auctionId: "auction-visible",
+      status: "WINNING",
+    });
+  });
 });
 
 describe("POST /api/buyer/watchlist/:lotId", () => {
   it("adds a lot to watchlist when missing", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue({
       id: "auction-1",
+      sellerCompanyId: "seller-company-1",
+      approvedAt: null,
+      vipAccessPolicy: null,
+      vipReleaseAt: null,
     });
 
     const res = await request
@@ -645,6 +917,24 @@ describe("POST /api/buyer/watchlist/:lotId", () => {
         id: "saved-1",
       },
     });
+  });
+
+  it("returns LOT_UNAVAILABLE when adding a restricted lot during VIP early access", async () => {
+    mockPrisma.auction.findUnique.mockResolvedValue({
+      id: "auction-1",
+      sellerCompanyId: "seller-company-1",
+      approvedAt: new Date("2026-03-19T11:00:00.000Z"),
+      vipAccessPolicy: "VIP_EARLY_ACCESS_24H",
+      vipReleaseAt: new Date("2026-03-20T11:00:00.000Z"),
+    });
+
+    const res = await request
+      .post("/api/buyer/watchlist/auction-1")
+      .set("Authorization", `Bearer ${buyerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("LOT_UNAVAILABLE");
+    expect(mockPrisma.savedLot.create).not.toHaveBeenCalled();
   });
 });
 

@@ -1,9 +1,19 @@
+import "@fastify/websocket";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { WebSocket } from "ws";
+import type { RawData, WebSocket } from "ws";
 import Redis from "ioredis";
 
 import { prisma } from "../db";
-import { type AuthTokenPayload, verifyToken } from "../lib/auth";
+import {
+  hydrateAuthIfPresent,
+  type AuthTokenPayload,
+  verifyToken,
+} from "../lib/auth";
+import {
+  evaluateVipAccess,
+  loadVipRequestActorBase,
+  readTrustedCurrentTime,
+} from "../lib/vip-early-access";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -43,6 +53,16 @@ export type AuctionRealtimeSnapshot = {
         createdAt: string;
       }
     | null;
+};
+
+type AuctionRealtimeSnapshotRecord = {
+  snapshot: AuctionRealtimeSnapshot;
+  accessSnapshot: {
+    approvedAt: Date | null;
+    vipAccessPolicy: string | null;
+    vipReleaseAt: Date | null;
+    sellerCompanyId: string;
+  };
 };
 
 type AuctionRealtimeEnvelope =
@@ -454,7 +474,7 @@ async function authenticateWebSocketRequest(
 export async function getAuctionSnapshot(
   auctionId: string,
   db: typeof prisma,
-): Promise<AuctionRealtimeSnapshot | null> {
+): Promise<AuctionRealtimeSnapshotRecord | null> {
   const auction = await db.auction.findUnique({
     where: {
       id: auctionId,
@@ -470,6 +490,10 @@ export async function getAuctionSnapshot(
       endsAt: true,
       extensionCount: true,
       highestBidId: true,
+      approvedAt: true,
+      vipAccessPolicy: true,
+      vipReleaseAt: true,
+      sellerCompanyId: true,
       _count: {
         select: {
           bids: true,
@@ -495,26 +519,34 @@ export async function getAuctionSnapshot(
   const latestBid = auction.bids[0] ?? null;
 
   return {
-    auctionId: auction.id,
-    state: auction.state,
-    currentPrice: await toNumberValue(auction.currentPrice),
-    minIncrement: await toNumberValue(auction.minIncrement),
-    startingPrice: await toNumberValue(auction.startingPrice),
-    buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
-    startsAt: await toIsoString(auction.startsAt),
-    endsAt: await toIsoString(auction.endsAt),
-    extensionCount: auction.extensionCount,
-    totalBids: auction._count.bids,
-    highestBidId: auction.highestBidId,
-    lastBid:
-      latestBid === null
-        ? null
-        : {
-            id: latestBid.id,
-            amount: await toNumberValue(latestBid.amount),
-            sequenceNo: latestBid.sequenceNo,
-          createdAt: latestBid.createdAt.toISOString(),
-        },
+    snapshot: {
+      auctionId: auction.id,
+      state: auction.state,
+      currentPrice: await toNumberValue(auction.currentPrice),
+      minIncrement: await toNumberValue(auction.minIncrement),
+      startingPrice: await toNumberValue(auction.startingPrice),
+      buyNowPrice: auction.buyNowPrice === null ? null : await toNumberValue(auction.buyNowPrice),
+      startsAt: await toIsoString(auction.startsAt),
+      endsAt: await toIsoString(auction.endsAt),
+      extensionCount: auction.extensionCount,
+      totalBids: auction._count.bids,
+      highestBidId: auction.highestBidId,
+      lastBid:
+        latestBid === null
+          ? null
+          : {
+              id: latestBid.id,
+              amount: await toNumberValue(latestBid.amount),
+              sequenceNo: latestBid.sequenceNo,
+              createdAt: latestBid.createdAt.toISOString(),
+            },
+    },
+    accessSnapshot: {
+      approvedAt: auction.approvedAt,
+      vipAccessPolicy: auction.vipAccessPolicy,
+      vipReleaseAt: auction.vipReleaseAt,
+      sellerCompanyId: auction.sellerCompanyId,
+    },
   };
 }
 
@@ -568,9 +600,9 @@ export async function publishAuctionRealtimeSnapshot(
   logger?: LoggerLike,
 ): Promise<boolean> {
   try {
-    const snapshot = await getAuctionSnapshot(auctionId, prisma);
+    const snapshotRecord = await getAuctionSnapshot(auctionId, prisma);
 
-    if (!snapshot) {
+    if (!snapshotRecord) {
       return false;
     }
 
@@ -591,7 +623,7 @@ export async function publishAuctionRealtimeSnapshot(
       createEnvelope({
         type: "auction.updated",
         emittedAt: new Date().toISOString(),
-        data: snapshot,
+        data: snapshotRecord.snapshot,
       }),
     );
 
@@ -636,33 +668,50 @@ export async function auctionWsRoutes(fastify: FastifyInstance): Promise<void> {
       reply: FastifyReply,
     ): Promise<void> {
       const auctionId = request.params.auctionId.trim();
+      await hydrateAuthIfPresent(request);
 
-      const snapshot = await getAuctionSnapshot(auctionId, prisma);
+      const [actorBase, now, snapshotRecord] = await Promise.all([
+        loadVipRequestActorBase(request),
+        readTrustedCurrentTime(prisma),
+        getAuctionSnapshot(auctionId, prisma),
+      ]);
 
-      if (!snapshot) {
+      if (!snapshotRecord) {
         await reply.code(404).send({
           error: "Auction not found",
         });
         return;
       }
 
-      await reply.code(200).send(snapshot);
+      const accessDecision = evaluateVipAccess({
+        actorBase,
+        snapshot: snapshotRecord.accessSnapshot,
+        now,
+      });
+
+      if (!accessDecision.canViewRealtime) {
+        await reply.code(404).send({
+          error: "Auction not found",
+        });
+        return;
+      }
+
+      await reply.code(200).send(snapshotRecord.snapshot);
     },
   );
 
-  fastify.get<{
-    Params: { auctionId: string };
-    Querystring: { token?: string };
-  }>(
+  // The websocket plugin augments Fastify at runtime, but the overload does
+  // not resolve correctly in this workspace's backend tsconfig.
+  (fastify.get as any)(
     "/auctions/:auctionId/ws",
     {
       websocket: true,
       preHandler: authenticateWebSocketRequest,
     },
-    function auctionWsHandler(socket, request: AuctionWsRequest): void {
+    function auctionWsHandler(socket: WebSocket, request: AuctionWsRequest): void {
       const auctionId = request.params.auctionId.trim();
 
-      socket.on("message", (message) => {
+      socket.on("message", (message: RawData) => {
         handleClientMessage(socket, message);
       });
 
@@ -691,9 +740,13 @@ export async function auctionWsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       void (async () => {
-        const snapshot = await getAuctionSnapshot(auctionId, prisma);
+        const [actorBase, now, snapshotRecord] = await Promise.all([
+          loadVipRequestActorBase(request),
+          readTrustedCurrentTime(prisma),
+          getAuctionSnapshot(auctionId, prisma),
+        ]);
 
-        if (!snapshot) {
+        if (!snapshotRecord) {
           sendMessage(socket, {
             type: "error",
             emittedAt: new Date().toISOString(),
@@ -701,6 +754,23 @@ export async function auctionWsRoutes(fastify: FastifyInstance): Promise<void> {
             message: "Auction not found.",
           });
           socket.close(1008, "Auction not found");
+          return;
+        }
+
+        const accessDecision = evaluateVipAccess({
+          actorBase,
+          snapshot: snapshotRecord.accessSnapshot,
+          now,
+        });
+
+        if (!accessDecision.canViewRealtime) {
+          sendMessage(socket, {
+            type: "error",
+            emittedAt: new Date().toISOString(),
+            code: "AUCTION_UNAVAILABLE",
+            message: "Auction unavailable.",
+          });
+          socket.close(1008, "Auction unavailable");
           return;
         }
 
@@ -712,7 +782,7 @@ export async function auctionWsRoutes(fastify: FastifyInstance): Promise<void> {
         sendMessage(socket, {
           type: "auction.snapshot",
           emittedAt: new Date().toISOString(),
-          data: snapshot,
+          data: snapshotRecord.snapshot,
         });
 
         const subscribed = await subscribeAuctionChannel(auctionId);
@@ -728,7 +798,7 @@ export async function auctionWsRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
       })().catch((error) => {
-        this.log.error(
+        fastify.log.error(
           {
             err: error,
             auctionId,
