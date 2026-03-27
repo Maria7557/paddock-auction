@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getWalletBalance } from "@/src/lib/api-client";
+import { api, getWalletBalance, type BuyerBuyingPowerResponse } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 import WalletTopupForm from "@/src/components/wallet/WalletTopupForm";
 
@@ -20,6 +20,12 @@ type WalletTransaction = {
 type WalletWorkspaceProps = {
   availableBalance: number;
   lockedBalance: number;
+  buyingPower: {
+    depositAmount: number;
+    ceiling: number;
+    activeBidsTotal: number;
+    remaining: number;
+  };
   pendingWithdrawalAmount: number;
   transactions: WalletTransaction[];
 };
@@ -75,6 +81,7 @@ function resolveTransactionMeta(type: string): {
 export function WalletWorkspace({
   availableBalance,
   lockedBalance,
+  buyingPower,
   pendingWithdrawalAmount,
   transactions,
 }: WalletWorkspaceProps) {
@@ -82,19 +89,12 @@ export function WalletWorkspace({
     availableBalance,
     lockedBalance,
     pendingWithdrawalAmount,
+    buyingPower,
   });
   const [showTopup, setShowTopup] = useState(false);
   const [topupDone, setTopupDone] = useState(false);
   const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
   const successTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setWalletState({
-      availableBalance,
-      lockedBalance,
-      pendingWithdrawalAmount,
-    });
-  }, [availableBalance, lockedBalance, pendingWithdrawalAmount]);
 
   useEffect(() => {
     return () => {
@@ -113,17 +113,27 @@ export function WalletWorkspace({
         detail: "Fully refundable",
       },
       {
-        label: "Locked — active auctions",
+        label: "Locked",
         value: formatAed(walletState.lockedBalance),
+        toneClass: styles.metricValueMuted,
+      },
+      {
+        label: "Active bids",
+        value: formatAed(walletState.buyingPower.activeBidsTotal),
         toneClass: styles.metricValueAmber,
       },
       {
-        label: "Pending withdrawal",
-        value: formatAed(walletState.pendingWithdrawalAmount),
-        toneClass: styles.metricValueMuted,
+        label: "Remaining",
+        value: formatAed(walletState.buyingPower.remaining),
+        toneClass: styles.metricValuePositive,
       },
     ],
-    [walletState.availableBalance, walletState.lockedBalance, walletState.pendingWithdrawalAmount],
+    [
+      walletState.availableBalance,
+      walletState.buyingPower.activeBidsTotal,
+      walletState.buyingPower.remaining,
+      walletState.lockedBalance,
+    ],
   );
 
   const handleTopupSuccess = async () => {
@@ -131,12 +141,21 @@ export function WalletWorkspace({
     setTopupDone(true);
 
     try {
-      const freshWallet = await getWalletBalance({ cache: "no-store" });
+      const [freshWallet, freshBuyingPower] = await Promise.all([
+        getWalletBalance({ cache: "no-store" }),
+        api.buyer.buyingPower<BuyerBuyingPowerResponse>({ cache: "no-store" }),
+      ]);
 
       setWalletState({
         availableBalance: Number(freshWallet.availableBalance),
         lockedBalance: Number(freshWallet.lockedBalance),
         pendingWithdrawalAmount: Number(freshWallet.pendingWithdrawalBalance),
+        buyingPower: {
+          depositAmount: Number(freshBuyingPower.depositAmount),
+          ceiling: Number(freshBuyingPower.ceiling),
+          activeBidsTotal: Number(freshBuyingPower.activeBidsTotal),
+          remaining: Number(freshBuyingPower.remaining),
+        },
       });
     } catch {
       // Keep the optimistic success state even if the refresh lags behind.
@@ -170,6 +189,12 @@ export function WalletWorkspace({
       <span className={styles.refundPill}>
         Your deposit is fully refundable within 48 hours of your withdrawal request
       </span>
+
+      {walletState.pendingWithdrawalAmount > 0 ? (
+        <span className={styles.pendingPill}>
+          {`Pending withdrawal: ${formatAed(walletState.pendingWithdrawalAmount)}`}
+        </span>
+      ) : null}
 
       <div className={styles.actionRow}>
         <button type="button" className="btn btn-primary" onClick={() => setShowTopup(true)}>

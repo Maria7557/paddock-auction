@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GalleryLightbox } from "@/components/gallery/GalleryLightbox";
 import type { LotDetail } from "@/app/auctions/[auctionId]/page";
+import { LiveRoomBuyingPowerBar } from "@/src/components/finance/LiveRoomBuyingPowerBar";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useEventLiveSocket } from "@/src/hooks/useEventLiveSocket";
 import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
@@ -862,9 +863,9 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
               )}
             </div>
 
-            <aside className={styles.rightPane}>
-              {runtime.state === "SCHEDULED" ? (
-                <div className={styles.prelivePanel}>
+              <aside className={styles.rightPane}>
+                {runtime.state === "SCHEDULED" ? (
+                  <div className={styles.prelivePanel}>
                   <div className={styles.preliveHero}>
                     <div className={styles.preliveEyebrow}>Coming soon room</div>
                     <div className={styles.preliveTitle}>Auction starts at {scheduledAtLabel}</div>
@@ -896,6 +897,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                 </div>
               ) : runtime.currentLot && currentSnapshot ? (
                 <>
+                  <LiveRoomBuyingPowerBar />
+
                   <div className={styles.currentBidSection}>
                     <div className={styles.blockLabel}>
                       {currentSnapshot.totalBids > 0 ? "Current Bid" : "Starting Bid"}
