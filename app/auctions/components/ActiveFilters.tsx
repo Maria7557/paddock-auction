@@ -2,11 +2,13 @@
 
 import type { DisplaySettings } from "@/src/lib/money";
 import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
+import { getAuctionCategoryLabel, isAuctionCategory } from "@/src/modules/ui/domain/auction_category";
 
 import styles from "./ActiveFilters.module.css";
 
 const DEFAULT: Record<string, string> = {
   vipEarlyAccess: "",
+  category: "",
   brand: "",
   model: "",
   status: "",
@@ -23,6 +25,7 @@ const DEFAULT: Record<string, string> = {
 function getLabels(isRu: boolean): Record<string, string> {
   return {
     vipEarlyAccess: isRu ? "Подборка" : "Inventory",
+    category: isRu ? "Категория" : "Category",
     brand: isRu ? "Бренд" : "Brand",
     model: isRu ? "Модель" : "Model",
     status: isRu ? "Статус" : "Status",
@@ -49,6 +52,10 @@ function formatValue(key: string, value: string, display: DisplaySettings): stri
     }
 
     return isRu ? "Скоро" : "Upcoming";
+  }
+
+  if (key === "category" && isAuctionCategory(value)) {
+    return getAuctionCategoryLabel(value, display.locale);
   }
 
   if (key === "minPrice") {

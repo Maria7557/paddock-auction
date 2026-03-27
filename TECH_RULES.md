@@ -373,6 +373,13 @@
 3. New financial commands MUST include replay/failure runbook notes.
 4. Architecture-significant paths are exactly those listed in `docs/architecture/quality/architecture_significant_paths.yaml`.
 
+### 15.5 Temporary Implementation Markers
+1. Temporary code comments MUST use this format exactly: `TEMP(scope, YYYY-MM-DD): reason. Remove when <condition>.`
+2. `scope` MUST identify the affected area or feature.
+3. `YYYY-MM-DD` MUST be the date the temporary marker was introduced.
+4. The comment MUST state both why the code is temporary and the condition for removal.
+5. `TODO`, `FIXME`, or free-form temporary comments without the `TEMP(...)` format are forbidden for shipped code.
+
 ### CI/PR Enforcement
 1. ADR-required labels MUST block merge until approved ADR is linked.
 2. Missing docs update on architecture-significant change MUST fail CI.

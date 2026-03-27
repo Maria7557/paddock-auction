@@ -154,7 +154,6 @@ type FuseBidButtonProps = {
 };
 
 type GalleryProps = {
-  lotKey: string;
   photos: GalleryPhoto[];
   title: string;
 };
@@ -617,16 +616,10 @@ function buildAuctionPlan(lot: LotDetail, upcomingLots: UpcomingLot[]): AuctionP
   }));
 }
 
-function Gallery({ lotKey, photos, title }: GalleryProps) {
+function Gallery({ photos, title }: GalleryProps) {
   const [active, setActive] = useState(0);
   const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
-
-  useEffect(() => {
-    setActive(0);
-    setFailedPhotoIds([]);
-    setIsExpanded(false);
-  }, [lotKey]);
 
   const activePhoto = photos[active] ?? photos[0];
   const isPhotoBroken = (photo: GalleryPhoto): boolean => failedPhotoIds.includes(photo.id);
@@ -765,7 +758,6 @@ function BidFeedItem({ entry, isNew }: BidFeedItemProps) {
 
   useEffect(() => {
     if (!isNew) {
-      setVisible(true);
       return undefined;
     }
 
@@ -1798,7 +1790,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
             <div className={styles.heroRow}>
               <div className={styles.leftColumn}>
-                <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
+                <Gallery key={lot.id} photos={photos} title={lot.title} />
 
                 <div className={styles.block}>
                   <div className={styles.blockLabel}>Vehicle Details</div>
