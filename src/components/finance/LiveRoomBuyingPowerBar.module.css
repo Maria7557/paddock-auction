@@ -13,8 +13,16 @@
   flex-shrink: 0;
 }
 
+.barCompact {
+  margin: 0;
+}
+
 @media (max-width: 600px) {
   .bar {
     margin: 14px 14px 0;
+  }
+
+  .barCompact {
+    margin: 0;
   }
 }

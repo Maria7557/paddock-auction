@@ -7,6 +7,10 @@ import { formatAed } from "@/src/lib/utils";
 
 import styles from "./LiveRoomBuyingPowerBar.module.css";
 
+type LiveRoomBuyingPowerBarProps = {
+  compact?: boolean;
+};
+
 type LiveRoomBuyingPowerState = {
   remaining: number;
   ceiling: number;
@@ -17,7 +21,7 @@ function toMoneyNumber(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function LiveRoomBuyingPowerBar() {
+export function LiveRoomBuyingPowerBar({ compact = false }: LiveRoomBuyingPowerBarProps) {
   const [buyingPower, setBuyingPower] = useState<LiveRoomBuyingPowerState | null>(null);
 
   useEffect(() => {
@@ -65,8 +69,8 @@ export function LiveRoomBuyingPowerBar() {
   }
 
   return (
-    <div className={styles.bar}>
-      {`Your bidding limit: ${formatAed(buyingPower.ceiling)} · ${formatAed(buyingPower.remaining)} available at auction start`}
+    <div className={`${styles.bar} ${compact ? styles.barCompact : ""}`}>
+      {`Your bidding limit: ${formatAed(buyingPower.remaining)}`}
     </div>
   );
 }

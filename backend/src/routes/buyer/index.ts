@@ -188,6 +188,9 @@ type BuyerBuyingPowerResponse = {
   }>;
 };
 
+const MINIMUM_REQUIRED_DEPOSIT_AED = 5_000;
+const DEFAULT_BUYING_POWER_CEILING_AED = 300_000;
+
 const watchlistQuerySchema = z
   .object({
     status: z.string().trim().min(1).optional(),
@@ -374,6 +377,19 @@ function normalizeStatusValue(value: string | null | undefined): string {
 function hasBuyerAccessStatus(value: string | null | undefined): boolean {
   const normalized = normalizeStatusValue(value);
   return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
+}
+
+function calculateBuyingPowerCeilingAed(depositAmountAed: number): number {
+  if (depositAmountAed < MINIMUM_REQUIRED_DEPOSIT_AED) {
+    return 0;
+  }
+
+  return Number(
+    (
+      (depositAmountAed / MINIMUM_REQUIRED_DEPOSIT_AED) *
+      DEFAULT_BUYING_POWER_CEILING_AED
+    ).toFixed(2),
+  );
 }
 
 function applyLotFilters(
@@ -1020,30 +1036,38 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const activeLock = await prisma.depositLock.findFirst({
-        where: {
-          companyId: buyerContext.companyId,
-          status: "ACTIVE",
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: {
-          amount: true,
-          buyingPowerCeiling: true,
-        },
-      });
-
-      if (!activeLock) {
-        await reply.code(200).send({
-          depositAmount: "0.00",
-          ceiling: "0.00",
-          activeBidsTotal: "0.00",
-          remaining: "0.00",
-          activeBids: [],
-        } satisfies BuyerBuyingPowerResponse);
-        return;
-      }
-
-      const [summary, companyHighestBids] = await Promise.all([
+      const [activeLock, depositWallet, legacyWallet, summary, companyHighestBids] = await Promise.all([
+        prisma.depositLock.findFirst({
+          where: {
+            companyId: buyerContext.companyId,
+            status: "ACTIVE",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            amount: true,
+            buyingPowerCeiling: true,
+          },
+        }),
+        prisma.depositWallet.findUnique({
+          where: {
+            companyId_currency: {
+              companyId: buyerContext.companyId,
+              currency: "AED",
+            },
+          },
+          select: {
+            availableBalance: true,
+          },
+        }),
+        prisma.wallet.findUnique({
+          where: {
+            userId: buyerContext.userId,
+          },
+          select: {
+            balance: true,
+            lockedBalance: true,
+          },
+        }),
         prisma.buyerBidSummary.findUnique({
           where: {
             companyId: buyerContext.companyId,
@@ -1081,8 +1105,41 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
         }),
       ]);
 
-      const depositAmount = await toNumberValue(activeLock.amount);
-      const ceiling = await toNumberValue(activeLock.buyingPowerCeiling);
+      const depositWalletAvailableAed = depositWallet
+        ? await toNumberValue(depositWallet.availableBalance)
+        : 0;
+      const legacyWalletAvailableAed = legacyWallet
+        ? Math.max(
+            0,
+            Number(
+              (
+                (await toNumberValue(legacyWallet.balance)) -
+                (await toNumberValue(legacyWallet.lockedBalance))
+              ).toFixed(2),
+            ),
+          )
+        : 0;
+
+      const depositAmount = activeLock
+        ? await toNumberValue(activeLock.amount)
+        : depositWallet
+          ? depositWalletAvailableAed
+          : legacyWalletAvailableAed;
+      const ceiling = activeLock
+        ? await toNumberValue(activeLock.buyingPowerCeiling)
+        : calculateBuyingPowerCeilingAed(depositAmount);
+
+      if (depositAmount < MINIMUM_REQUIRED_DEPOSIT_AED || ceiling <= 0) {
+        await reply.code(200).send({
+          depositAmount: "0.00",
+          ceiling: "0.00",
+          activeBidsTotal: "0.00",
+          remaining: "0.00",
+          activeBids: [],
+        } satisfies BuyerBuyingPowerResponse);
+        return;
+      }
+
       const activeBidsTotal = summary ? await toNumberValue(summary.activeBidsTotal) : 0;
       const remaining = Math.max(0, Number((ceiling - activeBidsTotal).toFixed(2)));
       const activeBids = await Promise.all(
@@ -1332,6 +1389,11 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           isWinner
         ) {
           const invoiceRecord = invoiceByAuctionId.get(entry.auctionId);
+
+          if (!invoiceRecord?.id) {
+            continue;
+          }
+
           const invoiceDueAt = await toIsoString(invoiceRecord?.dueAt ?? null);
           const sortValue = invoiceDueAt ?? (await toIsoString(entry.endsAt)) ?? "";
 

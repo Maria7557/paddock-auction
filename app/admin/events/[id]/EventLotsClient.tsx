@@ -48,6 +48,7 @@ function renderStateBadge(state: string) {
 
 export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) {
   const router = useRouter();
+  const [data, setData] = useState(initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedAuctionId, setSelectedAuctionId] = useState<string>("");
@@ -55,17 +56,38 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
   const [error, setError] = useState<string | null>(null);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
 
-  const nextPosition =
-    initialData.lots.reduce((maxPosition, lot) => Math.max(maxPosition, lot.position), -1) + 1;
+  const nextPosition = data.lots.reduce((maxPosition, lot) => Math.max(maxPosition, lot.position), -1) + 1;
   const filteredAuctions = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     if (!query) {
-      return initialData.availableAuctions;
+      return data.availableAuctions;
     }
 
-    return initialData.availableAuctions.filter((auction) => auction.title.toLowerCase().includes(query));
-  }, [initialData.availableAuctions, search]);
+    return data.availableAuctions.filter((auction) => auction.title.toLowerCase().includes(query));
+  }, [data.availableAuctions, search]);
+
+  async function refreshData(): Promise<AdminEventLotsResponse> {
+    const payload = await api.admin.events.getAdminEventLots(eventId);
+    setData(payload);
+    return payload;
+  }
+
+  async function openAddLotModal(): Promise<void> {
+    setBusy(true);
+    setError(null);
+
+    try {
+      await refreshData();
+      setSelectedAuctionId("");
+      setSearch("");
+      setIsModalOpen(true);
+    } catch (refreshError) {
+      setError(getApiErrorMessage(refreshError, "Unable to load available lots right now."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function addSelectedLot(): Promise<void> {
     if (!selectedAuctionId) {
@@ -78,6 +100,7 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
 
     try {
       await api.admin.events.addLotToEvent(eventId, selectedAuctionId, nextPosition);
+      await refreshData();
       setIsModalOpen(false);
       setSearch("");
       setSelectedAuctionId("");
@@ -95,6 +118,7 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
 
     try {
       await api.admin.events.removeLotFromEvent(eventId, lotId);
+      await refreshData();
       router.refresh();
     } catch (removeError) {
       setError(getApiErrorMessage(removeError, "Unable to remove this lot from the queue."));
@@ -107,13 +131,13 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
     <section className={styles.page}>
       <div className={styles.headerRow}>
         <div>
-          <h1 className={styles.heading}>{initialData.event.title}</h1>
+          <h1 className={styles.heading}>{data.event.title}</h1>
           <p className={styles.metaLine}>
-            Scheduled for {formatDateTime(initialData.event.scheduledAt)} · {initialData.lots.length} lots
+            Scheduled for {formatDateTime(data.event.scheduledAt)} · {data.lots.length} lots
           </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-          Add Lot
+        <button type="button" className="btn btn-primary" onClick={() => void openAddLotModal()} disabled={busy}>
+          {busy ? "Loading..." : "Add Lot"}
         </button>
       </div>
 
@@ -130,7 +154,7 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
               </tr>
             </thead>
             <tbody>
-              {initialData.lots.map((lot) => (
+              {data.lots.map((lot) => (
                 <tr key={lot.id}>
                   <td className={styles.mono}>#{lot.position + 1}</td>
                   <td>
@@ -163,7 +187,7 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
                   </td>
                 </tr>
               ))}
-              {initialData.lots.length === 0 ? (
+              {data.lots.length === 0 ? (
                 <tr>
                   <td colSpan={4} className={styles.emptyCell}>
                     No lots queued yet.
@@ -203,26 +227,34 @@ export function EventLotsClient({ eventId, initialData }: EventLotsClientProps) 
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className={styles.searchInput}
-              placeholder="Search scheduled lots"
+              placeholder="Search available lots"
             />
 
             <div className={styles.modalList}>
               {filteredAuctions.map((auction) => (
                 <label key={auction.auctionId} className={styles.modalOption}>
+                  <div className={styles.modalOptionMedia}>
+                    {auction.imageUrl ? (
+                      <img src={auction.imageUrl} alt={auction.title} className={styles.thumb} />
+                    ) : (
+                      <div className={styles.thumbPlaceholder} aria-hidden />
+                    )}
+                  </div>
+                  <div className={styles.modalOptionContent}>
+                    <strong>{auction.title}</strong>
+                    <div className={styles.vehicleMeta}>Start AED {auction.startingPrice.toLocaleString("en-AE")}</div>
+                  </div>
                   <input
                     type="radio"
                     name="auction"
                     checked={selectedAuctionId === auction.auctionId}
                     onChange={() => setSelectedAuctionId(auction.auctionId)}
+                    className={styles.modalOptionRadio}
                   />
-                  <div>
-                    <strong>{auction.title}</strong>
-                    <div className={styles.vehicleMeta}>Start AED {auction.startingPrice.toLocaleString("en-AE")}</div>
-                  </div>
                 </label>
               ))}
               {filteredAuctions.length === 0 ? (
-                <div className={styles.emptyStateCard}>No scheduled lots available to add.</div>
+                <div className={styles.emptyStateCard}>No available lots to add.</div>
               ) : null}
             </div>
 

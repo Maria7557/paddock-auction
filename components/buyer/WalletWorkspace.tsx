@@ -96,6 +96,18 @@ export function WalletWorkspace({
   const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
   const successTimeoutRef = useRef<number | null>(null);
 
+  const hasActiveBidExposure = walletState.buyingPower.activeBidsTotal > 0;
+  const effectiveLockedBalance = hasActiveBidExposure
+    ? Math.max(walletState.lockedBalance, walletState.buyingPower.depositAmount)
+    : walletState.lockedBalance;
+  const effectiveAvailableBalance = Math.max(
+    0,
+    walletState.availableBalance - Math.max(0, effectiveLockedBalance - walletState.lockedBalance),
+  );
+  const availableBalanceDetail = hasActiveBidExposure
+    ? "Secured while your active bids remain open"
+    : "Fully refundable";
+
   useEffect(() => {
     return () => {
       if (successTimeoutRef.current !== null) {
@@ -108,13 +120,13 @@ export function WalletWorkspace({
     () => [
       {
         label: "Available balance",
-        value: formatAed(walletState.availableBalance),
+        value: formatAed(effectiveAvailableBalance),
         toneClass: styles.metricValuePositive,
-        detail: "Fully refundable",
+        detail: availableBalanceDetail,
       },
       {
         label: "Locked",
-        value: formatAed(walletState.lockedBalance),
+        value: formatAed(effectiveLockedBalance),
         toneClass: styles.metricValueMuted,
       },
       {
@@ -129,10 +141,11 @@ export function WalletWorkspace({
       },
     ],
     [
-      walletState.availableBalance,
+      availableBalanceDetail,
+      effectiveAvailableBalance,
+      effectiveLockedBalance,
       walletState.buyingPower.activeBidsTotal,
       walletState.buyingPower.remaining,
-      walletState.lockedBalance,
     ],
   );
 
@@ -214,7 +227,7 @@ export function WalletWorkspace({
       <WithdrawalModal
         isOpen={isWithdrawalOpen}
         onClose={() => setIsWithdrawalOpen(false)}
-        availableBalance={walletState.availableBalance}
+        availableBalance={effectiveAvailableBalance}
       />
 
       <section className={styles.tableCard}>

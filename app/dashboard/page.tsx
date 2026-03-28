@@ -333,6 +333,12 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
+        {hasRequiredDeposit ? (
+          <section className={styles.section}>
+            <DepositCard buyingPower={buyingPower} />
+          </section>
+        ) : null}
+
         <section className={styles.section}>
           <div className={styles.sectionTitle}>Available right now</div>
           <div className={styles.availabilityGrid}>
@@ -403,12 +409,6 @@ export default async function DashboardPage() {
             ))}
           </div>
         </section>
-
-        {hasRequiredDeposit ? (
-          <section className={styles.section}>
-            <DepositCard buyingPower={buyingPower} />
-          </section>
-        ) : null}
 
         <RecommendedLots lots={dashboard.recommendedLots} />
       </div>
