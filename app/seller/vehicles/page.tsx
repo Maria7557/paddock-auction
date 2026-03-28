@@ -4,11 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { SellerDecisionCard } from "@/components/seller/SellerDecisionCard";
 import { SellerTabs } from "@/components/seller/SellerTabs";
 import { VehicleListCard } from "@/components/seller/VehicleListCard";
 import { ApiError, api, getApiErrorMessage } from "@/src/lib/api-client";
-import type { SellerPendingDecisionItem, SellerPendingDecisionResponse } from "@/src/types/auction";
 
 type SellerVehiclesResponse = {
   total: number;
@@ -46,17 +44,6 @@ const SORT_OPTIONS = [
   { value: "price_asc", label: "Price ↑" },
   { value: "price_desc", label: "Price ↓" },
 ] as const;
-const EMPTY_PENDING_RESPONSE: SellerPendingDecisionResponse = {
-  pending: [],
-};
-
-function normalizePendingResponse(
-  payload: Partial<SellerPendingDecisionResponse> | null | undefined,
-): SellerPendingDecisionResponse {
-  return {
-    pending: Array.isArray(payload?.pending) ? payload.pending : [],
-  };
-}
 
 export default function SellerVehiclesPage() {
   const router = useRouter();
@@ -66,13 +53,6 @@ export default function SellerVehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SellerVehiclesResponse>({ total: 0, vehicles: [] });
-  const [pendingData, setPendingData] = useState<SellerPendingDecisionResponse>(EMPTY_PENDING_RESPONSE);
-  const [pendingLoading, setPendingLoading] = useState(true);
-  const [pendingError, setPendingError] = useState<string | null>(null);
-  const [busyDecision, setBusyDecision] = useState<{
-    auctionId: string;
-    action: "accept" | "decline";
-  } | null>(null);
 
   const redirectToLogin = useCallback(() => {
     router.replace("/login?next=/seller/vehicles");
@@ -120,40 +100,8 @@ export default function SellerVehiclesPage() {
     }
   }, [redirectToLogin, search, sort, status]);
 
-  const loadPendingDecisions = useCallback(async (showLoader = true) => {
-    if (showLoader) {
-      setPendingLoading(true);
-    }
-
-    try {
-      setPendingError(null);
-
-      const response = await api.seller.decisions.pending<SellerPendingDecisionResponse>({
-        cache: "no-store",
-      });
-
-      setPendingData(normalizePendingResponse(response));
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.statusCode === 401) {
-        redirectToLogin();
-        return;
-      }
-
-      setPendingError(getApiErrorMessage(requestError, "Unable to load pending decisions right now."));
-    } finally {
-      if (showLoader) {
-        setPendingLoading(false);
-      }
-    }
-  }, [redirectToLogin]);
-
   const handleAuctionDecision = useCallback(
     async (auctionId: string, decision: "accept" | "decline") => {
-      setBusyDecision({
-        auctionId,
-        action: decision,
-      });
-
       try {
         await api.seller.auctions.decision(
           auctionId,
@@ -168,24 +116,17 @@ export default function SellerVehiclesPage() {
           return;
         }
 
-        setPendingError(getApiErrorMessage(requestError, "Unable to save your decision right now."));
-        return;
-      } finally {
-        setBusyDecision(null);
+        throw requestError;
       }
 
-      await Promise.all([
-        loadVehicles(false),
-        loadPendingDecisions(false),
-      ]);
+      await loadVehicles(false);
     },
-    [loadPendingDecisions, loadVehicles, redirectToLogin],
+    [loadVehicles, redirectToLogin],
   );
 
   useEffect(() => {
     void loadVehicles();
-    void loadPendingDecisions();
-  }, [loadPendingDecisions, loadVehicles]);
+  }, [loadVehicles]);
 
   const summary = useMemo(() => {
     if (loading) {
@@ -243,45 +184,6 @@ export default function SellerVehiclesPage() {
       </section>
 
       {error ? <p className="inline-note tone-error">{error}</p> : null}
-      {pendingError ? <p className="inline-note tone-error">{pendingError}</p> : null}
-
-      {pendingLoading ? (
-        <section className="surface-panel seller-section-block sellerDecisionSection">
-          <div className="sellerDecisionHeader">
-            <div>
-              <div className="eyebrow eyebrow-green">Seller Approval</div>
-              <h2>Pending Decisions</h2>
-              <p>Loading lots that require seller approval.</p>
-            </div>
-          </div>
-        </section>
-      ) : pendingData.pending.length > 0 ? (
-        <section className="surface-panel seller-section-block sellerDecisionSection">
-          <div className="sellerDecisionHeader">
-            <div>
-              <div className="eyebrow eyebrow-green">Seller Approval</div>
-              <h2>{pendingData.pending.length} pending decision{pendingData.pending.length === 1 ? "" : "s"}</h2>
-              <p>Lots with winning bids stay here until you accept or decline them.</p>
-            </div>
-
-            <Link href="/seller/decisions" className="button button-secondary">
-              Open Decision Queue
-            </Link>
-          </div>
-
-          <div className="sellerDecisionGrid">
-            {pendingData.pending.map((item: SellerPendingDecisionItem) => (
-              <SellerDecisionCard
-                key={item.auctionId}
-                {...item}
-                busyAction={busyDecision?.auctionId === item.auctionId ? busyDecision.action : null}
-                onAccept={(auctionId) => handleAuctionDecision(auctionId, "accept")}
-                onDecline={(auctionId) => handleAuctionDecision(auctionId, "decline")}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {loading ? <p className="text-muted">Loading...</p> : null}
 
@@ -305,49 +207,6 @@ export default function SellerVehiclesPage() {
           ))}
         </section>
       ) : null}
-
-      <style jsx>{`
-        .sellerDecisionSection {
-          display: grid;
-          gap: var(--space-3);
-        }
-
-        .sellerDecisionHeader {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: var(--space-3);
-        }
-
-        .sellerDecisionHeader h2 {
-          margin: 8px 0 0;
-          font-size: clamp(24px, 4vw, 32px);
-          line-height: 1.02;
-          color: var(--ink-primary);
-        }
-
-        .sellerDecisionHeader p {
-          margin: 10px 0 0;
-          max-width: 680px;
-          color: var(--ink-secondary);
-        }
-
-        .sellerDecisionGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: var(--space-3);
-        }
-
-        @media (max-width: 980px) {
-          .sellerDecisionHeader {
-            flex-direction: column;
-          }
-
-          .sellerDecisionGrid {
-            grid-template-columns: minmax(0, 1fr);
-          }
-        }
-      `}</style>
     </section>
   );
 }
