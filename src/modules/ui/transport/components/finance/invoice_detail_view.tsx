@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import type { SupportedLocale } from "@/src/i18n/routing";
@@ -9,13 +9,13 @@ import {
   formatAed,
   formatLongDate,
   getInvoiceDeadlineTone,
-  type InvoiceReadModel,
-} from "@/src/modules/ui/domain/marketplace_read_model";
+  type InvoiceDetailViewModel,
+} from "@/src/modules/ui/domain/invoice_presentation";
 import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
 import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live_countdown";
 
 type InvoiceDetailViewProps = {
-  invoice: InvoiceReadModel;
+  invoice: InvoiceDetailViewModel;
   locale: SupportedLocale;
 };
 
@@ -29,12 +29,16 @@ function createIdempotencyKey(): string {
 
 export function InvoiceDetailView({ invoice, locale }: InvoiceDetailViewProps) {
   const t = getBuyerPortalCopy(locale);
-  const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey());
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const tone = getInvoiceDeadlineTone(invoice.dueAt, invoice.status);
   const isOverdue = tone === "critical" && new Date(invoice.dueAt).getTime() <= Date.now();
+
+  useEffect(() => {
+    setIdempotencyKey(createIdempotencyKey());
+  }, []);
 
   async function payNow() {
     if (!idempotencyKey.trim()) {

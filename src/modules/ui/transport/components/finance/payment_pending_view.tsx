@@ -9,13 +9,13 @@ import {
   formatAed,
   formatShortDateTime,
   getInvoiceDeadlineTone,
-  type InvoiceReadModel,
-} from "@/src/modules/ui/domain/marketplace_read_model";
+  type PaymentPendingInvoiceViewModel,
+} from "@/src/modules/ui/domain/invoice_presentation";
 import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live_countdown";
 import { getBuyerPortalCopy } from "@/src/modules/ui/transport/i18n/buyer_portal_copy";
 
 type PaymentPendingViewProps = {
-  invoices: InvoiceReadModel[];
+  invoices: PaymentPendingInvoiceViewModel[];
   locale: SupportedLocale;
 };
 
