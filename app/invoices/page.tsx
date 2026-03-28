@@ -162,15 +162,15 @@ export default async function InvoicesPage() {
 
                     <div className={styles.actions}>
                       {tone === "paid" ? (
-                        <Link href={`/invoices/${invoice.id}`} className="btn btn-outline">
+                        <Link href={`/finance/invoices/${invoice.id}`} className="btn btn-outline">
                           Download PDF
                         </Link>
                       ) : (
                         <>
-                          <Link href={`/invoices/${invoice.id}`} className="btn btn-outline">
+                          <Link href={`/finance/invoices/${invoice.id}`} className="btn btn-outline">
                             View invoice
                           </Link>
-                          <Link href={`/invoices/${invoice.id}`} className="btn btn-primary">
+                          <Link href={`/finance/invoices/${invoice.id}`} className="btn btn-primary">
                             Pay now
                           </Link>
                         </>
