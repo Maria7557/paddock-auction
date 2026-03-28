@@ -252,7 +252,7 @@ describe("authRoutes", () => {
         companyName: "Buyer Co",
         email: "buyer@example.com",
         role: "BUYER",
-        status: "ACTIVE",
+        status: "PENDING_APPROVAL",
       }),
       expect.anything(),
     );
@@ -265,7 +265,7 @@ describe("authRoutes", () => {
         phoneNumber: "+971501234567",
         registrationNumber: "BUY-123",
         role: "BUYER",
-        status: "ACTIVE",
+        status: "PENDING_APPROVAL",
       }),
       expect.anything(),
     );

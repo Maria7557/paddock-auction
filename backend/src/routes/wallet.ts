@@ -373,6 +373,14 @@ async function processWalletDeposit(
     return;
   }
 
+  if (buyerAccess.kycVerified !== true) {
+    await reply.code(403).send({
+      error: "KYC_PENDING",
+      message: "Your account is under review.",
+    });
+    return;
+  }
+
   const { userId } = buyerAccess;
   const parsedBody = depositSchema.safeParse(request.body);
 
@@ -780,6 +788,14 @@ export async function walletRoutes(fastify: FastifyInstance): Promise<void> {
       const buyerAccess = await requireActiveBuyerAccount(request, reply);
 
       if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
         return;
       }
 

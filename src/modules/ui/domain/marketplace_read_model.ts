@@ -301,7 +301,7 @@ function buildLotTitle(
 }
 
 function normalizeInvoiceStatus(status: DbInvoiceStatus): InvoiceStatus {
-  if (String(status) === "PAID_PENDING_CONFIRMATION") {
+  if (status === "PAID_PENDING_CONFIRMATION") {
     return "PAID";
   }
 

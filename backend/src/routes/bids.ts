@@ -672,6 +672,14 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
+        return;
+      }
+
       const { userId, companyId } = buyerAccess;
       const payload = parsedBody.data;
       fastify.log.info(
@@ -1035,6 +1043,14 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       const buyerAccess = await requireActiveBuyerAccount(request, reply);
 
       if (!buyerAccess) {
+        return;
+      }
+
+      if (buyerAccess.kycVerified !== true) {
+        await reply.code(403).send({
+          error: "KYC_PENDING",
+          message: "Your account is under review.",
+        });
         return;
       }
 

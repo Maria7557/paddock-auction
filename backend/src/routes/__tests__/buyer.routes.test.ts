@@ -246,7 +246,7 @@ describe("GET /api/buyer/dashboard", () => {
     });
   });
 
-  it("returns onboarding step 3 when a pending buyer already has the required deposit", async () => {
+  it("returns onboarding step 1 when buyer is not verified", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: buyerUserId,
       role: "BUYER",
@@ -267,7 +267,7 @@ describe("GET /api/buyer/dashboard", () => {
       .set("Authorization", `Bearer ${buyerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.onboardingStep).toBe(3);
+    expect(res.body.onboardingStep).toBe(1);
   });
 
   it("hides restricted bid, watchlist, and recommendation data from regular buyers", async () => {

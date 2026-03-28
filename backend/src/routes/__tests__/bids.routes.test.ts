@@ -318,7 +318,7 @@ describe("POST /api/bids", () => {
     expect(res.body.error).toBe("Unauthorized");
   });
 
-  it("allows bidding when buyer approval is pending but deposit checks pass", async () => {
+  it("returns 403 when buyer account is pending approval", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: buyerId,
       role: "BUYER",
@@ -333,23 +333,14 @@ describe("POST /api/bids", () => {
         },
       ],
     });
-    mockPrisma.bidRequest.findUnique.mockResolvedValue(null);
-    mockPrisma.bidRequest.create.mockResolvedValue({ id: "req-pending-approval" });
-    mockPrisma.bidRequest.update.mockResolvedValue({});
-
-    setupTransactionSuccess();
-    mockTx.$queryRaw.mockResolvedValue([makeLiveAuctionRow()]);
-    mockTx.depositLock.findFirst.mockResolvedValue({ id: "lock-1" });
-    mockTx.bid.create.mockResolvedValue(makeBidRecord());
-    mockTx.$executeRaw.mockResolvedValueOnce(1);
 
     const res = await request
       .post("/api/bids")
       .set("Authorization", `Bearer ${buyerToken}`)
       .send(validBody);
 
-    expect(res.status).toBe(201);
-    expect(res.body.bid.amount).toBe(51_000);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("ACCOUNT_PENDING_APPROVAL");
   });
 
   it("returns 400 when auctionId is missing", async () => {
@@ -936,17 +927,6 @@ describe("GET /api/auctions/:id", () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("Auction not found");
   });
-  it("returns 404 when auction is sold and no longer public", async () => {
-    mockPrisma.auction.findUnique.mockResolvedValue({
-      ...makeAuctionDetails(),
-      state: "PAYMENT_PENDING",
-    });
-
-    const res = await request.get(`/api/auctions/${auctionId}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("Auction not found");
-  });
 
   it("returns 404 when auction is sold and no longer public", async () => {
     mockPrisma.auction.findUnique.mockResolvedValue({
@@ -955,7 +935,7 @@ describe("GET /api/auctions/:id", () => {
     });
 
     const res = await request.get(`/api/auctions/${auctionId}`);
-
+ 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("Auction not found");
   });

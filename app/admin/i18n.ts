@@ -61,7 +61,6 @@ type AdminLocaleCopy = {
       phone: string;
       email: string;
       accountStatus: string;
-      depositStatus: string;
       walletBalance: string;
       registrationDate: string;
       actions: string;
@@ -227,7 +226,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         phone: "Phone",
         email: "Email",
         accountStatus: "Account Status",
-        depositStatus: "Deposit Status",
         walletBalance: "Wallet Balance",
         registrationDate: "Registration Date",
         actions: "Actions",
@@ -391,7 +389,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         phone: "Телефон",
         email: "Email",
         accountStatus: "Статус аккаунта",
-        depositStatus: "Статус депозита",
         walletBalance: "Баланс кошелька",
         registrationDate: "Дата регистрации",
         actions: "Действия",

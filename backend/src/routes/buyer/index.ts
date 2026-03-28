@@ -176,21 +176,6 @@ type BuyerMyBidsResponse = {
   ended: EndedBidItem[];
 };
 
-type BuyerBuyingPowerResponse = {
-  depositAmount: string;
-  ceiling: string;
-  activeBidsTotal: string;
-  remaining: string;
-  activeBids: Array<{
-    auctionId: string;
-    lotTitle: string;
-    amount: string;
-  }>;
-};
-
-const MINIMUM_REQUIRED_DEPOSIT_AED = 5_000;
-const DEFAULT_BUYING_POWER_CEILING_AED = 300_000;
-
 const watchlistQuerySchema = z
   .object({
     status: z.string().trim().min(1).optional(),
@@ -301,16 +286,6 @@ async function sendUnauthorized(reply: FastifyReply): Promise<void> {
   });
 }
 
-async function sendForbidden(reply: FastifyReply): Promise<void> {
-  await reply.code(403).send({
-    error: "Forbidden",
-  });
-}
-
-async function toMoneyString(value: DecimalLike): Promise<string> {
-  return (await toNumberValue(value)).toFixed(2);
-}
-
 async function requireBuyerContext(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -319,6 +294,7 @@ async function requireBuyerContext(
   companyId: string;
   userStatus: string;
   companyStatus: string;
+  kycVerified: boolean;
   buyerTier: "STANDARD" | "VIP";
 } | null> {
   const context = await loadBuyerAccessContext(request);
@@ -372,24 +348,6 @@ function buildLotTitle(brand: string | null | undefined, model: string | null | 
 
 function normalizeStatusValue(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
-}
-
-function hasBuyerAccessStatus(value: string | null | undefined): boolean {
-  const normalized = normalizeStatusValue(value);
-  return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
-}
-
-function calculateBuyingPowerCeilingAed(depositAmountAed: number): number {
-  if (depositAmountAed < MINIMUM_REQUIRED_DEPOSIT_AED) {
-    return 0;
-  }
-
-  return Number(
-    (
-      (depositAmountAed / MINIMUM_REQUIRED_DEPOSIT_AED) *
-      DEFAULT_BUYING_POWER_CEILING_AED
-    ).toFixed(2),
-  );
 }
 
 function applyLotFilters(
@@ -553,6 +511,7 @@ function createBuyerActorBase(input: {
   companyId: string;
   userStatus: string;
   companyStatus: string;
+  kycVerified: boolean;
   buyerTier: "STANDARD" | "VIP";
 }): VipRequestActorBase {
   return {
@@ -564,6 +523,7 @@ function createBuyerActorBase(input: {
       companyId: input.companyId,
       userStatus: input.userStatus,
       companyStatus: input.companyStatus,
+      kycVerified: input.kycVerified,
       buyerTier: input.buyerTier,
     },
   };
@@ -871,9 +831,10 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       const availableBalanceAed = Number((balanceAed - lockedBalanceAed).toFixed(2));
       const minDepositAed = Number(process.env.MIN_DEPOSIT_AED ?? 5000);
       const hasRequiredDeposit = balanceAed >= minDepositAed;
-      const hasBuyerAccess =
-        hasBuyerAccessStatus(buyerContext.userStatus) &&
-        hasBuyerAccessStatus(buyerContext.companyStatus);
+      const isVerified =
+        buyerContext.kycVerified === true &&
+        normalizeStatusValue(buyerContext.userStatus) === "ACTIVE" &&
+        normalizeStatusValue(buyerContext.companyStatus) === "ACTIVE";
       const hasActivity =
         visibleActiveBidAuctions.length > 0 ||
         bidActivities.length > 0 ||
@@ -883,11 +844,11 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
 
       let onboardingStep: 1 | 2 | 3 | 4 = 1;
 
-      if (hasBuyerAccess && !hasRequiredDeposit) {
+      if (isVerified && !hasRequiredDeposit) {
         onboardingStep = 2;
       }
 
-      if (hasBuyerAccess && hasRequiredDeposit) {
+      if (isVerified && hasRequiredDeposit) {
         onboardingStep = hasActivity ? 4 : 3;
       }
 
@@ -1012,157 +973,6 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
       };
 
       await reply.code(200).send(responseBody);
-    },
-  );
-
-  fastify.get(
-    "/buyer/buying-power",
-    async function buyerBuyingPowerHandler(
-      request: FastifyRequest,
-      reply: FastifyReply,
-    ): Promise<void> {
-      if (reply.sent) {
-        return;
-      }
-
-      if (request.auth?.role !== "BUYER") {
-        await sendForbidden(reply);
-        return;
-      }
-
-      const buyerContext = await requireBuyerContext(request, reply);
-
-      if (!buyerContext) {
-        return;
-      }
-
-      const [activeLock, depositWallet, legacyWallet, summary, companyHighestBids] = await Promise.all([
-        prisma.depositLock.findFirst({
-          where: {
-            companyId: buyerContext.companyId,
-            status: "ACTIVE",
-          },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: {
-            amount: true,
-            buyingPowerCeiling: true,
-          },
-        }),
-        prisma.depositWallet.findUnique({
-          where: {
-            companyId_currency: {
-              companyId: buyerContext.companyId,
-              currency: "AED",
-            },
-          },
-          select: {
-            availableBalance: true,
-          },
-        }),
-        prisma.wallet.findUnique({
-          where: {
-            userId: buyerContext.userId,
-          },
-          select: {
-            balance: true,
-            lockedBalance: true,
-          },
-        }),
-        prisma.buyerBidSummary.findUnique({
-          where: {
-            companyId: buyerContext.companyId,
-          },
-          select: {
-            activeBidsTotal: true,
-          },
-        }),
-        prisma.bid.findMany({
-          where: {
-            companyId: buyerContext.companyId,
-            auction: {
-              highestBidId: {
-                not: null,
-              },
-            },
-          },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: {
-            id: true,
-            auctionId: true,
-            amount: true,
-            auction: {
-              select: {
-                highestBidId: true,
-                vehicle: {
-                  select: {
-                    brand: true,
-                    model: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-      ]);
-
-      const depositWalletAvailableAed = depositWallet
-        ? await toNumberValue(depositWallet.availableBalance)
-        : 0;
-      const legacyWalletAvailableAed = legacyWallet
-        ? Math.max(
-            0,
-            Number(
-              (
-                (await toNumberValue(legacyWallet.balance)) -
-                (await toNumberValue(legacyWallet.lockedBalance))
-              ).toFixed(2),
-            ),
-          )
-        : 0;
-
-      const depositAmount = activeLock
-        ? await toNumberValue(activeLock.amount)
-        : depositWallet
-          ? depositWalletAvailableAed
-          : legacyWalletAvailableAed;
-      const ceiling = activeLock
-        ? await toNumberValue(activeLock.buyingPowerCeiling)
-        : calculateBuyingPowerCeilingAed(depositAmount);
-
-      if (depositAmount < MINIMUM_REQUIRED_DEPOSIT_AED || ceiling <= 0) {
-        await reply.code(200).send({
-          depositAmount: "0.00",
-          ceiling: "0.00",
-          activeBidsTotal: "0.00",
-          remaining: "0.00",
-          activeBids: [],
-        } satisfies BuyerBuyingPowerResponse);
-        return;
-      }
-
-      const activeBidsTotal = summary ? await toNumberValue(summary.activeBidsTotal) : 0;
-      const remaining = Math.max(0, Number((ceiling - activeBidsTotal).toFixed(2)));
-      const activeBids = await Promise.all(
-        companyHighestBids
-          .filter((bid) => bid.auction.highestBidId === bid.id)
-          .map(async (bid) => ({
-            auctionId: bid.auctionId,
-            lotTitle: buildLotTitle(
-              bid.auction.vehicle?.brand,
-              bid.auction.vehicle?.model,
-              bid.auctionId,
-            ),
-            amount: await toMoneyString(bid.amount),
-          })),
-      );
-
-      await reply.code(200).send({
-        depositAmount: depositAmount.toFixed(2),
-        ceiling: ceiling.toFixed(2),
-        activeBidsTotal: activeBidsTotal.toFixed(2),
-        remaining: remaining.toFixed(2),
-        activeBids,
-      } satisfies BuyerBuyingPowerResponse);
     },
   );
 
@@ -1389,11 +1199,6 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           isWinner
         ) {
           const invoiceRecord = invoiceByAuctionId.get(entry.auctionId);
-
-          if (!invoiceRecord?.id) {
-            continue;
-          }
-
           const invoiceDueAt = await toIsoString(invoiceRecord?.dueAt ?? null);
           const sortValue = invoiceDueAt ?? (await toIsoString(entry.endsAt)) ?? "";
 

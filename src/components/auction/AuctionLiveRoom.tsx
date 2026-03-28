@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { GalleryLightbox } from "@/components/gallery/GalleryLightbox";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
 import { useAuctionLiveSocket } from "@/src/hooks/useAuctionLiveSocket";
 import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
@@ -27,6 +26,7 @@ const DEFAULT_VIEWER_STATE: ViewerState = {
   isBuyer: false,
   userStatus: null,
   companyStatus: null,
+  kycVerified: false,
   hasRequiredDeposit: false,
   buyerTier: null,
 };
@@ -97,6 +97,7 @@ type ViewerState = {
   isBuyer: boolean;
   userStatus: string | null;
   companyStatus: string | null;
+  kycVerified: boolean;
   hasRequiredDeposit: boolean;
   buyerTier: BuyerTier | null;
 };
@@ -105,6 +106,7 @@ type AuthMeResponse = {
   user?: {
     role?: string;
     status?: string;
+    kycVerified?: boolean;
     companyUsers?: Array<{
       company?: {
         buyerTier?: BuyerTier | null;
@@ -154,6 +156,7 @@ type FuseBidButtonProps = {
 };
 
 type GalleryProps = {
+  lotKey: string;
   photos: GalleryPhoto[];
   title: string;
 };
@@ -293,9 +296,8 @@ function getStatusClassName(state: string): string {
   }
 }
 
-function hasBuyerAccessStatus(value: string | null | undefined): boolean {
-  const normalized = value?.trim().toUpperCase() ?? "";
-  return normalized.length > 0 && normalized !== "BLOCKED" && normalized !== "REJECTED";
+function isActiveStatus(value: string | null | undefined): boolean {
+  return value?.trim().toUpperCase() === "ACTIVE";
 }
 
 function getRemainingMs(endsAt: string | null): number {
@@ -415,7 +417,7 @@ function buildStateCardConfig(
       return {
         eyebrow: "Checking access",
         title: "Syncing your bidding status",
-        body: "We are syncing your buyer profile and deposit readiness for this live lot.",
+        body: "We are verifying your buyer profile, KYC, and deposit readiness for this live lot.",
         tone: "default",
       };
     }
@@ -423,19 +425,10 @@ function buildStateCardConfig(
     if (!viewer.isBuyer) {
       return {
         eyebrow: "Buyer access required",
-        title: "Switch to your buyer account",
+        title: "Switch to an approved buyer account",
         body: "Live bidding is reserved for buyer workspaces. Sign in with your buyer account to enter this auction.",
         actionLabel: "Go to login",
         actionHref: "/login",
-        tone: "warning",
-      };
-    }
-
-    if (!hasBuyerAccessStatus(viewer.userStatus) || !hasBuyerAccessStatus(viewer.companyStatus)) {
-      return {
-        eyebrow: "Buyer account unavailable",
-        title: "Live bidding is disabled for this account",
-        body: "This buyer workspace cannot place live bids right now. Switch accounts or contact support if you need help.",
         tone: "warning",
       };
     }
@@ -616,16 +609,17 @@ function buildAuctionPlan(lot: LotDetail, upcomingLots: UpcomingLot[]): AuctionP
   }));
 }
 
-function Gallery({ photos, title }: GalleryProps) {
+function Gallery({ lotKey, photos, title }: GalleryProps) {
   const [active, setActive] = useState(0);
   const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
-  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    setActive(0);
+    setFailedPhotoIds([]);
+  }, [lotKey]);
 
   const activePhoto = photos[active] ?? photos[0];
   const isPhotoBroken = (photo: GalleryPhoto): boolean => failedPhotoIds.includes(photo.id);
-  const markPhotoFailed = (photoId: string): void => {
-    setFailedPhotoIds((current) => (current.includes(photoId) ? current : [...current, photoId]));
-  };
 
   if (!activePhoto) {
     return null;
@@ -640,7 +634,7 @@ function Gallery({ photos, title }: GalleryProps) {
             alt={`${title} — ${activePhoto.label}`}
             className={styles.galleryImage}
             onError={() => {
-              markPhotoFailed(activePhoto.id);
+              setFailedPhotoIds((current) => (current.includes(activePhoto.id) ? current : [...current, activePhoto.id]));
             }}
           />
         ) : (
@@ -653,19 +647,6 @@ function Gallery({ photos, title }: GalleryProps) {
         <div className={styles.galleryCounter}>
           {active + 1} / {photos.length}
         </div>
-
-        <button
-          type="button"
-          className={styles.galleryExpandButton}
-          onClick={() => setIsExpanded(true)}
-          aria-label="Expand gallery"
-          aria-haspopup="dialog"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
-          </svg>
-          Expand
-        </button>
 
         {active > 0 ? (
           <button
@@ -710,7 +691,7 @@ function Gallery({ photos, title }: GalleryProps) {
                 alt={photo.label}
                 className={styles.thumbnailImage}
                 onError={() => {
-                  markPhotoFailed(photo.id);
+                  setFailedPhotoIds((current) => (current.includes(photo.id) ? current : [...current, photo.id]));
                 }}
               />
             ) : (
@@ -719,19 +700,6 @@ function Gallery({ photos, title }: GalleryProps) {
           </button>
         ))}
       </div>
-
-      <GalleryLightbox
-        isOpen={isExpanded}
-        title={title}
-        photos={photos}
-        activeIndex={active}
-        failedPhotoIds={failedPhotoIds}
-        onSelect={setActive}
-        onClose={() => setIsExpanded(false)}
-        onPhotoError={(photo) => {
-          markPhotoFailed(photo.id);
-        }}
-      />
     </div>
   );
 }
@@ -758,6 +726,7 @@ function BidFeedItem({ entry, isNew }: BidFeedItemProps) {
 
   useEffect(() => {
     if (!isNew) {
+      setVisible(true);
       return undefined;
     }
 
@@ -1047,7 +1016,7 @@ function AuctionClosedOverlay({ heroImageUrl, stats }: AuctionClosedOverlayProps
 
 export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const searchParams = useSearchParams();
   const [socketEnabled, setSocketEnabled] = useState(true);
   const { snapshot: liveSnapshot, connectionState } = useAuctionLiveSocket(auctionId, socketEnabled);
@@ -1085,11 +1054,11 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const outcomeTriggerRef = useRef<string | null>(null);
   const previousStateRef = useRef(snapshot.state);
   const previousBidCountRef = useRef(initialSnapshot.totalBids);
-  const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams.get("launchAt")), [searchParams]);
+  const launchAtMs = useMemo(() => parseLaunchAtParam(searchParams?.get("launchAt")), [searchParams]);
   const initialSessionStats = useMemo<SessionStats>(
     () => ({
-      soldLots: parseCountParam(searchParams.get("soldLots")),
-      bidsPlaced: parseCountParam(searchParams.get("placedBids")),
+      soldLots: parseCountParam(searchParams?.get("soldLots")),
+      bidsPlaced: parseCountParam(searchParams?.get("placedBids")),
     }),
     [searchParams],
   );
@@ -1117,8 +1086,9 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
   const canBid =
     viewer.authenticated &&
     viewer.isBuyer &&
-    hasBuyerAccessStatus(viewer.userStatus) &&
-    hasBuyerAccessStatus(viewer.companyStatus) &&
+    isActiveStatus(viewer.userStatus) &&
+    isActiveStatus(viewer.companyStatus) &&
+    viewer.kycVerified &&
     viewer.hasRequiredDeposit;
   const sessionId = useMemo(() => formatSessionId(auctionId), [auctionId]);
   const locale = useMemo(() => getLocaleFromPathname(pathname), [pathname]);
@@ -1329,6 +1299,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
           isBuyer,
           userStatus: user?.status ?? null,
           companyStatus: primaryCompany?.status ?? null,
+          kycVerified: user?.kycVerified === true,
           hasRequiredDeposit: false,
           buyerTier: primaryCompany?.buyerTier ?? null,
         };
@@ -1674,11 +1645,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
   const handleBid = async () => {
     if (!isLive || !canBid) {
-      setInlineError(
-        viewer.hasRequiredDeposit
-          ? "Live bidding is unavailable for this buyer account right now."
-          : "Live bidding unlocks once your deposit is ready.",
-      );
+      setInlineError("Live bidding is locked until your buyer access is fully ready.");
       return;
     }
 
@@ -1790,7 +1757,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
             <div className={styles.heroRow}>
               <div className={styles.leftColumn}>
-                <Gallery key={lot.id} photos={photos} title={lot.title} />
+                <Gallery lotKey={lot.id} photos={photos} title={lot.title} />
 
                 <div className={styles.block}>
                   <div className={styles.blockLabel}>Vehicle Details</div>
@@ -1903,7 +1870,7 @@ export function AuctionLiveRoom({ auctionId, initialSnapshot, lot }: Props) {
 
                     <div className={styles.preliveChecklist}>
                       <div className={styles.preliveChecklistItem}>Review the vehicle and damage details before launch</div>
-                      <div className={styles.preliveChecklistItem}>Sign in with your buyer account and make sure your deposit is ready</div>
+                      <div className={styles.preliveChecklistItem}>Make sure your buyer account and deposit are ready</div>
                       <div className={styles.preliveChecklistItem}>Stay in this tab to move straight into live bidding</div>
                     </div>
                   </div>

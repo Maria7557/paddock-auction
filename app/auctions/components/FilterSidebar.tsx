@@ -4,10 +4,6 @@ import { Star } from "lucide-react";
 
 import type { DisplaySettings } from "@/src/lib/money";
 import { formatInteger } from "@/src/lib/money";
-import {
-  AUCTION_CATEGORY_ORDER,
-  getAuctionCategoryLabel,
-} from "@/src/modules/ui/domain/auction_category";
 
 import styles from "./FilterSidebar.module.css";
 
@@ -90,29 +86,6 @@ export function FilterSidebar({
               <span>VIP</span>
             </span>
           </button>
-        </div>
-      </div>
-
-      <div className={styles.group}>
-        <label className={styles.label}>{isRu ? "Категория" : "Category"}</label>
-        <div className={styles.pills}>
-          <button
-            type="button"
-            className={`${styles.pill} ${filters.category === "" ? styles.pillActive : ""}`}
-            onClick={() => onChange("category", "")}
-          >
-            {isRu ? "Любая" : "Any"}
-          </button>
-          {AUCTION_CATEGORY_ORDER.map((category) => (
-            <button
-              key={category}
-              type="button"
-              className={`${styles.pill} ${filters.category === category ? styles.pillActive : ""}`}
-              onClick={() => onChange("category", category)}
-            >
-              {getAuctionCategoryLabel(category, display.locale)}
-            </button>
-          ))}
         </div>
       </div>
 

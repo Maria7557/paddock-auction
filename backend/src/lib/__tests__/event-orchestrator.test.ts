@@ -192,6 +192,7 @@ function makeAuction(
       | "LIVE"
       | "EXTENDED"
       | "CLOSED"
+      | "AWAITING_SELLER_DECISION"
       | "PAYMENT_PENDING"
       | "PAID"
       | "DEFAULTED"
@@ -366,8 +367,9 @@ describe("event orchestrator", () => {
       expect.objectContaining({
         where: { id: "auction-1" },
         data: expect.objectContaining({
-          state: "PAYMENT_PENDING",
+          state: "AWAITING_SELLER_DECISION",
           winnerCompanyId: "buyer-company-1",
+          decisionDeadlineAt: expect.any(Date),
         }),
       }),
     );

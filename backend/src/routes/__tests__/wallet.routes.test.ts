@@ -124,6 +124,7 @@ function buildStripeWebhookTx(overrides: Record<string, unknown> = {}) {
 let server: FastifyInstance;
 let request: ReturnType<typeof supertest>;
 let buyerToken: string;
+let kycBuyerToken: string;
 
 beforeAll(async () => {
   process.env.JWT_SECRET = jwtSecret;
@@ -139,6 +140,12 @@ beforeAll(async () => {
     role: "BUYER",
     companyId: buyerCompanyId,
     kycVerified: false,
+  });
+  kycBuyerToken = await makeToken({
+    userId: buyerUserId,
+    role: "BUYER",
+    companyId: buyerCompanyId,
+    kycVerified: true,
   });
 });
 
@@ -206,7 +213,7 @@ describe("POST /api/wallet/deposit", () => {
     expect(res.status).toBe(401);
   });
 
-  it("allows deposit when buyer KYC is pending", async () => {
+  it("returns 403 when buyer KYC is pending", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: buyerUserId,
       role: "BUYER",
@@ -221,30 +228,6 @@ describe("POST /api/wallet/deposit", () => {
         },
       ],
     });
-    mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
-    mockPrisma.idempotencyKey.create.mockResolvedValue({ id: "ik-kyc" });
-    mockPrisma.idempotencyKey.updateMany.mockResolvedValue({ count: 1 });
-
-    const tx = buildWalletTx();
-    tx.user.findUnique.mockResolvedValue({
-      id: buyerUserId,
-    });
-    tx.wallet.upsert.mockResolvedValue({
-      id: "w-kyc",
-      userId: buyerUserId,
-      balance: 10000,
-      lockedBalance: 0,
-    });
-    tx.wallet.update.mockResolvedValue({
-      id: "w-kyc",
-      userId: buyerUserId,
-      balance: 15000,
-      lockedBalance: 0,
-    });
-    tx.walletLedger.create.mockResolvedValue({
-      id: "l-kyc",
-    });
-    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     const res = await request
       .post("/api/wallet/deposit")
@@ -254,19 +237,11 @@ describe("POST /api/wallet/deposit", () => {
         idempotencyKey: "dep-001",
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      result: "accepted",
-      wallet_id: "w-kyc",
-      user_id: buyerUserId,
-      amount: 5000,
-      balance: 15000,
-      available_balance: 15000,
-      ledger_id: "l-kyc",
-    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("KYC_PENDING");
   });
 
-  it("allows deposit when buyer account is pending approval", async () => {
+  it("returns 403 when buyer account is pending approval", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: buyerUserId,
       role: "BUYER",
@@ -281,30 +256,6 @@ describe("POST /api/wallet/deposit", () => {
         },
       ],
     });
-    mockPrisma.idempotencyKey.findFirst.mockResolvedValue(null);
-    mockPrisma.idempotencyKey.create.mockResolvedValue({ id: "ik-pending" });
-    mockPrisma.idempotencyKey.updateMany.mockResolvedValue({ count: 1 });
-
-    const tx = buildWalletTx();
-    tx.user.findUnique.mockResolvedValue({
-      id: buyerUserId,
-    });
-    tx.wallet.upsert.mockResolvedValue({
-      id: "w-pending",
-      userId: buyerUserId,
-      balance: 10000,
-      lockedBalance: 0,
-    });
-    tx.wallet.update.mockResolvedValue({
-      id: "w-pending",
-      userId: buyerUserId,
-      balance: 15000,
-      lockedBalance: 0,
-    });
-    tx.walletLedger.create.mockResolvedValue({
-      id: "l-pending",
-    });
-    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     const res = await request
       .post("/api/wallet/deposit")
@@ -314,16 +265,8 @@ describe("POST /api/wallet/deposit", () => {
         idempotencyKey: "dep-pending",
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      result: "accepted",
-      wallet_id: "w-pending",
-      user_id: buyerUserId,
-      amount: 5000,
-      balance: 15000,
-      available_balance: 15000,
-      ledger_id: "l-pending",
-    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("ACCOUNT_PENDING_APPROVAL");
   });
 
   it("returns 200 when deposit is processed", async () => {
@@ -369,7 +312,7 @@ describe("POST /api/wallet/deposit", () => {
 
     const res = await request
       .post("/api/wallet/deposit")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: 5000,
         idempotencyKey: "dep-001",
@@ -418,7 +361,7 @@ describe("POST /api/wallet/deposit", () => {
 
     const res = await request
       .post("/api/wallet/deposit")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: 5000,
         idempotencyKey: "dep-001",
@@ -432,7 +375,7 @@ describe("POST /api/wallet/deposit", () => {
   it("returns 400 when amount is zero", async () => {
     const res = await request
       .post("/api/wallet/deposit")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: 0,
         idempotencyKey: "dep-002",
@@ -445,7 +388,7 @@ describe("POST /api/wallet/deposit", () => {
   it("returns 400 when amount is negative", async () => {
     const res = await request
       .post("/api/wallet/deposit")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: -100,
         idempotencyKey: "dep-003",
@@ -457,7 +400,7 @@ describe("POST /api/wallet/deposit", () => {
   it("returns 400 when idempotencyKey is missing", async () => {
     const res = await request
       .post("/api/wallet/deposit")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: 1000,
       });
@@ -471,7 +414,7 @@ describe("POST /api/wallet/topup", () => {
   it("returns 400 when the Idempotency-Key header is missing", async () => {
     const res = await request
       .post("/api/wallet/topup")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .send({
         amount: 5000,
       });
@@ -479,41 +422,6 @@ describe("POST /api/wallet/topup", () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
       error: "MISSING_IDEMPOTENCY_KEY",
-    });
-  });
-
-  it("returns a Stripe client secret even when buyer approval is pending", async () => {
-    mockPrisma.user.findUnique.mockResolvedValue({
-      id: buyerUserId,
-      role: "BUYER",
-      status: "PENDING_APPROVAL",
-      kycVerified: false,
-      companyUsers: [
-        {
-          companyId: buyerCompanyId,
-          company: {
-            status: "PENDING_APPROVAL",
-          },
-        },
-      ],
-    });
-    mockStripe.paymentIntents.create.mockResolvedValue({
-      id: "pi_topup_pending",
-      client_secret: "pi_topup_pending_secret",
-    });
-
-    const res = await request
-      .post("/api/wallet/topup")
-      .set("Authorization", `Bearer ${buyerToken}`)
-      .set("Idempotency-Key", "topup-pending-1")
-      .send({
-        amount: 5000,
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      clientSecret: "pi_topup_pending_secret",
-      paymentIntentId: "pi_topup_pending",
     });
   });
 
@@ -525,7 +433,7 @@ describe("POST /api/wallet/topup", () => {
 
     const res = await request
       .post("/api/wallet/topup")
-      .set("Authorization", `Bearer ${buyerToken}`)
+      .set("Authorization", `Bearer ${kycBuyerToken}`)
       .set("Idempotency-Key", "topup-key-1")
       .send({
         amount: 5000,

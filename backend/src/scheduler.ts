@@ -606,6 +606,7 @@ export async function runSellerDecisionDeadlineJob(): Promise<void> {
     "Scheduler job completed",
   );
 }
+
 export async function runEventAutoStartJob(): Promise<void> {
   const dueEvents = await prisma.auctionEvent.findMany({
     where: {
@@ -1104,6 +1105,7 @@ export async function runNewVehiclesDigest(): Promise<void> {
     );
   }
 }
+
 export async function setSchedulerLogger(logger: LoggerLike): Promise<void> {
   schedulerLogger = logger;
 }

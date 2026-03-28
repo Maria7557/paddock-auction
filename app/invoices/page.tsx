@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { BuyerShell } from "@/components/buyer/BuyerShell";
 import { IconFile } from "@/components/ui/icons";
-import { api, buildApiUrl } from "@/src/lib/api-client";
+import { api } from "@/src/lib/api-client";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import { formatAed } from "@/src/lib/utils";
@@ -162,12 +162,9 @@ export default async function InvoicesPage() {
 
                     <div className={styles.actions}>
                       {tone === "paid" ? (
-                        <a
-                          href={buildApiUrl(`/api/finance/invoices/${invoice.id}/pdf`)}
-                          className="btn btn-outline"
-                        >
+                        <Link href={`/invoices/${invoice.id}`} className="btn btn-outline">
                           Download PDF
-                        </a>
+                        </Link>
                       ) : (
                         <>
                           <Link href={`/invoices/${invoice.id}`} className="btn btn-outline">

@@ -14,12 +14,6 @@ import {
 import LotsSection from "@/components/home/LotsSection";
 import { PLATFORM_STATS } from "@/src/lib/data";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
-import {
-  AUCTION_CATEGORY_LABELS,
-  AUCTION_CATEGORY_ORDER,
-  inferAuctionCategory,
-  type AuctionCategory,
-} from "@/src/modules/ui/domain/auction_category";
 import { readHomepageLots, type AuctionLot } from "@/src/modules/ui/domain/marketplace_read_model";
 import type { AuctionWeekEvent, Lot, LotStatus } from "@/src/types/auction";
 
@@ -31,11 +25,20 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 type HomeCategory = {
-  slug: AuctionCategory;
+  slug: string;
   label: string;
   sub: string;
   image: string;
   href?: string;
+};
+
+const CATEGORY_ORDER = ["luxury", "suv", "sedan", "sports"] as const;
+
+const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
+  luxury: "Luxury Fleet",
+  suv: "SUV Inventory",
+  sedan: "Fleet Sedans",
+  sports: "Sports & Coupes",
 };
 
 function getSpec(lot: AuctionLot, label: string, fallback = ""): string {
@@ -49,6 +52,29 @@ function mapStatus(status: AuctionLot["status"]): LotStatus {
   }
 
   return "CLOSED";
+}
+
+function inferCategory(make: string, bodyType: string): string {
+  const normalizedMake = make.toLowerCase();
+  const normalizedBody = bodyType.toLowerCase();
+
+  if (normalizedBody.includes("suv")) {
+    return "suv";
+  }
+
+  if (
+    ["bentley", "ferrari", "lamborghini", "rolls-royce", "mclaren", "maserati"].some((brand) =>
+      normalizedMake.includes(brand),
+    )
+  ) {
+    return "luxury";
+  }
+
+  if (normalizedBody.includes("coupe") || normalizedBody.includes("sport")) {
+    return "sports";
+  }
+
+  return "sedan";
 }
 
 function mapToHomeLot(lot: AuctionLot): Lot {
@@ -72,7 +98,7 @@ function mapToHomeLot(lot: AuctionLot): Lot {
     regionSpec,
     color,
     emirate: lot.location,
-    category: inferAuctionCategory(lot.make, bodyType),
+    category: inferCategory(lot.make, bodyType),
     status: mapStatus(lot.status),
     currentBidAed: lot.currentBidAed,
     startingBidAed: lot.currentBidAed,
@@ -128,7 +154,7 @@ function buildHomepageCategories(lots: Lot[]): HomeCategory[] {
     groups.set(lot.category, existing);
   }
 
-  return AUCTION_CATEGORY_ORDER.flatMap((slug) => {
+  return CATEGORY_ORDER.flatMap((slug) => {
     const group = groups.get(slug);
 
     if (!group || group.length === 0) {
@@ -144,10 +170,10 @@ function buildHomepageCategories(lots: Lot[]): HomeCategory[] {
     return [
       {
         slug,
-        label: AUCTION_CATEGORY_LABELS[slug],
+        label: CATEGORY_LABELS[slug],
         sub: makes.join(", ") || `${group.length} lots`,
         image,
-        href: `/auctions?category=${slug}`,
+        href: "/auctions",
       },
     ];
   });

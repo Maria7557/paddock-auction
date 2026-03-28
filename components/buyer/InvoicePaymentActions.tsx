@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { api, buildApiUrl, getApiErrorMessage } from "@/src/lib/api-client";
+import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./InvoicePaymentActions.module.css";
@@ -46,12 +46,9 @@ export function InvoicePaymentActions({
   return (
     <div className={styles.wrap}>
       <div className={styles.actions}>
-        <a
-          href={buildApiUrl(`/api/finance/invoices/${invoiceId}/pdf`)}
-          className="btn btn-outline"
-        >
+        <button type="button" className="btn btn-outline" onClick={() => window.print()}>
           Download PDF
-        </a>
+        </button>
         {status !== "PAID" ? (
           <button
             type="button"

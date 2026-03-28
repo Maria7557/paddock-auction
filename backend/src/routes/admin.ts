@@ -836,9 +836,6 @@ async function assignVehicleToEvent(input: {
           endsAt: true,
           auctionStartsAt: true,
           auctionEndsAt: true,
-          approvedAt: true,
-          vipAccessPolicy: true,
-          vipReleaseAt: true,
         },
       },
     },
@@ -901,18 +898,6 @@ async function assignVehicleToEvent(input: {
 
     await prisma.$transaction(async (tx) => {
       const nextAuctionState = latestAuction.state === "DRAFT" ? "SCHEDULED" : latestAuction.state;
-      const shouldRefreshVipWindow =
-        latestAuction.state === "DRAFT" &&
-        (latestAuction.vipAccessPolicy === "VIP_EARLY_ACCESS_24H" ||
-          latestAuction.vipAccessPolicy === "UNDETERMINED_RESTRICTED");
-      const assignmentTimestamp = shouldRefreshVipWindow
-        ? await readDatabaseCurrentTime(tx as {
-            $queryRaw: <T = unknown>(
-              query: TemplateStringsArray,
-              ...values: unknown[]
-            ) => Promise<T>;
-          })
-        : null;
 
       await tx.auction.update({
         where: {
@@ -922,12 +907,6 @@ async function assignVehicleToEvent(input: {
           state: nextAuctionState,
           startsAt: event.startsAt,
           endsAt: event.endsAt,
-          ...(assignmentTimestamp
-            ? {
-                approvedAt: assignmentTimestamp,
-                vipReleaseAt: await addHours(assignmentTimestamp, 24),
-              }
-            : {}),
         },
       });
 
@@ -1451,7 +1430,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             id: auction.id,
             state: auction.state,
             approvedAt: null,
-            vipAccessPolicy: "NONE",
+            vipAccessPolicy: null,
             vipReleaseAt: null,
             approvedByUserId: null,
             vipPolicyReason: null,
@@ -1459,7 +1438,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
-      if (latestAuction.approvedAt) {
+      if (latestAuction.state !== "DRAFT" || latestAuction.approvedAt) {
         await reply.code(200).send({
           success: true,
         });
@@ -1482,6 +1461,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             id: latestAuction.id,
           },
           data: {
+            state: "SCHEDULED",
             approvedAt: vipApprovalMetadata.approvedAt,
             vipAccessPolicy: vipApprovalMetadata.vipAccessPolicy,
             vipReleaseAt: vipApprovalMetadata.vipReleaseAt,
@@ -1489,11 +1469,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             vipPolicyReason: vipApprovalMetadata.vipPolicyReason,
           },
         });
+
         await tx.auctionStateTransition.create({
           data: {
             auctionId: latestAuction.id,
             fromState: latestAuction.state,
-            toState: latestAuction.state,
+            toState: "SCHEDULED",
             trigger: "ADMIN_VEHICLE_APPROVED",
             actorId,
             reason: JSON.stringify({
@@ -1511,7 +1492,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             vehicleId: id,
             auctionId: latestAuction.id,
             previousState: latestAuction.state,
-            nextState: latestAuction.state,
+            nextState: "SCHEDULED",
             approvedAt: vipApprovalMetadata.approvedAt.toISOString(),
             vipAccessPolicy: vipApprovalMetadata.vipAccessPolicy,
             vipReleaseAt: vipApprovalMetadata.vipReleaseAt?.toISOString() ?? null,
@@ -2958,9 +2939,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       const depositStatus =
         user.status === "REJECTED"
           ? "REJECTED"
-          : walletBalanceAed > 0
+          : user.kycVerified
             ? "APPROVED"
-            : "NONE";
+            : walletBalanceAed > 0
+              ? "PENDING"
+              : "NONE";
 
       await reply.code(200).send({
         user: {

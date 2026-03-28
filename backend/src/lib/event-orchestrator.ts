@@ -22,8 +22,8 @@ type AuctionStateValue =
   | "SCHEDULED"
   | "LIVE"
   | "EXTENDED"
-  | "AWAITING_SELLER_DECISION"
   | "CLOSED"
+  | "AWAITING_SELLER_DECISION"
   | "PAYMENT_PENDING"
   | "PAID"
   | "DEFAULTED"
@@ -31,7 +31,6 @@ type AuctionStateValue =
   | "RELISTED"
   | "ENDED";
 
-type AuctionEventStateValue = "SCHEDULED" | "LIVE" | "CLOSED";
 type EventLotStateValue =
   | "QUEUED"
   | "ON_BLOCK"
@@ -40,15 +39,6 @@ type EventLotStateValue =
   | "SOLD"
   | "UNSOLD"
   | "CLOSED";
-
-type AuctionEventRecord = {
-  id: string;
-  title: string;
-  state: AuctionEventStateValue;
-  scheduledAt: Date;
-  startsAt: Date | null;
-  endsAt: Date | null;
-};
 
 type AuctionEventLotRecord = {
   id: string;
@@ -59,15 +49,6 @@ type AuctionEventLotRecord = {
   callRound: number;
   onBlockAt: Date | null;
   closedAt: Date | null;
-};
-
-type AuctionEventRuntimeRecord = {
-  id: string;
-  eventId: string;
-  currentLotId: string | null;
-  currentPosition: number;
-  callEndsAt: Date | null;
-  updatedAt: Date;
 };
 
 type AuctionRecord = {
@@ -213,6 +194,14 @@ function toStoredJson(payload: unknown): Prisma.InputJsonValue {
 
 function createPayloadHash(payload: unknown): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function addHours(base: Date, hours: number): Date {
+  const next = new Date(base);
+
+  next.setUTCHours(next.getUTCHours() + hours);
+
+  return next;
 }
 
 async function createAuditLog(
@@ -393,7 +382,7 @@ async function finalizeLotIfNeeded(
   const soldAmount = leaderBid ? toNumberValue(leaderBid.amount) : null;
   const winnerCompanyId = leaderBid?.companyId ?? null;
   const targetEventLotState: EventLotStateValue = leaderBid ? "SOLD" : "UNSOLD";
-  const targetAuctionState: AuctionStateValue = leaderBid ? "PAYMENT_PENDING" : "ENDED";
+  const targetAuctionState: AuctionStateValue = leaderBid ? "AWAITING_SELLER_DECISION" : "ENDED";
 
   let nextLotRecord = lot;
 
@@ -416,6 +405,10 @@ async function finalizeLotIfNeeded(
         state: targetAuctionState,
         highestBidId: leaderBid?.id ?? auction.highestBidId,
         winnerCompanyId,
+        decisionDeadlineAt: leaderBid ? addHours(now, 24) : null,
+        sellerDecision: null,
+        sellerDecidedAt: null,
+        sellerDecidedBy: null,
         closedAt: now,
       },
     });

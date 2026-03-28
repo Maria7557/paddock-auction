@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { api, getWalletBalance, type BuyerBuyingPowerResponse } from "@/src/lib/api-client";
+import { getWalletBalance } from "@/src/lib/api-client";
 import { formatAed } from "@/src/lib/utils";
 import WalletTopupForm from "@/src/components/wallet/WalletTopupForm";
 
@@ -20,12 +20,6 @@ type WalletTransaction = {
 type WalletWorkspaceProps = {
   availableBalance: number;
   lockedBalance: number;
-  buyingPower: {
-    depositAmount: number;
-    ceiling: number;
-    activeBidsTotal: number;
-    remaining: number;
-  };
   pendingWithdrawalAmount: number;
   transactions: WalletTransaction[];
 };
@@ -81,7 +75,6 @@ function resolveTransactionMeta(type: string): {
 export function WalletWorkspace({
   availableBalance,
   lockedBalance,
-  buyingPower,
   pendingWithdrawalAmount,
   transactions,
 }: WalletWorkspaceProps) {
@@ -89,24 +82,19 @@ export function WalletWorkspace({
     availableBalance,
     lockedBalance,
     pendingWithdrawalAmount,
-    buyingPower,
   });
   const [showTopup, setShowTopup] = useState(false);
   const [topupDone, setTopupDone] = useState(false);
   const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
   const successTimeoutRef = useRef<number | null>(null);
 
-  const hasActiveBidExposure = walletState.buyingPower.activeBidsTotal > 0;
-  const effectiveLockedBalance = hasActiveBidExposure
-    ? Math.max(walletState.lockedBalance, walletState.buyingPower.depositAmount)
-    : walletState.lockedBalance;
-  const effectiveAvailableBalance = Math.max(
-    0,
-    walletState.availableBalance - Math.max(0, effectiveLockedBalance - walletState.lockedBalance),
-  );
-  const availableBalanceDetail = hasActiveBidExposure
-    ? "Secured while your active bids remain open"
-    : "Fully refundable";
+  useEffect(() => {
+    setWalletState({
+      availableBalance,
+      lockedBalance,
+      pendingWithdrawalAmount,
+    });
+  }, [availableBalance, lockedBalance, pendingWithdrawalAmount]);
 
   useEffect(() => {
     return () => {
@@ -120,33 +108,22 @@ export function WalletWorkspace({
     () => [
       {
         label: "Available balance",
-        value: formatAed(effectiveAvailableBalance),
+        value: formatAed(walletState.availableBalance),
         toneClass: styles.metricValuePositive,
-        detail: availableBalanceDetail,
+        detail: "Fully refundable",
       },
       {
-        label: "Locked",
-        value: formatAed(effectiveLockedBalance),
-        toneClass: styles.metricValueMuted,
-      },
-      {
-        label: "Active bids",
-        value: formatAed(walletState.buyingPower.activeBidsTotal),
+        label: "Locked — active auctions",
+        value: formatAed(walletState.lockedBalance),
         toneClass: styles.metricValueAmber,
       },
       {
-        label: "Remaining",
-        value: formatAed(walletState.buyingPower.remaining),
-        toneClass: styles.metricValuePositive,
+        label: "Pending withdrawal",
+        value: formatAed(walletState.pendingWithdrawalAmount),
+        toneClass: styles.metricValueMuted,
       },
     ],
-    [
-      availableBalanceDetail,
-      effectiveAvailableBalance,
-      effectiveLockedBalance,
-      walletState.buyingPower.activeBidsTotal,
-      walletState.buyingPower.remaining,
-    ],
+    [walletState.availableBalance, walletState.lockedBalance, walletState.pendingWithdrawalAmount],
   );
 
   const handleTopupSuccess = async () => {
@@ -154,21 +131,12 @@ export function WalletWorkspace({
     setTopupDone(true);
 
     try {
-      const [freshWallet, freshBuyingPower] = await Promise.all([
-        getWalletBalance({ cache: "no-store" }),
-        api.buyer.buyingPower<BuyerBuyingPowerResponse>({ cache: "no-store" }),
-      ]);
+      const freshWallet = await getWalletBalance({ cache: "no-store" });
 
       setWalletState({
         availableBalance: Number(freshWallet.availableBalance),
         lockedBalance: Number(freshWallet.lockedBalance),
         pendingWithdrawalAmount: Number(freshWallet.pendingWithdrawalBalance),
-        buyingPower: {
-          depositAmount: Number(freshBuyingPower.depositAmount),
-          ceiling: Number(freshBuyingPower.ceiling),
-          activeBidsTotal: Number(freshBuyingPower.activeBidsTotal),
-          remaining: Number(freshBuyingPower.remaining),
-        },
       });
     } catch {
       // Keep the optimistic success state even if the refresh lags behind.
@@ -203,12 +171,6 @@ export function WalletWorkspace({
         Your deposit is fully refundable within 48 hours of your withdrawal request
       </span>
 
-      {walletState.pendingWithdrawalAmount > 0 ? (
-        <span className={styles.pendingPill}>
-          {`Pending withdrawal: ${formatAed(walletState.pendingWithdrawalAmount)}`}
-        </span>
-      ) : null}
-
       <div className={styles.actionRow}>
         <button type="button" className="btn btn-primary" onClick={() => setShowTopup(true)}>
           Add funds
@@ -227,7 +189,7 @@ export function WalletWorkspace({
       <WithdrawalModal
         isOpen={isWithdrawalOpen}
         onClose={() => setIsWithdrawalOpen(false)}
-        availableBalance={effectiveAvailableBalance}
+        availableBalance={walletState.availableBalance}
       />
 
       <section className={styles.tableCard}>

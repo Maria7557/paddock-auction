@@ -24,7 +24,6 @@ export default async function LoadingBuyersPage() {
                 <th>{t.buyers.table.email}</th>
                 <th>{t.buyers.table.accountStatus}</th>
                 <th>{t.buyers.table.walletBalance}</th>
-                <th>{t.buyers.table.depositStatus}</th>
                 <th>{t.buyers.table.registrationDate}</th>
                 <th>{t.buyers.table.actions}</th>
               </tr>
@@ -32,7 +31,7 @@ export default async function LoadingBuyersPage() {
             <tbody>
               {[1, 2, 3, 4].map((row) => (
                 <tr key={row}>
-                  <td colSpan={8}>
+                  <td colSpan={7}>
                     <div className={styles.skeletonLine} />
                   </td>
                 </tr>

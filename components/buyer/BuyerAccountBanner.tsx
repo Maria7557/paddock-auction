@@ -3,19 +3,27 @@ type BuyerAccountBannerProps = {
   companyStatus: string | null;
 };
 
-function isRestrictedStatus(status: string | null): boolean {
-  const normalized = status?.trim().toUpperCase() ?? "";
-  return normalized === "BLOCKED" || normalized === "REJECTED";
+function isActiveStatus(status: string | null): boolean {
+  return status?.trim().toUpperCase() === "ACTIVE";
 }
 
 export function BuyerAccountBanner({ userStatus, companyStatus }: BuyerAccountBannerProps) {
-  if (!isRestrictedStatus(userStatus) && !isRestrictedStatus(companyStatus)) {
+  if (isActiveStatus(userStatus) && isActiveStatus(companyStatus)) {
     return null;
   }
 
+  const normalizedUserStatus = userStatus.trim().toUpperCase();
+  const normalizedCompanyStatus = companyStatus?.trim().toUpperCase() ?? "";
+  const isPending =
+    normalizedUserStatus === "PENDING_APPROVAL" ||
+    normalizedCompanyStatus === "PENDING_APPROVAL" ||
+    normalizedCompanyStatus === "PENDING";
+
   return (
     <p className="inline-note tone-warning">
-      This buyer account is not active right now. Deposits and purchasing actions are unavailable until the account is restored.
+      {isPending
+        ? "Account pending admin approval. You can access your buyer workspace now, but deposits, bids, and Buy Now stay locked until activation."
+        : "This buyer account is not active right now. Deposits and purchasing actions are unavailable until the account is restored."}
     </p>
   );
 }

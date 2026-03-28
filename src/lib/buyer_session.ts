@@ -16,6 +16,7 @@ export type BuyerSession = {
   buyerTier: "STANDARD" | "VIP";
   userStatus: string;
   companyStatus: string | null;
+  kycVerified: boolean;
 };
 
 function loginRedirect(nextPath: string): never {
@@ -37,6 +38,7 @@ async function readBuyerSessionOrNull(): Promise<BuyerSession | null> {
       role?: string;
       status?: string;
       createdAt?: string;
+      kycVerified?: boolean;
       companyUsers?: Array<{
         companyId?: string;
         role?: string;
@@ -88,6 +90,7 @@ async function readBuyerSessionOrNull(): Promise<BuyerSession | null> {
     buyerTier,
     userStatus,
     companyStatus,
+    kycVerified: response.user.kycVerified === true,
   };
 }
 

@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 describe("scheduler", () => {
-  it("closes expired auctions, creates invoice data, and logs processed count", async () => {
+  it("closes expired auctions into awaiting seller decision and logs processed count", async () => {
     const logger = {
       info: vi.fn(),
       error: vi.fn(),
@@ -70,18 +70,6 @@ describe("scheduler", () => {
           id: "transition-1",
         }),
       },
-      invoice: {
-        findUnique: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({
-          id: "invoice-1",
-        }),
-      },
-      paymentDeadline: {
-        findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({
-          id: "deadline-1",
-        }),
-      },
     };
 
     mockPrisma.$transaction.mockImplementation(async (callback, options) => {
@@ -97,19 +85,13 @@ describe("scheduler", () => {
     await setSchedulerLogger(logger);
     await closeExpiredAuctions();
 
-    expect(txMock.invoice.create).toHaveBeenCalledWith({
+    expect(txMock.$executeRaw).toHaveBeenCalledOnce();
+    expect(txMock.auctionStateTransition.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         auctionId: "auction-1",
-        buyerCompanyId: "buyer-1",
-        sellerCompanyId: "seller-1",
-        total: 120,
-        currency: "AED",
-      }),
-    });
-    expect(txMock.paymentDeadline.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        auctionId: "auction-1",
-        buyerCompanyId: "buyer-1",
+        fromState: "LIVE",
+        toState: "AWAITING_SELLER_DECISION",
+        trigger: "scheduler_close",
       }),
     });
     expect(logger.info).toHaveBeenCalledWith(
@@ -239,12 +221,17 @@ describe("scheduler", () => {
       stop: vi.fn(),
       destroy: vi.fn(),
     };
+    const taskE = {
+      stop: vi.fn(),
+      destroy: vi.fn(),
+    };
 
     scheduleMock
       .mockReturnValueOnce(taskA)
       .mockReturnValueOnce(taskB)
       .mockReturnValueOnce(taskC)
-      .mockReturnValueOnce(taskD);
+      .mockReturnValueOnce(taskD)
+      .mockReturnValueOnce(taskE);
 
     const { setSchedulerLogger, startScheduler, stopScheduler } = await import("../../scheduler");
 
@@ -252,11 +239,12 @@ describe("scheduler", () => {
     await startScheduler();
     await startScheduler();
 
-    expect(scheduleMock).toHaveBeenCalledTimes(4);
+    expect(scheduleMock).toHaveBeenCalledTimes(5);
     expect(scheduleMock).toHaveBeenNthCalledWith(1, "* * * * *", expect.any(Function));
     expect(scheduleMock).toHaveBeenNthCalledWith(2, "*/5 * * * *", expect.any(Function));
-    expect(scheduleMock).toHaveBeenNthCalledWith(3, "*/30 * * * * *", expect.any(Function));
-    expect(scheduleMock).toHaveBeenNthCalledWith(4, "*/2 * * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(3, "*/5 * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(4, "*/30 * * * * *", expect.any(Function));
+    expect(scheduleMock).toHaveBeenNthCalledWith(5, "*/2 * * * * *", expect.any(Function));
 
     await stopScheduler();
 
@@ -268,6 +256,8 @@ describe("scheduler", () => {
     expect(taskC.destroy).toHaveBeenCalledOnce();
     expect(taskD.stop).toHaveBeenCalledOnce();
     expect(taskD.destroy).toHaveBeenCalledOnce();
+    expect(taskE.stop).toHaveBeenCalledOnce();
+    expect(taskE.destroy).toHaveBeenCalledOnce();
   });
 
   it("runEventAutoStartJob starts events whose scheduledAt has passed", async () => {
@@ -326,6 +316,39 @@ describe("scheduler", () => {
       {
         job: "runEventAutoStartJob",
         processed: 0,
+      },
+      "Scheduler job completed",
+    );
+  });
+
+  it("runEventAutoStartJob continues when one due event fails", async () => {
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+
+    mockPrisma.auctionEvent.findMany.mockResolvedValue([{ id: "event-1" }, { id: "event-2" }]);
+    mockStartEvent.mockRejectedValueOnce(new Error("Auction event event-1 has no first lot"));
+
+    const { runEventAutoStartJob, setSchedulerLogger } = await import("../../scheduler");
+
+    await setSchedulerLogger(logger);
+    await runEventAutoStartJob();
+
+    expect(mockStartEvent).toHaveBeenNthCalledWith(1, "event-1");
+    expect(mockStartEvent).toHaveBeenNthCalledWith(2, "event-2");
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        job: "runEventAutoStartJob",
+        eventId: "event-1",
+        err: "Auction event event-1 has no first lot",
+      },
+      "Failed to auto-start event",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        job: "runEventAutoStartJob",
+        processed: 1,
       },
       "Scheduler job completed",
     );
@@ -457,5 +480,96 @@ describe("scheduler", () => {
         trigger: "scheduler_close",
       }),
     });
+  });
+
+  it("expires pending seller decisions and relists the auction", async () => {
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    const txMock = {
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: "auction-5",
+          seller_company_id: "seller-5",
+          winner_company_id: "buyer-5",
+        },
+      ]),
+      depositLock: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "lock-5",
+            walletId: "wallet-5",
+            amount: "5000.00",
+          },
+        ]),
+        update: vi.fn().mockResolvedValue({
+          id: "lock-5",
+        }),
+      },
+      wallet: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      walletLedger: {
+        create: vi.fn().mockResolvedValue({
+          id: "ledger-5",
+        }),
+      },
+      auction: {
+        update: vi.fn().mockResolvedValue({
+          id: "auction-5",
+        }),
+      },
+      auctionStateTransition: {
+        create: vi.fn().mockResolvedValue({
+          id: "transition-5",
+        }),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({
+          id: "audit-5",
+        }),
+      },
+    };
+
+    mockPrisma.$transaction.mockImplementation(async (callback, options) => {
+      expect(options).toEqual({
+        isolationLevel: "Serializable",
+      });
+
+      return callback(txMock);
+    });
+
+    const { runSellerDecisionDeadlineJob, setSchedulerLogger } = await import("../../scheduler");
+
+    await setSchedulerLogger(logger);
+    await runSellerDecisionDeadlineJob();
+
+    expect(txMock.auction.update).toHaveBeenCalledWith({
+      where: {
+        id: "auction-5",
+      },
+      data: expect.objectContaining({
+        state: "RELISTED",
+        sellerDecision: "expired",
+        sellerDecidedAt: expect.any(Date),
+        sellerDecidedBy: null,
+      }),
+    });
+    expect(txMock.auctionStateTransition.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        auctionId: "auction-5",
+        fromState: "AWAITING_SELLER_DECISION",
+        toState: "RELISTED",
+        trigger: "DECISION_DEADLINE_EXPIRED",
+      }),
+    });
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        job: "runSellerDecisionDeadlineJob",
+        processed: 1,
+      },
+      "Scheduler job completed",
+    );
   });
 });

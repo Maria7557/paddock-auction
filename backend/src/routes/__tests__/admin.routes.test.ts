@@ -789,7 +789,7 @@ describe("GET /api/admin/vehicles/:id", () => {
 });
 
 describe("POST /api/admin/vehicles/:id/approve", () => {
-  it("records approval without scheduling the auction and writes dark-launch metadata by default", async () => {
+  it("returns 200 when vehicle is approved with dark-launch metadata by default", async () => {
     mockPrisma.vehicle.findUnique.mockResolvedValue({
       id: "v1",
       auctions: [
@@ -820,6 +820,7 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
           id: "a1",
         },
         data: expect.objectContaining({
+          state: "SCHEDULED",
           approvedAt: new Date("2026-03-19T12:00:00.000Z"),
           vipAccessPolicy: "NONE",
           vipReleaseAt: null,
@@ -828,14 +829,6 @@ describe("POST /api/admin/vehicles/:id/approve", () => {
         }),
       }),
     );
-    expect(tx.auctionStateTransition.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        auctionId: "a1",
-        fromState: "DRAFT",
-        toState: "DRAFT",
-        trigger: "ADMIN_VEHICLE_APPROVED",
-      }),
-    });
   });
 
   it("writes active VIP metadata when approval writes are enabled", async () => {
@@ -1234,7 +1227,7 @@ describe("GET /api/admin/users/:id", () => {
       id: "u-buyer",
       email: "buyer@example.com",
       walletBalanceAed: 5000,
-      depositStatus: "APPROVED",
+      depositStatus: "PENDING",
     });
     expect(res.body.user.linkedCompanies[0]).toMatchObject({
       id: "buyer-company",

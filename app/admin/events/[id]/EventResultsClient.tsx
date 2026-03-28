@@ -69,37 +69,6 @@ function getAuctionStateDisplay(auctionState: string): { label: string; classNam
   };
 }
 
-function getLegacyStatusDisplay(status: EventResultEntry["status"]): { label: string; className: string } {
-  if (status === "UNSOLD") {
-    return {
-      label: "UNSOLD",
-      className: styles.statusMuted,
-    };
-  }
-
-  if (status === "SOLD_DEFAULTED") {
-    return {
-      label: "Defaulted",
-      className: styles.statusDanger,
-    };
-  }
-
-  return {
-    label: "Sold",
-    className: styles.statusSuccess,
-  };
-}
-
-function getResultStatusDisplay(result: EventResultEntry): { label: string; className: string } {
-  const auctionState = result.auctionState?.trim();
-
-  if (auctionState) {
-    return getAuctionStateDisplay(auctionState);
-  }
-
-  return getLegacyStatusDisplay(result.status);
-}
-
 export function EventResultsClient({ eventTitle, scheduledAt, results }: EventResultsClientProps) {
   const router = useRouter();
   const [relistErrorByAuctionId, setRelistErrorByAuctionId] = useState<Record<string, string>>({});
@@ -142,7 +111,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
         String(result.position + 1),
         result.vehicle,
         result.sellerCompany ?? "",
-        getResultStatusDisplay(result).label,
+        getAuctionStateDisplay(result.auctionState).label,
         String(result.winningBid),
         String(result.bids),
         result.buyerCompany ?? "",
@@ -174,14 +143,7 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
         <div>
           <h1 className={styles.heading}>{eventTitle}</h1>
           <p className={styles.metaLine}>
-            Results board ·{" "}
-            {new Intl.DateTimeFormat("en-AE", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            }).format(new Date(scheduledAt))}
+            Results board · {new Intl.DateTimeFormat("en-AE", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(scheduledAt))}
           </p>
         </div>
         <button type="button" className="btn btn-outline" onClick={downloadCsv}>
@@ -212,41 +174,41 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => {
-                const statusDisplay = getResultStatusDisplay(result);
-
-                return (
-                  <tr key={result.lotId}>
-                    <td className={styles.mono}>#{result.position + 1}</td>
-                    <td>{result.vehicle}</td>
-                    <td>{result.sellerCompany ?? "—"}</td>
-                    <td>
-                      <div className={styles.statusActions}>
-                        <span className={`${styles.statusBadge} ${statusDisplay.className}`}>
-                          {statusDisplay.label}
-                        </span>
-                        {result.status === "UNSOLD" ? (
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            onClick={() => handleRelist(result.auctionId)}
-                            disabled={relistingAuctionId === result.auctionId}
-                          >
-                            Re-list
-                          </button>
-                        ) : null}
-                        {relistErrorByAuctionId[result.auctionId] ? (
-                          <span className={styles.inlineErrorText}>{relistErrorByAuctionId[result.auctionId]}</span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{result.status === "UNSOLD" ? "—" : formatAed(result.winningBid)}</td>
-                    <td>{result.bids}</td>
-                    <td>{result.buyerCompany ?? "—"}</td>
-                    <td>{result.payment ?? "—"}</td>
-                  </tr>
-                );
-              })}
+              {results.map((result) => (
+                <tr key={result.lotId}>
+                  <td className={styles.mono}>#{result.position + 1}</td>
+                  <td>{result.vehicle}</td>
+                  <td>{result.sellerCompany ?? "—"}</td>
+                  <td>
+                    <div className={styles.statusActions}>
+                      <span
+                        className={`${styles.statusBadge} ${
+                          getAuctionStateDisplay(result.auctionState).className
+                        }`}
+                      >
+                        {getAuctionStateDisplay(result.auctionState).label}
+                      </span>
+                      {result.status === "UNSOLD" ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => handleRelist(result.auctionId)}
+                          disabled={relistingAuctionId === result.auctionId}
+                        >
+                          Re-list
+                        </button>
+                      ) : null}
+                      {relistErrorByAuctionId[result.auctionId] ? (
+                        <span className={styles.inlineErrorText}>{relistErrorByAuctionId[result.auctionId]}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>{result.status === "UNSOLD" ? "—" : formatAed(result.winningBid)}</td>
+                  <td>{result.bids}</td>
+                  <td>{result.buyerCompany ?? "—"}</td>
+                  <td>{result.payment ?? "—"}</td>
+                </tr>
+              ))}
               {results.length === 0 ? (
                 <tr>
                   <td colSpan={8} className={styles.emptyCell}>

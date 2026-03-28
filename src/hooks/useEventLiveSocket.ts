@@ -6,6 +6,7 @@ import { api, buildApiUrl } from "@/src/lib/api-client";
 import type { AuctionLiveSnapshot, EventRuntime } from "@/src/types/auction";
 
 type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
+const RUNTIME_POLL_INTERVAL_MS = 1_000;
 
 type AuthTokenResponse = {
   token?: string | null;
@@ -104,9 +105,19 @@ export function useEventLiveSocket(
 ): {
   runtime: EventRuntime | null;
   connectionState: ConnectionState;
+  refreshRuntime: () => Promise<EventRuntime | null>;
 } {
   const [runtime, setRuntime] = useState<EventRuntime | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const refreshRuntime = async (): Promise<EventRuntime | null> => {
+    const nextRuntime = await api.events.getRuntime(eventId, {
+      cache: "no-store",
+    });
+
+    setRuntime(nextRuntime);
+
+    return nextRuntime;
+  };
 
   useEffect(() => {
     if (!enabled) {
@@ -117,6 +128,7 @@ export function useEventLiveSocket(
     let active = true;
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
+    let pollTimer: number | null = null;
     let reconnectAttempts = 0;
 
     const reconnectDelays = [1_000, 2_000, 4_000] as const;
@@ -125,6 +137,13 @@ export function useEventLiveSocket(
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
+      }
+    };
+
+    const clearPollTimer = () => {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
       }
     };
 
@@ -138,6 +157,15 @@ export function useEventLiveSocket(
       }
 
       setRuntime(nextRuntime);
+    };
+
+    const startPolling = () => {
+      clearPollTimer();
+      pollTimer = window.setInterval(() => {
+        void refetchRuntime().catch(() => {
+          // Polling is best-effort; websocket and next interval can recover.
+        });
+      }, RUNTIME_POLL_INTERVAL_MS);
     };
 
     const scheduleReconnect = () => {
@@ -289,11 +317,13 @@ export function useEventLiveSocket(
 
     setRuntime(null);
     setConnectionState("connecting");
+    startPolling();
     void loadInitialRuntime();
 
     return () => {
       active = false;
       clearReconnectTimer();
+      clearPollTimer();
 
       if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
         socket.close();
@@ -304,5 +334,6 @@ export function useEventLiveSocket(
   return {
     runtime,
     connectionState,
+    refreshRuntime,
   };
 }

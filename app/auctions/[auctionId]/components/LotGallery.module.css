@@ -13,7 +13,7 @@
   border-radius: var(--radius-card);
   overflow: hidden;
   background: #e0ddd8;
-  cursor: default;
+  cursor: grab;
   outline: none;
 }
 .main:focus-visible { box-shadow: 0 0 0 3px var(--green-600); }
@@ -61,29 +61,22 @@
   z-index: 2;
 }
 
-/* ── Expand button ── */
-.expandButton {
+/* ── Expand hint ── */
+.expandHint {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  bottom: 14px;
+  left: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
   background: rgba(0, 0, 0, 0.55);
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 4px 10px;
   border-radius: 20px;
-  border: none;
-  cursor: pointer;
+  pointer-events: none;
   z-index: 2;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-
-.expandButton:hover {
-  background: rgba(0, 0, 0, 0.72);
-  transform: translateY(-1px);
 }
 
 /* ── Thumbnails ── */

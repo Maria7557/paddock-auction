@@ -3,7 +3,6 @@
 
 import Image from 'next/image';
 import { useState, useCallback } from 'react';
-import { GalleryLightbox, type GalleryLightboxPhoto } from '@/components/gallery/GalleryLightbox';
 import styles from './LotGallery.module.css';
 
 type Props = {
@@ -14,16 +13,9 @@ type Props = {
 export function LotGallery({ images, title }: Props) {
   const imgs = images.length > 0 ? images : ['/vehicle-photo.svg'];
   const [active, setActive] = useState(0);
-  const [isExpanded, setIsExpanded] = useState(false);
 
   const prev = useCallback(() => setActive((i) => Math.max(0, i - 1)), []);
   const next = useCallback(() => setActive((i) => Math.min(imgs.length - 1, i + 1)), [imgs.length]);
-  const lightboxPhotos: GalleryLightboxPhoto[] = imgs.map((src, index) => ({
-    id: `${src}-${index}`,
-    label: `Photo ${index + 1}`,
-    url: src,
-    alt: `${title} - photo ${index + 1}`,
-  }));
 
   // keyboard nav on main image
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -55,24 +47,6 @@ export function LotGallery({ images, title }: Props) {
           {active + 1}&thinsp;/&thinsp;{imgs.length}
         </div>
 
-        <button
-          type="button"
-          className={styles.expandButton}
-          onClick={() => setIsExpanded(true)}
-          aria-label="Expand gallery"
-          aria-haspopup="dialog"
-        >
-          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5"
-            />
-          </svg>
-          Expand
-        </button>
-
         {/* Nav arrows */}
         {active > 0 && (
           <button
@@ -93,6 +67,14 @@ export function LotGallery({ images, title }: Props) {
           </button>
         )}
 
+        {/* Expand hint */}
+        <div className={styles.expandHint} aria-hidden>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
+          </svg>
+          {imgs.length} photos
+        </div>
       </div>
 
       {/* ── Thumbnails ── */}
@@ -122,15 +104,6 @@ export function LotGallery({ images, title }: Props) {
           ))}
         </div>
       )}
-
-      <GalleryLightbox
-        isOpen={isExpanded}
-        title={title}
-        photos={lightboxPhotos}
-        activeIndex={active}
-        onSelect={setActive}
-        onClose={() => setIsExpanded(false)}
-      />
     </div>
   );
 }

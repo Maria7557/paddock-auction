@@ -993,36 +993,10 @@ textarea {
 }
 
 .detail-main-image-wrap {
-  position: relative;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--line-soft);
   background: #eef1f4;
-}
-
-.detail-gallery-expand {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.62);
-  color: #fff;
-  padding: 7px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
-  transition: background 0.18s ease, transform 0.18s ease;
-}
-
-.detail-gallery-expand:hover {
-  background: rgba(15, 23, 42, 0.78);
-  transform: translateY(-1px);
 }
 
 .detail-main-image {

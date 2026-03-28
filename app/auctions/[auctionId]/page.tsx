@@ -254,8 +254,6 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
   const hasDamage = lot.damageItems.length > 0 || (isMeaningfulValue(lot.damage) && lot.damage !== "None");
   const damageSummary = lot.damageItems.length > 0 ? (isRu ? "Повреждения отмечены" : "Damage reported") : lot.damage;
   const similarLots = lot.similar.length > 0 ? lot.similar : await getFallbackSimilarLots(lot);
-  // TEMP(auction-detail-bid-history, 2026-03-27): Hide the large bid history block while we evaluate the detail-page layout. Remove when the replacement UX is ready or we decide to restore this section.
-  const showBidHistory = false;
 
   return (
     <MarketShell mainClassName={styles.mainTight}>
@@ -337,8 +335,8 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             <VehicleSpecs lot={lot} locale={display.locale} />
             <VehicleFeatures features={lot.features} locale={display.locale} />
             <VehicleDesc description={lot.description} highlights={lot.highlights} locale={display.locale} />
-            <InspectionSection startsAt={lot.startsAt} locale={display.locale} />
-            {showBidHistory ? <BidHistory bids={lot.bids} display={display} /> : null}
+            <InspectionSection auctionId={lot.auctionId} startsAt={lot.startsAt} locale={display.locale} />
+            <BidHistory bids={lot.bids} display={display} />
           </div>
         </div>
 

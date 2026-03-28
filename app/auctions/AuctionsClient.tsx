@@ -7,7 +7,6 @@ import { LotCard } from "@/components/auction/LotCard";
 import { ApiError, api } from "@/src/lib/api-client";
 import { isLiveAuctionState } from "@/src/lib/auction-display";
 import type { DisplaySettings } from "@/src/lib/money";
-import { inferAuctionCategory, isAuctionCategory } from "@/src/modules/ui/domain/auction_category";
 
 import { ActiveFilters } from "./components/ActiveFilters";
 import { FilterSidebar } from "./components/FilterSidebar";
@@ -91,7 +90,6 @@ type BuyerDashboardResponse = {
 
 type Filters = {
   vipEarlyAccess: string;
-  category: string;
   brand: string;
   model: string;
   status: string;
@@ -107,7 +105,6 @@ type Filters = {
 
 const DEFAULT_FILTERS: Filters = {
   vipEarlyAccess: "",
-  category: "",
   brand: "",
   model: "",
   status: "",
@@ -131,10 +128,6 @@ function sanitizeFilters(
 
   if (!options.canUseVipEarlyAccessFilter) {
     next.vipEarlyAccess = "";
-  }
-
-  if (next.category && !isAuctionCategory(next.category)) {
-    next.category = "";
   }
 
   if (!next.brand) {
@@ -268,10 +261,6 @@ function filterAndSortLots(
 ): Lot[] {
   const filtered = source.filter((lot) => {
     if (filters.vipEarlyAccess === "active" && lot.showVipEarlyAccessBadge !== true) {
-      return false;
-    }
-
-    if (filters.category && inferAuctionCategory(lot.vehicle.brand, lot.vehicle.bodyType ?? "") !== filters.category) {
       return false;
     }
 

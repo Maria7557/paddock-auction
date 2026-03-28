@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
@@ -7,6 +9,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { startEvent } from "../lib/event-orchestrator";
 import { type AuthTokenPayload, requireAdminAuth, verifyToken } from "../lib/auth";
+import { sendAuctionLiveSellerEmail } from "../lib/email";
 import { type AuctionRealtimeSnapshot, getAuctionSnapshot } from "./auction-ws";
 
 declare module "fastify" {
@@ -53,6 +56,8 @@ type EventRuntimeSnapshot = {
     auctionId: string;
     title: string;
     startingPrice: number;
+    currentPrice: number;
+    totalBids: number;
   }>;
 };
 
@@ -115,6 +120,36 @@ const addEventLotSchema = z.object({
   auctionId: z.string().trim().min(1),
   position: z.coerce.number().int().nonnegative(),
 });
+
+async function toStoredJson(payload: unknown): Promise<Prisma.InputJsonValue> {
+  return JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue;
+}
+
+async function createPayloadHash(payload: unknown): Promise<string> {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+async function createAuditLog(
+  tx: Prisma.TransactionClient,
+  input: {
+    actorId: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    payload: unknown;
+  },
+): Promise<void> {
+  await tx.auditLog.create({
+    data: {
+      actorId: input.actorId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      payload: await toStoredJson(input.payload),
+      payloadHash: await createPayloadHash(input.payload),
+    },
+  });
+}
 
 function buildEventChannel(eventId: string): string {
   return `${EVENT_CHANNEL_PREFIX}${eventId}`;
@@ -449,7 +484,6 @@ async function getWebSocketToken(request: AuctionEventWsRequest): Promise<string
 
 async function authenticateWebSocketRequest(
   request: AuctionEventWsRequest,
-  _reply: FastifyReply,
 ): Promise<void> {
   try {
     const token = await getWebSocketToken(request);
@@ -602,7 +636,13 @@ export async function getEventRuntimeSnapshot(
           onBlockAt: true,
           auction: {
             select: {
+              currentPrice: true,
               startingPrice: true,
+              _count: {
+                select: {
+                  bids: true,
+                },
+              },
               vehicle: {
                 select: {
                   brand: true,
@@ -642,6 +682,8 @@ export async function getEventRuntimeSnapshot(
           model: lot.auction.vehicle.model,
         }),
         startingPrice: await toNumberValue(lot.auction.startingPrice),
+        currentPrice: await toNumberValue(lot.auction.currentPrice),
+        totalBids: lot.auction._count.bids,
       })),
   );
 
@@ -659,7 +701,7 @@ export async function getEventRuntimeSnapshot(
             callEndsAt:
               (await toIsoString(event.runtime?.callEndsAt)) ?? new Date().toISOString(),
             onBlockAt: (await toIsoString(activeLot.onBlockAt)) ?? new Date().toISOString(),
-            snapshot: currentLotSnapshot.snapshot,
+            snapshot: currentLotSnapshot,
           }
         : null,
     totalLots: event.lots.length,
@@ -975,41 +1017,43 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const event = await prisma.auctionEvent.findUnique({
-        where: {
-          id: parsedParams.data.eventId,
-        },
-        select: {
-          id: true,
-          title: true,
-          scheduledAt: true,
-          state: true,
-          lots: {
-            orderBy: {
-              position: "asc",
-            },
-            select: {
-              id: true,
-              auctionId: true,
-              position: true,
-              state: true,
-              auction: {
-                select: {
-                  currentPrice: true,
-                  startingPrice: true,
-                  vehicle: {
-                    select: {
-                      brand: true,
-                      model: true,
-                      year: true,
-                      images: true,
-                    },
+      const eventSelect = {
+        id: true,
+        title: true,
+        scheduledAt: true,
+        state: true,
+        lots: {
+          orderBy: {
+            position: "asc" as const,
+          },
+          select: {
+            id: true,
+            auctionId: true,
+            position: true,
+            state: true,
+            auction: {
+              select: {
+                currentPrice: true,
+                startingPrice: true,
+                vehicle: {
+                  select: {
+                    brand: true,
+                    model: true,
+                    year: true,
+                    images: true,
                   },
                 },
               },
             },
           },
         },
+      };
+
+      let event = await prisma.auctionEvent.findUnique({
+        where: {
+          id: parsedParams.data.eventId,
+        },
+        select: eventSelect,
       });
 
       if (!event) {
@@ -1019,8 +1063,47 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
+      const hasPositionGaps =
+        event.state === "SCHEDULED" &&
+        event.lots.some((lot, index) => lot.position !== index);
+
+      if (hasPositionGaps) {
+        const lotsToNormalize = [...event.lots];
+
+        await prisma.$transaction(async (tx) => {
+          for (const [index, lot] of lotsToNormalize.entries()) {
+            if (lot.position === index) {
+              continue;
+            }
+
+            await tx.auctionEventLot.update({
+              where: {
+                id: lot.id,
+              },
+              data: {
+                position: index,
+              },
+            });
+          }
+        });
+
+        event = await prisma.auctionEvent.findUnique({
+          where: {
+            id: parsedParams.data.eventId,
+          },
+          select: eventSelect,
+        });
+
+        if (!event) {
+          await reply.code(404).send({
+            error: "EVENT_NOT_FOUND",
+          });
+          return;
+        }
+      }
+
       const queuedAuctionIds = event.lots.map((lot) => lot.auctionId);
-      const availableAuctions = await prisma.auction.findMany({
+      const availableAuctionRuns = await prisma.auction.findMany({
         where: {
           state: {
             in: ["DRAFT", "SCHEDULED"],
@@ -1031,19 +1114,51 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
           eventLots: {
             none: {},
           },
+          vehicle: {
+            auctions: {
+              none: {
+                eventLots: {
+                  some: {},
+                },
+              },
+            },
+          },
         },
-        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         select: {
           id: true,
+          vehicleId: true,
           startingPrice: true,
+          startsAt: true,
           vehicle: {
             select: {
               brand: true,
               model: true,
               year: true,
+              images: true,
             },
           },
         },
+      });
+
+      const availableAuctionsByVehicle = new Map<string, (typeof availableAuctionRuns)[number]>();
+
+      for (const auction of availableAuctionRuns) {
+        if (availableAuctionsByVehicle.has(auction.vehicleId)) {
+          continue;
+        }
+
+        availableAuctionsByVehicle.set(auction.vehicleId, auction);
+      }
+
+      const availableAuctions = [...availableAuctionsByVehicle.values()].sort((left, right) => {
+        const startsDiff = left.startsAt.getTime() - right.startsAt.getTime();
+
+        if (startsDiff !== 0) {
+          return startsDiff;
+        }
+
+        return left.id.localeCompare(right.id);
       });
 
       await reply.code(200).send({
@@ -1078,6 +1193,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
               model: auction.vehicle.model,
             }),
             startingPrice: await toNumberValue(auction.startingPrice),
+            imageUrl: auction.vehicle.images[0] ?? null,
           })),
         ),
       });
@@ -1134,6 +1250,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
                   state: true,
                   currentPrice: true,
                   startingPrice: true,
+                  sellerCompanyId: true,
                   winnerCompanyId: true,
                   vehicle: {
                     select: {
@@ -1161,18 +1278,18 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const winnerCompanyIds = Array.from(
+      const companyIds = Array.from(
         new Set(
           event.lots
-            .map((lot) => lot.auction.winnerCompanyId)
+            .flatMap((lot) => [lot.auction.sellerCompanyId, lot.auction.winnerCompanyId])
             .filter((companyId): companyId is string => typeof companyId === "string" && companyId.length > 0),
         ),
       );
-      const companies = winnerCompanyIds.length
+      const companies = companyIds.length
         ? await prisma.company.findMany({
             where: {
               id: {
-                in: winnerCompanyIds,
+                in: companyIds,
               },
             },
             select: {
@@ -1200,6 +1317,8 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
               brand: lot.auction.vehicle.brand,
               model: lot.auction.vehicle.model,
             }),
+            sellerCompany: companyNameById.get(lot.auction.sellerCompanyId) ?? "Unknown seller",
+            auctionState: lot.auction.state,
             status: normalizeResultStatus(lot.state, lot.auction.state),
             winningBid: await toNumberValue(lot.auction.currentPrice),
             bids: lot.auction._count.bids,
@@ -1232,6 +1351,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
       }>,
       reply: FastifyReply,
     ): Promise<void> {
+      const actorId = request.auth?.userId;
       const parsedParams = eventIdParamsSchema.safeParse(request.params);
       const parsedBody = addEventLotSchema.safeParse(request.body);
 
@@ -1248,6 +1368,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         },
         select: {
           id: true,
+          state: true,
           scheduledAt: true,
         },
       });
@@ -1259,50 +1380,56 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const auction = await prisma.auction.findUnique({
+      if (event.state === "LIVE" || event.state === "CLOSED") {
+        await reply.code(409).send({
+          error: "EVENT_NOT_MUTABLE",
+        });
+        return;
+      }
+
+      const auctionWithVehicle = await prisma.auction.findUnique({
         where: {
           id: parsedBody.data.auctionId,
         },
         select: {
           id: true,
           state: true,
+          vehicleId: true,
         },
       });
 
-      if (!auction) {
+      if (!auctionWithVehicle) {
         await reply.code(404).send({
           error: "AUCTION_NOT_FOUND",
         });
         return;
       }
 
-      const [duplicateAuction, duplicatePosition] = await Promise.all([
-        prisma.auctionEventLot.findFirst({
-          where: {
-            eventId: event.id,
-            auctionId: parsedBody.data.auctionId,
+      const vehicleConflict = await prisma.auctionEventLot.findFirst({
+        where: {
+          auction: {
+            vehicleId: auctionWithVehicle.vehicleId,
           },
-          select: {
-            id: true,
-          },
-        }),
-        prisma.auctionEventLot.findFirst({
-          where: {
-            eventId: event.id,
-            position: parsedBody.data.position,
-          },
-          select: {
-            id: true,
-          },
-        }),
-      ]);
+        },
+      });
 
-      if (duplicateAuction) {
+      if (vehicleConflict) {
         await reply.code(409).send({
-          error: "EVENT_LOT_DUPLICATE_AUCTION",
+          error: "VEHICLE_ALREADY_IN_EVENT",
+          message: "This vehicle is already assigned to an event",
         });
         return;
       }
+
+      const duplicatePosition = await prisma.auctionEventLot.findFirst({
+        where: {
+          eventId: event.id,
+          position: parsedBody.data.position,
+        },
+        select: {
+          id: true,
+        },
+      });
 
       if (duplicatePosition) {
         await reply.code(409).send({
@@ -1311,28 +1438,51 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const scheduledEndsAt = new Date(event.scheduledAt.getTime() + 2 * 60 * 60 * 1000);
-      const lot = await prisma.$transaction(async (tx) => {
-        if (auction.state === "DRAFT" || auction.state === "SCHEDULED") {
-          await tx.auction.update({
-            where: {
-              id: auction.id,
-            },
-            data: {
-              state: "SCHEDULED",
-              startsAt: event.scheduledAt,
-              endsAt: scheduledEndsAt,
-            },
-          });
-        }
+      const newStartsAt = event.scheduledAt;
+      const newEndsAt = new Date(newStartsAt.getTime() + 2 * 60 * 60 * 1000);
 
-        return tx.auctionEventLot.create({
+      if (newStartsAt.getTime() >= newEndsAt.getTime()) {
+        await reply.code(400).send({
+          error: "INVALID_AUCTION_WINDOW",
+        });
+        return;
+      }
+
+      const lot = await prisma.$transaction(async (tx) => {
+        const createdLot = await tx.auctionEventLot.create({
           data: {
             eventId: event.id,
             auctionId: parsedBody.data.auctionId,
             position: parsedBody.data.position,
+            state: "QUEUED",
           },
         });
+
+        await tx.auction.update({
+          where: {
+            id: parsedBody.data.auctionId,
+          },
+          data: {
+            state: "SCHEDULED",
+            startsAt: newStartsAt,
+            endsAt: newEndsAt,
+            auctionStartsAt: null,
+            auctionEndsAt: null,
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: parsedBody.data.auctionId,
+            fromState: auctionWithVehicle.state,
+            toState: "SCHEDULED",
+            trigger: "EVENT_ASSIGNED",
+            actorId: actorId ?? "system",
+            reason: JSON.stringify({ eventId: event.id }),
+          },
+        });
+
+        return createdLot;
       });
 
       await reply.code(201).send(lot);
@@ -1358,7 +1508,15 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
       }>,
       reply: FastifyReply,
     ): Promise<void> {
+      const actorId = request.auth?.userId;
       const parsedParams = eventLotParamsSchema.safeParse(request.params);
+
+      if (!actorId) {
+        await reply.code(401).send({
+          error: "Unauthorized",
+        });
+        return;
+      }
 
       if (!parsedParams.success) {
         await reply.code(400).send({
@@ -1375,6 +1533,19 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
           id: true,
           eventId: true,
           state: true,
+          position: true,
+          auctionId: true,
+          auction: {
+            select: {
+              id: true,
+              state: true,
+              startsAt: true,
+              endsAt: true,
+              auctionStartsAt: true,
+              auctionEndsAt: true,
+              vehicleId: true,
+            },
+          },
         },
       });
 
@@ -1392,10 +1563,80 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      await prisma.auctionEventLot.delete({
+      const event = await prisma.auctionEvent.findUnique({
         where: {
-          id: lot.id,
+          id: parsedParams.data.eventId,
         },
+        select: {
+          id: true,
+          state: true,
+        },
+      });
+
+      if (!event) {
+        await reply.code(404).send({
+          error: "EVENT_NOT_FOUND",
+        });
+        return;
+      }
+
+      if (event.state === "LIVE" || event.state === "CLOSED") {
+        await reply.code(409).send({
+          error: "EVENT_LOT_NOT_REMOVABLE",
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const nextEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        await tx.auctionEventLot.delete({
+          where: {
+            id: lot.id,
+          },
+        });
+
+        await tx.auction.update({
+          where: {
+            id: lot.auction.id,
+          },
+          data: {
+            state: "DRAFT",
+            startsAt: now,
+            endsAt: nextEndsAt,
+            auctionStartsAt: null,
+            auctionEndsAt: null,
+          },
+        });
+
+        await tx.auctionStateTransition.create({
+          data: {
+            auctionId: lot.auction.id,
+            fromState: "SCHEDULED",
+            toState: "DRAFT",
+            trigger: "EVENT_REMOVED",
+            actorId: actorId ?? "system",
+            reason: JSON.stringify({
+              eventId: event.id,
+            }),
+          },
+        });
+
+        await createAuditLog(tx, {
+          actorId,
+          action: "EVENT_LOT_REMOVED",
+          entityType: "Vehicle",
+          entityId: lot.auction.vehicleId,
+          payload: {
+            vehicleId: lot.auction.vehicleId,
+            auctionId: lot.auction.id,
+            lotId: lot.id,
+            eventId: event.id,
+            previousState: "SCHEDULED",
+            nextState: "DRAFT",
+          },
+        });
       });
 
       await reply.code(204).send();
@@ -1430,6 +1671,72 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
 
       try {
         await startEvent(parsedParams.data.eventId);
+
+        void (async () => {
+          try {
+            const eventLots = await prisma.auctionEventLot.findMany({
+              where: {
+                eventId: parsedParams.data.eventId,
+              },
+              select: {
+                auction: {
+                  select: {
+                    id: true,
+                    endsAt: true,
+                    sellerCompanyId: true,
+                    vehicle: {
+                      select: {
+                        brand: true,
+                        model: true,
+                        year: true,
+                      },
+                    },
+                    _count: {
+                      select: {
+                        bids: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+
+            for (const lot of eventLots) {
+              const sellerUsers = await prisma.companyUser.findMany({
+                where: {
+                  companyId: lot.auction.sellerCompanyId,
+                  role: "SELLER_MANAGER",
+                },
+                select: {
+                  user: {
+                    select: {
+                      email: true,
+                    },
+                  },
+                },
+              });
+
+              const vehicleTitle = `${lot.auction.vehicle.brand} ${lot.auction.vehicle.model} ${lot.auction.vehicle.year}`;
+
+              for (const sellerUser of sellerUsers) {
+                void sendAuctionLiveSellerEmail(
+                  {
+                    email: sellerUser.user.email,
+                    name: sellerUser.user.email,
+                    vehicleTitle,
+                    endsAt: lot.auction.endsAt,
+                    bidderCount: lot.auction._count.bids,
+                    auctionId: lot.auction.id,
+                  },
+                  fastify.log,
+                );
+              }
+            }
+          } catch {
+            // Fire-and-forget email dispatch must never affect event start.
+          }
+        })();
+
         await reply.code(200).send({
           success: true,
         });
