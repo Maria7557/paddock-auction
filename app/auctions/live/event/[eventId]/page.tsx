@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { getLot } from "@/app/auctions/[auctionId]/lot-data";
-import { EventLiveRoom, mapInitialLotToEventView } from "@/src/components/auction/EventLiveRoom";
+import { EventLiveRoom } from "@/src/components/auction/EventLiveRoom";
 import { api } from "@/src/lib/api-client";
+import { mapServerLotToEventLotView } from "@/src/lib/event-live-lot";
 import { withServerCookies } from "@/src/lib/server-api-options";
 import type { EventRuntime } from "@/src/types/auction";
 
@@ -57,7 +58,7 @@ export default async function EventLivePage({ params }: PageProps) {
     <EventLiveRoom
       eventId={eventId}
       initialRuntime={initialRuntime}
-      initialLot={mapInitialLotToEventView(initialLot)}
+      initialLot={initialLot ? mapServerLotToEventLotView(initialLot) : null}
     />
   );
 }

@@ -26,7 +26,6 @@ import {
   readTrustedCurrentTime,
   type VipRequestActorBase,
 } from "../lib/vip-early-access";
-import { createAuctionEventRecord } from "./auction-events";
 
 type DecimalLike =
   | number
@@ -3646,12 +3645,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           scheduledAt: startsAt,
           state: "SCHEDULED",
         },
-      });
-
-      await createAuctionEventRecord(tx, {
-        id: event.id,
-        title: parsedBody.data.title,
-        scheduledAt: startsAt,
       });
 
       await createAuditLog(tx, {

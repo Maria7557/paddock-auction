@@ -1022,7 +1022,9 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
       const queuedAuctionIds = event.lots.map((lot) => lot.auctionId);
       const availableAuctions = await prisma.auction.findMany({
         where: {
-          state: "SCHEDULED",
+          state: {
+            in: ["DRAFT", "SCHEDULED"],
+          },
           id: {
             notIn: queuedAuctionIds.length > 0 ? queuedAuctionIds : undefined,
           },
@@ -1246,6 +1248,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         },
         select: {
           id: true,
+          scheduledAt: true,
         },
       });
 
@@ -1262,6 +1265,7 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         },
         select: {
           id: true,
+          state: true,
         },
       });
 
@@ -1307,12 +1311,28 @@ export async function auctionEventsRoutes(fastify: FastifyInstance): Promise<voi
         return;
       }
 
-      const lot = await prisma.auctionEventLot.create({
-        data: {
-          eventId: event.id,
-          auctionId: parsedBody.data.auctionId,
-          position: parsedBody.data.position,
-        },
+      const scheduledEndsAt = new Date(event.scheduledAt.getTime() + 2 * 60 * 60 * 1000);
+      const lot = await prisma.$transaction(async (tx) => {
+        if (auction.state === "DRAFT" || auction.state === "SCHEDULED") {
+          await tx.auction.update({
+            where: {
+              id: auction.id,
+            },
+            data: {
+              state: "SCHEDULED",
+              startsAt: event.scheduledAt,
+              endsAt: scheduledEndsAt,
+            },
+          });
+        }
+
+        return tx.auctionEventLot.create({
+          data: {
+            eventId: event.id,
+            auctionId: parsedBody.data.auctionId,
+            position: parsedBody.data.position,
+          },
+        });
       });
 
       await reply.code(201).send(lot);
