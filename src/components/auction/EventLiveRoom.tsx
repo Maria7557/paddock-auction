@@ -702,10 +702,6 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
 
     return Math.max(0, Math.min(100, (elapsedMs / totalWindowMs) * 100));
   }, [countdownMs]);
-  const walletProgressPercent = useMemo(
-    () => Math.max(0, Math.min(100, (viewerWallet.availableBalance / 50_000) * 100)),
-    [viewerWallet.availableBalance],
-  );
   const minutesToStart = useMemo(() => Math.max(1, Math.ceil(countdownMs / 60_000)), [countdownMs]);
 
   useEffect(() => {
@@ -1332,13 +1328,8 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                         </div>
                       </div>
 
-                      <div className={`${styles.waitingStatusCard} ${styles.waitingStatusCardFade}`} style={{ animationDelay: "0.08s" }}>
-                        <div className={styles.waitingWalletLabel}>Available</div>
-                        <div className={styles.waitingWalletAmount}>{formatAed(viewerWallet.availableBalance)}</div>
-                        <div className={`${styles.waitingWalletSub} ${styles.waitingWalletSubSuccess}`}>Deposit approved</div>
-                        <div className={styles.waitingWalletTrack}>
-                          <div className={styles.waitingWalletFill} style={{ width: `${walletProgressPercent}%` }} />
-                        </div>
+                      <div className={styles.waitingStatusCardFade} style={{ animationDelay: "0.08s" }}>
+                        <LiveRoomBuyingPowerBar compact />
                       </div>
 
                       <div className={`${styles.waitingStatusCard} ${styles.waitingStatusCardFade}`} style={{ animationDelay: "0.16s" }}>
