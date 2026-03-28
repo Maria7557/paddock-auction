@@ -2,10 +2,11 @@ import Link from "next/link";
 
 import { RecommendedLots } from "@/components/buyer/RecommendedLots";
 import { BuyerShell } from "@/components/buyer/BuyerShell";
+import { DepositCard } from "@/components/buyer/DepositCard";
 import { TierStatusCard } from "@/components/buyer/TierStatusCard";
 import { IconCheck } from "@/components/ui/icons";
 import { withLocalePath } from "@/src/i18n/routing";
-import { api } from "@/src/lib/api-client";
+import { api, type BuyerBuyingPowerResponse } from "@/src/lib/api-client";
 import { isLiveAuctionState, isScheduledAuctionState } from "@/src/lib/auction-display";
 import { requireBuyerSession } from "@/src/lib/buyer_session";
 import { getPublicDisplaySettings } from "@/src/lib/display_preferences";
@@ -197,8 +198,9 @@ export default async function DashboardPage() {
   const session = await requireBuyerSession("/dashboard");
   const requestOptions = await withServerCookies({ cache: "no-store" });
 
-  const [dashboard, authResponse, auctionsResponse, display] = await Promise.all([
+  const [dashboard, buyingPower, authResponse, auctionsResponse, display] = await Promise.all([
     api.buyer.dashboard<BuyerDashboardResponse>(requestOptions),
+    api.buyer.buyingPower<BuyerBuyingPowerResponse>(requestOptions),
     api.auth.me<BuyerAuthResponse>(requestOptions),
     api.auctions.list<AuctionsListResponse>(undefined, requestOptions),
     getPublicDisplaySettings(),
@@ -284,8 +286,8 @@ export default async function DashboardPage() {
                 <div className={styles.sectionHeading}>
                   <h1>Add a deposit to start bidding</h1>
                   <p>
-                    A refundable deposit of {formatAed(5000)} is required. Our team reviews it
-                    within 12 hours — then you&apos;re ready to bid.
+                    A refundable deposit of {formatAed(5000)} is required. As soon as it is ready
+                    in your wallet, you&apos;re ready to bid.
                   </p>
                 </div>
                 <span className={styles.refundPill}>
@@ -311,8 +313,8 @@ export default async function DashboardPage() {
               <div className={styles.depositStep}>
                 <span className={styles.depositStepNumber}>2</span>
                 <div>
-                  <strong>Review</strong>
-                  <span>up to 12 hours</span>
+                  <strong>Deposit ready</strong>
+                  <span>wallet funded</span>
                 </div>
               </div>
               <div className={styles.depositStepLine} />
@@ -328,6 +330,12 @@ export default async function DashboardPage() {
             <Link href="/wallet" className="btn btn-primary btn-full">
               Add deposit — {formatAed(5000)}
             </Link>
+          </section>
+        ) : null}
+
+        {hasRequiredDeposit ? (
+          <section className={styles.section}>
+            <DepositCard buyingPower={buyingPower} />
           </section>
         ) : null}
 
@@ -401,35 +409,6 @@ export default async function DashboardPage() {
             ))}
           </div>
         </section>
-
-        {hasRequiredDeposit ? (
-          <section className={styles.section}>
-            <div className={styles.sectionTitle}>Wallet summary</div>
-            <div className={styles.walletSection}>
-              <div className={styles.walletGrid}>
-                <article className={styles.walletTile}>
-                  <span>Available</span>
-                  <strong className={styles.metricGreen}>
-                    {formatAed(dashboard.depositStatus.balanceAed)}
-                  </strong>
-                </article>
-                <article className={styles.walletTile}>
-                  <span>Locked</span>
-                  <strong className={styles.metricAmber}>
-                    {formatAed(dashboard.depositStatus.lockedBalanceAed)}
-                  </strong>
-                </article>
-                <article className={styles.walletTile}>
-                  <span>Free to use</span>
-                  <strong className={styles.metricGreen}>
-                    {formatAed(dashboard.depositStatus.availableBalanceAed)}
-                  </strong>
-                </article>
-              </div>
-              <span className={styles.refundPill}>Fully refundable within 48 hours</span>
-            </div>
-          </section>
-        ) : null}
 
         <RecommendedLots lots={dashboard.recommendedLots} />
       </div>

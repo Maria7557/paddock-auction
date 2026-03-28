@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LotDetail } from "@/app/auctions/[auctionId]/page";
 import { IconCar, IconClock, IconEye, IconTag, IconUsers, IconZap } from "@/components/ui/icons";
+import { LiveRoomBuyingPowerBar } from "@/src/components/finance/LiveRoomBuyingPowerBar";
 import { useEventLiveSocket } from "@/src/hooks/useEventLiveSocket";
 import { getLocaleFromPathname, withLocalePath } from "@/src/i18n/routing";
 import { type UiAuctionBidHistoryEntry, api, getApiErrorMessage } from "@/src/lib/api-client";
@@ -1521,6 +1522,7 @@ export function EventLiveRoom({ eventId, initialRuntime, initialLot }: Props) {
                         onBid={handleBid}
                       />
 
+                      <LiveRoomBuyingPowerBar compact />
                       {inlineError ? <div className={styles.inlineError}>{inlineError}</div> : null}
                     </div>
 

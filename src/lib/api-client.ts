@@ -150,6 +150,35 @@ export type AdminInvoiceConfirmPaymentResponse = {
   paidAt: string;
 };
 
+export type BuyerBuyingPowerActiveBid = {
+  auctionId: string;
+  lotTitle: string;
+  amount: string;
+};
+
+export type BuyerBuyingPowerResponse = {
+  depositAmount: string;
+  ceiling: string;
+  activeBidsTotal: string;
+  remaining: string;
+  activeBids: BuyerBuyingPowerActiveBid[];
+};
+
+export type BidBuyingPowerSummary = Pick<
+  BuyerBuyingPowerResponse,
+  "activeBidsTotal" | "ceiling" | "remaining"
+>;
+
+export type PlaceBidResponse = {
+  bid: {
+    id: string;
+    auctionId: string;
+    amount: string;
+    createdAt: string;
+  };
+  buyingPower: BidBuyingPowerSummary;
+};
+
 export class ApiError extends Error {
   statusCode: number;
   payload: unknown;
@@ -791,6 +820,8 @@ export const api = {
   buyer: {
     dashboard: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/dashboard", options),
+    buyingPower: async <T = BuyerBuyingPowerResponse>(options?: RequestInit): Promise<T> =>
+      getRequest<T>("/api/buyer/buying-power", options),
     myBids: async <T = unknown>(options?: RequestInit): Promise<T> =>
       getRequest<T>("/api/buyer/my-bids", options),
     upgradeToVip: async <T = unknown>(options?: RequestInit): Promise<T> =>

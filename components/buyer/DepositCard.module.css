@@ -1,6 +1,6 @@
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--line-soft);
+  background: var(--amber-100);
+  border: 1px solid color-mix(in srgb, var(--amber-600) 30%, transparent);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-soft);
   padding: var(--space-4);
@@ -11,31 +11,14 @@
 .head h2 {
   margin: 0;
   font-size: 20px;
-  color: var(--ink-primary);
+  color: var(--amber-600);
 }
 
-.amountBlock {
-  display: grid;
-  gap: 10px;
-}
-
-.amount {
-  font-size: clamp(30px, 4vw, 40px);
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--ink-primary);
-}
-
-.refundPill {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  padding: 8px 14px;
-  border-radius: var(--radius-pill);
-  background: var(--green-100);
-  color: var(--green-600);
-  font-size: 13px;
-  font-weight: 700;
+.head p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
 }
 
 .rows {
@@ -71,8 +54,51 @@
   color: var(--ink-primary);
 }
 
+.activeBidsBlock {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--amber-600) 30%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--bg-card);
+}
+
+.activeBidsTitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--amber-600);
+}
+
+.activeBidsList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.activeBidsItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+
+.activeBidsItem strong {
+  color: var(--ink-primary);
+}
+
 @media (max-width: 600px) {
   .row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .activeBidsItem {
     flex-direction: column;
     align-items: flex-start;
   }
