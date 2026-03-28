@@ -14,12 +14,17 @@ type EventResultsClientProps = {
   results: EventResultEntry[];
 };
 
-function formatAuctionStateValue(value: string): string {
-  return value.trim().replaceAll("_", " ");
+function normalizeAuctionStateValue(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
 
-function getAuctionStateDisplay(auctionState: string): { label: string; className: string } {
-  const normalized = auctionState.trim().toUpperCase();
+function formatAuctionStateValue(value: string | null | undefined): string {
+  const normalized = normalizeAuctionStateValue(value);
+  return (normalized || "ENDED").replaceAll("_", " ");
+}
+
+function getAuctionStateDisplay(auctionState: string | null | undefined): { label: string; className: string } {
+  const normalized = normalizeAuctionStateValue(auctionState);
 
   if (normalized === "PAYMENT_PENDING") {
     return {
@@ -174,41 +179,41 @@ export function EventResultsClient({ eventTitle, scheduledAt, results }: EventRe
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => (
-                <tr key={result.lotId}>
-                  <td className={styles.mono}>#{result.position + 1}</td>
-                  <td>{result.vehicle}</td>
-                  <td>{result.sellerCompany ?? "—"}</td>
-                  <td>
-                    <div className={styles.statusActions}>
-                      <span
-                        className={`${styles.statusBadge} ${
-                          getAuctionStateDisplay(result.auctionState).className
-                        }`}
-                      >
-                        {getAuctionStateDisplay(result.auctionState).label}
-                      </span>
-                      {result.status === "UNSOLD" ? (
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => handleRelist(result.auctionId)}
-                          disabled={relistingAuctionId === result.auctionId}
-                        >
-                          Re-list
-                        </button>
-                      ) : null}
-                      {relistErrorByAuctionId[result.auctionId] ? (
-                        <span className={styles.inlineErrorText}>{relistErrorByAuctionId[result.auctionId]}</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td>{result.status === "UNSOLD" ? "—" : formatAed(result.winningBid)}</td>
-                  <td>{result.bids}</td>
-                  <td>{result.buyerCompany ?? "—"}</td>
-                  <td>{result.payment ?? "—"}</td>
-                </tr>
-              ))}
+              {results.map((result) => {
+                const auctionStateDisplay = getAuctionStateDisplay(result.auctionState);
+
+                return (
+                  <tr key={result.lotId}>
+                    <td className={styles.mono}>#{result.position + 1}</td>
+                    <td>{result.vehicle}</td>
+                    <td>{result.sellerCompany ?? "—"}</td>
+                    <td>
+                      <div className={styles.statusActions}>
+                        <span className={`${styles.statusBadge} ${auctionStateDisplay.className}`}>
+                          {auctionStateDisplay.label}
+                        </span>
+                        {result.status === "UNSOLD" ? (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            onClick={() => handleRelist(result.auctionId)}
+                            disabled={relistingAuctionId === result.auctionId}
+                          >
+                            Re-list
+                          </button>
+                        ) : null}
+                        {relistErrorByAuctionId[result.auctionId] ? (
+                          <span className={styles.inlineErrorText}>{relistErrorByAuctionId[result.auctionId]}</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{result.status === "UNSOLD" ? "—" : formatAed(result.winningBid)}</td>
+                    <td>{result.bids}</td>
+                    <td>{result.buyerCompany ?? "—"}</td>
+                    <td>{result.payment ?? "—"}</td>
+                  </tr>
+                );
+              })}
               {results.length === 0 ? (
                 <tr>
                   <td colSpan={8} className={styles.emptyCell}>
