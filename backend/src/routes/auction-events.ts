@@ -701,7 +701,7 @@ export async function getEventRuntimeSnapshot(
             callEndsAt:
               (await toIsoString(event.runtime?.callEndsAt)) ?? new Date().toISOString(),
             onBlockAt: (await toIsoString(activeLot.onBlockAt)) ?? new Date().toISOString(),
-            snapshot: currentLotSnapshot,
+            snapshot: currentLotSnapshot.snapshot,
           }
         : null,
     totalLots: event.lots.length,

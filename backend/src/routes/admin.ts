@@ -1430,7 +1430,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             id: auction.id,
             state: auction.state,
             approvedAt: null,
-            vipAccessPolicy: null,
+            vipAccessPolicy: "NONE" as const,
             vipReleaseAt: null,
             approvedByUserId: null,
             vipPolicyReason: null,
