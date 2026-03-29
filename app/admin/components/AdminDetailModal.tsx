@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { getAdminCopy } from "@/app/admin/i18n";
 import { DamageDiagram, type DamageMapValue } from "@/components/seller/DamageDiagram";
-import { EMPTY_VEHICLE_FEATURES, type SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
+import { EMPTY_VEHICLE_FORM, type SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
 import { IconCar, IconShield, IconTag, IconZap } from "@/components/ui/icons";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
@@ -315,7 +315,7 @@ function readDamageMap(value: unknown): DamageMapValue {
 
 function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
   if (!isRecord(value)) {
-    return EMPTY_VEHICLE_FEATURES;
+    return EMPTY_VEHICLE_FORM;
   }
 
   const comfortInterior = isRecord(value.comfortInterior) ? value.comfortInterior : {};
@@ -324,17 +324,17 @@ function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
   const exterior = isRecord(value.exterior) ? value.exterior : {};
 
   const normalizedTechnology = {
-    ...EMPTY_VEHICLE_FEATURES.technology,
+    ...EMPTY_VEHICLE_FORM.technology,
     ...Object.fromEntries(
-      Object.keys(EMPTY_VEHICLE_FEATURES.technology).map((key) => [key, technology[key] === true]),
+      Object.keys(EMPTY_VEHICLE_FORM.technology).map((key) => [key, technology[key] === true]),
     ),
   };
 
   return {
     comfortInterior: {
-      ...EMPTY_VEHICLE_FEATURES.comfortInterior,
+      ...EMPTY_VEHICLE_FORM.comfortInterior,
       ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FEATURES.comfortInterior).map((key) => [key, comfortInterior[key] === true]),
+        Object.keys(EMPTY_VEHICLE_FORM.comfortInterior).map((key) => [key, comfortInterior[key] === true]),
       ),
     },
     interiorMaterial:
@@ -345,9 +345,9 @@ function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
         ? value.interiorMaterial
         : "",
     safety: {
-      ...EMPTY_VEHICLE_FEATURES.safety,
+      ...EMPTY_VEHICLE_FORM.safety,
       ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FEATURES.safety).map((key) => [key, safety[key] === true]),
+        Object.keys(EMPTY_VEHICLE_FORM.safety).map((key) => [key, safety[key] === true]),
       ),
     },
     technology: normalizedTechnology,
@@ -362,9 +362,9 @@ function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
         ? value.soundBrand
         : "",
     exterior: {
-      ...EMPTY_VEHICLE_FEATURES.exterior,
+      ...EMPTY_VEHICLE_FORM.exterior,
       ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FEATURES.exterior).map((key) => [key, exterior[key] === true]),
+        Object.keys(EMPTY_VEHICLE_FORM.exterior).map((key) => [key, exterior[key] === true]),
       ),
     },
   };
