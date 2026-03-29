@@ -40,7 +40,7 @@ interface Lot {
   endsAt: string | null;
   totalBids: number;
   showVipEarlyAccessBadge?: boolean;
-  conditionGrade: "A" | "B" | "C" | "D" | "";
+  conditionGrade: string;
   primaryDamage: string;
   titleStatus: string;
   tireCondition: number | null;
@@ -90,11 +90,12 @@ type ApiAuction = {
     year?: number;
     mileage?: number;
     vin?: string;
+    series?: string | null;
     bodyType?: string;
     fuelType?: string;
     regionSpec?: string;
     images?: string[];
-    conditionGrade?: "A" | "B" | "C" | "D";
+    conditionGrade?: string | null;
     primaryDamage?: string | null;
     titleStatus?: string | null;
     tireCondition?: number | null;
@@ -279,6 +280,29 @@ function buildApiQuery(
   return Object.keys(query).length > 0 ? query : undefined;
 }
 
+function normalizeTitlePart(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized && normalized !== "—" && normalized !== "Not specified" ? normalized : "";
+}
+
+function buildVehicleTitle(input: {
+  year: number;
+  brand: string;
+  model: string;
+  engine?: unknown;
+  series?: unknown;
+}): string {
+  return [
+    input.year > 0 ? String(input.year) : "",
+    normalizeTitlePart(input.brand),
+    normalizeTitlePart(input.model),
+    normalizeTitlePart(input.engine),
+    normalizeTitlePart(input.series),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
   if (!auction.id) {
     return null;
@@ -288,7 +312,13 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
   const year = Number(vehicle.year ?? 0);
   const brand = String(vehicle.brand ?? "").trim();
   const model = String(vehicle.model ?? "").trim();
-  const title = [year > 0 ? String(year) : "", brand, model].filter(Boolean).join(" ");
+  const title = buildVehicleTitle({
+    year,
+    brand,
+    model,
+    engine: vehicle.engine,
+    series: vehicle.series,
+  });
 
   return {
     id: String(auction.id),
@@ -443,7 +473,11 @@ function applyQuickFilters(source: Lot[], quickFilters: Record<QuickFilterId, bo
       return false;
     }
 
-    if (quickFilters.GRADE_AB && !["A", "B"].includes(lot.conditionGrade)) {
+    if (
+      quickFilters.GRADE_AB &&
+      !lot.conditionGrade.trim().toUpperCase().startsWith("A") &&
+      !lot.conditionGrade.trim().toUpperCase().startsWith("B")
+    ) {
       return false;
     }
 

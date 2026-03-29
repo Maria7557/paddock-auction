@@ -28,7 +28,7 @@ type LotRowProps = {
     buyNowPrice?: number | null;
     startsAt: string | null;
     endsAt: string | null;
-    conditionGrade: "A" | "B" | "C" | "D" | "";
+    conditionGrade: string;
     primaryDamage: string;
     titleStatus: string;
     tireCondition: number | null;
@@ -75,7 +75,17 @@ export function LotRow({ lot, display }: LotRowProps) {
   const normalizedWarrantyStatus = lot.warrantyStatus.trim().toUpperCase();
   const showWarrantyBadge = normalizedWarrantyStatus === "ACTIVE" || normalizedWarrantyStatus === "EXPIRED";
   const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
-  const hasConditionGrade = ["A", "B", "C", "D"].includes(normalizedConditionGrade);
+  const hasConditionGrade = normalizedConditionGrade.length > 0;
+  const gradeToneClass =
+    normalizedConditionGrade.startsWith("A")
+      ? styles.gradeA
+      : normalizedConditionGrade.startsWith("B")
+        ? styles.gradeB
+        : normalizedConditionGrade.startsWith("C")
+          ? styles.gradeC
+          : normalizedConditionGrade.startsWith("D")
+            ? styles.gradeD
+            : styles.gradeNeutral;
 
   async function toggleWatchlist(): Promise<void> {
     setSaved((current) => !current);
@@ -109,7 +119,7 @@ export function LotRow({ lot, display }: LotRowProps) {
             src={lot.imageUrl || "/vehicle-photo.svg"}
             alt={lot.title}
             fill
-            sizes="200px"
+            sizes="240px"
             className={styles.photoImage}
           />
 
@@ -147,19 +157,7 @@ export function LotRow({ lot, display }: LotRowProps) {
       <div className={`${styles.cell} ${styles.conditionCell}`}>
         <div className={styles.gradeRow}>
           {hasConditionGrade ? (
-            <span
-              className={`${styles.gradePill} ${
-                normalizedConditionGrade === "A"
-                  ? styles.gradeA
-                  : normalizedConditionGrade === "B"
-                    ? styles.gradeB
-                    : normalizedConditionGrade === "C"
-                      ? styles.gradeC
-                      : styles.gradeD
-              }`}
-            >
-              {normalizedConditionGrade}
-            </span>
+            <span className={`${styles.gradePill} ${gradeToneClass}`}>{normalizedConditionGrade}</span>
           ) : (
             <span className={styles.gradeEmpty}>—</span>
           )}

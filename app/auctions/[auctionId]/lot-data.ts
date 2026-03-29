@@ -87,6 +87,34 @@ function hasMeaningfulValue(value: unknown): boolean {
   return normalized.length > 0 && normalized !== "—" && normalized !== NOT_SPECIFIED;
 }
 
+function normalizeConditionGrade(value: unknown): string {
+  const normalized = normalizeText(value).toUpperCase();
+
+  if (/^[ABCD](?:\+{1,2})?$/.test(normalized)) {
+    return normalized;
+  }
+
+  return "";
+}
+
+function buildVehicleTitle(input: {
+  year: number;
+  brand: string;
+  model: string;
+  engine: unknown;
+  series: unknown;
+}): string {
+  return [
+    input.year > 0 ? String(input.year) : "",
+    normalizeText(input.brand),
+    normalizeText(input.model),
+    hasMeaningfulValue(input.engine) ? normalizeText(input.engine) : "",
+    hasMeaningfulValue(input.series) ? normalizeText(input.series) : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function getDefaultLotNumber(auctionId: string): string {
   return auctionId.slice(0, 8).toUpperCase();
 }
@@ -135,6 +163,12 @@ function getDamageItems(value: unknown): LotDetail["damageItems"] {
 }
 
 function getConditionGrade(value: unknown): LotConditionGrade {
+  const explicit = normalizeConditionGrade(value);
+
+  if (explicit) {
+    return explicit;
+  }
+
   const normalized = normalizeText(value).toLowerCase();
 
   if (!normalized) {
@@ -166,10 +200,14 @@ function getStartCode(input: {
   damage: unknown;
   condition: unknown;
 }): LotStartCode {
-  const explicit = normalizeText(input.explicit);
+  const explicit = normalizeText(input.explicit).toLowerCase();
 
-  if (explicit === "Run & Drive" || explicit === "Stationary") {
-    return explicit;
+  if (explicit === "run & drive" || explicit === "run and drive") {
+    return "Run & Drive";
+  }
+
+  if (explicit === "stationary" || explicit === "does not start") {
+    return "Stationary";
   }
 
   const damage = normalizeText(input.damage).toLowerCase();
@@ -244,11 +282,11 @@ function getNumberOfKeys(input: {
     return 1;
   }
 
-  if (grade === "A") {
+  if (grade.startsWith("A")) {
     return 2;
   }
 
-  if (grade === "B") {
+  if (grade.startsWith("B")) {
     return 1;
   }
 
@@ -383,11 +421,11 @@ function getInteriorMaterial(input: {
     return explicit;
   }
 
-  if (LUXURY_BRANDS.has(input.brand) || input.conditionGrade === "A") {
+  if (LUXURY_BRANDS.has(input.brand) || input.conditionGrade.toUpperCase().startsWith("A")) {
     return "Leather";
   }
 
-  if (hasMeaningfulValue(input.interiorColor) && input.conditionGrade === "B") {
+  if (hasMeaningfulValue(input.interiorColor) && input.conditionGrade.toUpperCase().startsWith("B")) {
     return "Leatherette";
   }
 
@@ -478,7 +516,15 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
     const mileageKm = asNumber(vehicle.mileage ?? vehicle.mileageKm);
     const brand = asString(vehicle.brand ?? vehicle.make ?? "", "");
     const model = asString(vehicle.model ?? "", "");
+    const engine = asString(vehicle.engine, "—");
     const colorInterior = asString(vehicle.interiorColor, "");
+    const title = buildVehicleTitle({
+      year: asNumber(vehicle.year),
+      brand,
+      model,
+      engine: vehicle.engine,
+      series,
+    });
 
     return {
       id: String(auction.id ?? auctionId),
@@ -487,9 +533,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       state: (auction.state as LotDetail["state"] | undefined) ?? "SCHEDULED",
       showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
       vipReleaseAt: typeof auction.vipReleaseAt === "string" ? auction.vipReleaseAt : null,
-      title:
-        `${brand} ${model} ${asString(vehicle.year ?? "", "")}`.trim() ||
-        `Lot ${getDefaultLotNumber(auctionId)}`,
+      title: title || `Lot ${getDefaultLotNumber(auctionId)}`,
       make: brand,
       model,
       series,
@@ -539,7 +583,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       damageMap,
       damageItems,
       bodyStyle,
-      engine: asString(vehicle.engine, "—"),
+      engine,
       transmission: asString(vehicle.transmission),
       driveType: asString(vehicle.driveType ?? vehicle.drivetrain),
       fuelType: asString(vehicle.fuelType),

@@ -15,7 +15,7 @@ export type LotAuctionState =
 
 export type LotWarrantyStatus = "ACTIVE" | "EXPIRED" | "NONE";
 
-export type LotConditionGrade = "A" | "B" | "C" | "D";
+export type LotConditionGrade = string;
 
 export type LotStartCode = "Run & Drive" | "Stationary";
 

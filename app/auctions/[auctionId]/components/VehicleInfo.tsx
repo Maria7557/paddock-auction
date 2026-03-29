@@ -30,16 +30,17 @@ function maskVin(vin: string): string {
 
 function getGradeLabel(grade: LotDetail["conditionGrade"], locale: SupportedLocale): string {
   const isRu = locale === "ru";
+  const normalized = grade.trim().toUpperCase();
 
-  if (grade === "A") {
+  if (normalized.startsWith("A")) {
     return isRu ? "Отличное" : "Excellent";
   }
 
-  if (grade === "B") {
+  if (normalized.startsWith("B")) {
     return isRu ? "Хорошее" : "Good";
   }
 
-  if (grade === "C") {
+  if (normalized.startsWith("C")) {
     return isRu ? "Требует внимания" : "Needs attention";
   }
 
@@ -49,6 +50,7 @@ function getGradeLabel(grade: LotDetail["conditionGrade"], locale: SupportedLoca
 export function VehicleInfo({ lot, locale }: Props) {
   const isRu = locale === "ru";
   const [isDamageOpen, setIsDamageOpen] = useState(false);
+  const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
   const damageLevelLabels = useMemo(
     () =>
       ({
@@ -101,11 +103,11 @@ export function VehicleInfo({ lot, locale }: Props) {
         <span className={styles.gradeWrap}>
           <span
             className={`${styles.gradePill} ${
-              lot.conditionGrade === "A"
+              normalizedConditionGrade.startsWith("A")
                 ? styles.gradeA
-                : lot.conditionGrade === "B"
+                : normalizedConditionGrade.startsWith("B")
                   ? styles.gradeB
-                  : lot.conditionGrade === "C"
+                  : normalizedConditionGrade.startsWith("C")
                     ? styles.gradeC
                     : styles.gradeD
             }`}
@@ -244,7 +246,7 @@ export function VehicleInfo({ lot, locale }: Props) {
           <span className={styles.damageValue}>
             <span>{isRu ? "Есть отмеченные зоны" : "Marked zones available"}</span>
             <button type="button" className={styles.inlineLink} onClick={() => setIsDamageOpen(true)}>
-              {isRu ? "Открыть схему" : "Open diagram"}
+              {isRu ? "Открыть" : "Open"}
             </button>
           </span>
         ) : (

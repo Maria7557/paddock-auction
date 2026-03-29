@@ -24,7 +24,7 @@ import styles from "./page.module.css";
 export type { LotDetail } from "./types";
 
 function buildPageTitle(lot: LotDetail): string {
-  return [lot.year > 0 ? String(lot.year) : "", lot.make, lot.model, lot.series].filter(Boolean).join(" ");
+  return lot.title;
 }
 
 function maskVin(vin: string): string {

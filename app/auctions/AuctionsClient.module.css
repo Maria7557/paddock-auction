@@ -50,8 +50,8 @@
 }
 
 .tableShell {
-  width: 940px;
-  min-width: 940px;
+  width: 980px;
+  min-width: 980px;
 }
 
 .tableWrapper {
@@ -61,9 +61,9 @@
 
 .tableHeader {
   display: grid;
-  grid-template-columns: 200px 280px 130px 150px 180px;
-  width: 940px;
-  min-width: 940px;
+  grid-template-columns: 240px 280px 130px 150px 180px;
+  width: 980px;
+  min-width: 980px;
   background: var(--bg-subtle);
   border: 0.5px solid var(--line-soft);
   border-radius: 10px;
@@ -85,8 +85,8 @@
 
 .lotTable {
   display: block;
-  width: 940px;
-  min-width: 940px;
+  width: 980px;
+  min-width: 980px;
   padding-top: 8px;
 }
 
@@ -100,8 +100,8 @@
 .tableSkeletonList {
   display: grid;
   gap: 8px;
-  width: 940px;
-  min-width: 940px;
+  width: 980px;
+  min-width: 980px;
   padding-top: 8px;
 }
 
