@@ -25,7 +25,6 @@ type BuyerWatchlistResponse = {
       model: string;
       year: number;
       mileage: number;
-      marketPrice: number | null;
       regionSpec: string | null;
       images: string[];
     };

@@ -22,7 +22,6 @@ type WatchlistLot = {
     model: string;
     year: number;
     mileage: number;
-    marketPrice: number | null;
     regionSpec: string | null;
     images: string[];
   };
@@ -158,7 +157,6 @@ export function WatchlistGrid({ initialLots }: WatchlistGridProps) {
                   currentBid={lot.currentPrice}
                   status={lot.state}
                   endTime={endTime}
-                  marketPrice={lot.vehicle.marketPrice ?? undefined}
                   buyNowPrice={lot.buyNowPrice ?? undefined}
                   showWishlistControl
                   defaultWatchlisted={lot.isWatchlisted}

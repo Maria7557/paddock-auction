@@ -24,7 +24,6 @@ export default async function LoadingVehiclesPage() {
                 <th>{t.vehicles.table.vin}</th>
                 <th>{t.vehicles.table.status}</th>
                 <th>{t.vehicles.table.company}</th>
-                <th>{t.vehicles.table.marketPrice}</th>
                 <th>{t.vehicles.table.event}</th>
                 <th>{t.vehicles.table.actions}</th>
               </tr>
@@ -32,7 +31,7 @@ export default async function LoadingVehiclesPage() {
             <tbody>
               {[1, 2, 3, 4].map((row) => (
                 <tr key={row}>
-                  <td colSpan={8}>
+                  <td colSpan={7}>
                     <div className={styles.skeletonLine} />
                   </td>
                 </tr>

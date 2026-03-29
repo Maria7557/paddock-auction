@@ -29,7 +29,6 @@ export type LotDetail = {
   mileageKm: number;
   color: string;
   colorInterior: string;
-  condition: string;
   regionSpec: string;
   airbags: string;
   damage: string;
@@ -224,7 +223,6 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       mileageKm: asNumber(vehicle.mileage ?? vehicle.mileageKm),
       color: asString(vehicle.exteriorColor ?? vehicle.color, NOT_SPECIFIED),
       colorInterior: asString(vehicle.interiorColor, NOT_SPECIFIED),
-      condition: asString(vehicle.condition, NOT_SPECIFIED),
       regionSpec: asString(vehicle.regionSpec, NOT_SPECIFIED),
       airbags: asString(vehicle.airbags, NOT_SPECIFIED),
       damage: asString(vehicle.damage, damageItems[0]?.label ?? NOT_SPECIFIED),
@@ -242,7 +240,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       sellerRef: asString(auction.sellerRef, "—"),
       location: asString(auction.location ?? vehicle.location, NOT_SPECIFIED),
       auctionAt: asString(auction.startsAt ?? auction.auctionAt ?? new Date().toISOString()),
-      actualCashValue: asNumber(vehicle.marketPriceAed ?? vehicle.market_price ?? auction.marketPriceAed),
+      actualCashValue: asNumber(auction.actualCashValue, 0),
       currentBidAed,
       buyNowAed: asNumber(auction.buyNowPrice ?? auction.buyNowAed),
       minStepAed: asNumber(auction.minIncrement ?? auction.minStepAed, 500),

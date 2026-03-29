@@ -137,7 +137,6 @@ export type SellerVehicleFormValues = {
   airbags: string;
   color: string;
   mileageKm: string;
-  condition: string;
   serviceHistory: string;
   startCode: string;
   numberOfKeys: number;
@@ -167,7 +166,6 @@ export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
   airbags: "",
   color: "",
   mileageKm: "",
-  condition: "",
   serviceHistory: "",
   startCode: "",
   numberOfKeys: 1,

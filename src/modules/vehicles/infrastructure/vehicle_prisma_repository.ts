@@ -13,7 +13,6 @@ type VehicleRecord = {
   transmission: string | null;
   bodyType: string | null;
   regionSpec: string | null;
-  condition: string | null;
   serviceHistory: string | null;
 };
 
@@ -30,7 +29,6 @@ type VehicleDbClient = {
         transmission?: string;
         bodyType?: string;
         regionSpec?: string;
-        condition?: string;
         serviceHistory?: string;
       };
     }): Promise<VehicleRecord>;
@@ -77,7 +75,6 @@ function mapVehicle(vehicle: VehicleRecord): Vehicle {
     transmission: vehicle.transmission,
     bodyType: vehicle.bodyType,
     regionSpec: vehicle.regionSpec,
-    condition: vehicle.condition,
     serviceHistory: vehicle.serviceHistory,
   };
 }
@@ -105,7 +102,6 @@ export function createVehicleRepository(dbClient: VehicleDbClient | null = null)
             transmission: input.transmission,
             bodyType: input.bodyType,
             regionSpec: input.regionSpec,
-            condition: input.condition,
             serviceHistory: input.serviceHistory,
           },
         });

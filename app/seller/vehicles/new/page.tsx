@@ -34,7 +34,6 @@ export default function SellerNewVehiclePage() {
         airbags: values.airbags || undefined,
         exteriorColor: values.color || undefined,
         mileage: Number(values.mileageKm),
-        condition: values.condition || undefined,
         serviceHistory: values.serviceHistory || undefined,
         startCode: values.startCode || undefined,
         numberOfKeys: values.numberOfKeys,

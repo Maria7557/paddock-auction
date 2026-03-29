@@ -8,7 +8,6 @@ import { AdminDetailModal } from "@/app/admin/components/AdminDetailModal";
 import { api } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
-import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
 
@@ -21,7 +20,6 @@ type VehicleRow = {
   vin: string;
   status: VehicleStatus;
   companyName: string;
-  marketPriceAed: number | null;
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
@@ -53,8 +51,6 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
   const t = getAdminCopy(locale);
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
-  const [priceDraftById, setPriceDraftById] = useState<Record<string, string>>({});
   const [eventDraftById, setEventDraftById] = useState<Record<string, string>>({});
   const [eventOptions, setEventOptions] = useState<EventOption[]>(events);
   const [selectedVehicle, setSelectedVehicle] = useState<{ id: string; label: string } | null>(null);
@@ -122,28 +118,6 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
     }
   }
 
-  async function saveMarketPrice(id: string): Promise<void> {
-    const draft = priceDraftById[id] ?? "";
-    const value = Number(draft);
-
-    if (!Number.isFinite(value) || value <= 0) {
-      return;
-    }
-
-    setBusyId(id);
-
-    try {
-      await api.admin.vehicles.setMarketPrice(id, {
-        priceAed: value,
-      });
-
-      setEditingPriceId(null);
-      router.refresh();
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function assignEvent(id: string, eventId: string | null): Promise<void> {
     setBusyId(id);
 
@@ -184,7 +158,6 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                 <th>{t.vehicles.table.vin}</th>
                 <th>{t.vehicles.table.status}</th>
                 <th>{t.vehicles.table.company}</th>
-                <th>{t.vehicles.table.marketPrice}</th>
                 <th>{t.vehicles.table.event}</th>
                 <th>{t.vehicles.table.actions}</th>
               </tr>
@@ -221,48 +194,6 @@ export function VehiclesTable({ rows, events, locale }: VehiclesTableProps) {
                     </div>
                   </td>
                   <td>{row.companyName}</td>
-                  <td>
-                    {editingPriceId === row.id ? (
-                      <div className={styles.inlineEdit}>
-                        <input
-                          type="number"
-                          min={1}
-                          value={priceDraftById[row.id] ?? (row.marketPriceAed === null ? "" : String(row.marketPriceAed))}
-                          onChange={(event) =>
-                            setPriceDraftById((prev) => ({
-                              ...prev,
-                              [row.id]: event.target.value,
-                            }))
-                          }
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={busyId === row.id}
-                          onClick={() => void saveMarketPrice(row.id)}
-                        >
-                          {t.vehicles.actions.save}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className={styles.inlineEdit}>
-                        <span>{row.marketPriceAed === null ? "-" : formatAed(row.marketPriceAed)}</span>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => {
-                            setEditingPriceId(row.id);
-                            setPriceDraftById((prev) => ({
-                              ...prev,
-                              [row.id]: row.marketPriceAed === null ? "" : String(row.marketPriceAed),
-                            }));
-                          }}
-                        >
-                          {t.vehicles.actions.edit}
-                        </button>
-                      </div>
-                    )}
-                  </td>
                   <td>
                     {row.assignedEventId ? (
                       <div className={styles.inlineEdit}>

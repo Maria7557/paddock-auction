@@ -31,7 +31,6 @@ export const FUEL_TYPES = ["Petrol","Diesel","Electric","Hybrid","Plug-in Hybrid
 export const TRANSMISSION_TYPES = ["Automatic","Manual","CVT","Semi-Automatic","Dual-Clutch"] as const;
 export const BODY_TYPES = ["Sedan","SUV","Pickup","Van","Coupe","Convertible","Hatchback","Wagon","Minivan","Truck","Crossover"] as const;
 export const REGION_SPECS = ["GCC","USA","European","Japanese","Korean","Canadian","Australian","Chinese","Other"] as const;
-export const CONDITIONS = ["Excellent","Good","Fair","Poor","Salvage"] as const;
 export const COLORS = ["White","Black","Silver","Grey","Blue","Red","Green","Brown","Beige","Gold","Orange","Yellow","Pearl White","Midnight Black","Other"] as const;
 export const YEARS = Array.from({ length: 2026 - 1990 + 1 }, (_, i) => 2026 - i);
 export const SERVICE_HISTORY_OPTIONS = ["Full Service History","Partial Service History","No Service History","Unknown"] as const;
@@ -40,7 +39,6 @@ export type FuelType = typeof FUEL_TYPES[number];
 export type TransmissionType = typeof TRANSMISSION_TYPES[number];
 export type BodyType = typeof BODY_TYPES[number];
 export type RegionSpec = typeof REGION_SPECS[number];
-export type Condition = typeof CONDITIONS[number];
 export type Color = typeof COLORS[number];
 
 // NHTSA API — fetch all makes dynamically

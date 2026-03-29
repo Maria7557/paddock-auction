@@ -747,8 +747,6 @@ export const api = {
         postJson<T>(`/api/admin/vehicles/${id}/approve`, undefined, options),
       reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/vehicles/${id}/reject`, undefined, options),
-      setMarketPrice: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
-        postJson<T>(`/api/admin/vehicles/${id}/set-market-price`, payload, options),
       assignEvent: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/vehicles/${id}/assign-event`, payload, options),
     },

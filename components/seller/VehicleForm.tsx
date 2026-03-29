@@ -15,7 +15,6 @@ import styles from "@/components/seller/VehicleForm.module.css";
 import {
   BODY_TYPES,
   COLORS,
-  CONDITIONS,
   FUEL_TYPES,
   REGION_SPECS,
   SERVICE_HISTORY_OPTIONS,
@@ -825,20 +824,6 @@ export function VehicleForm({
           onChange={(event) => updateField("mileageKm", event.target.value)}
           required
         />
-      </label>
-
-      <label>
-        Condition
-        <select value={values.condition} onChange={(event) => updateField("condition", event.target.value)} required>
-          <option value="" disabled>
-            Select condition
-          </option>
-          {CONDITIONS.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
       </label>
 
       <label>

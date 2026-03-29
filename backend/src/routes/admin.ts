@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
@@ -187,16 +187,12 @@ const eventIdParamsSchema = z.object({
   id: z.string().trim().min(1),
 });
 
-const setMarketPriceSchema = z.object({
-  priceAed: z.coerce.number().positive(),
-});
-
 const assignVehicleEventSchema = z.object({
   eventId: z.string().trim().min(1).nullable().optional(),
 });
 
 const optionalAdminTextSchema = z.union([z.string().trim(), z.null()]).optional();
-const vehicleConditionGradeSchema = z.enum(["A", "B", "C", "D"]);
+const vehicleConditionGradeSchema = z.enum(["A", "A+", "A++", "B", "B+", "C", "C+", "D", "D+"]);
 const vehicleTitleStatusSchema = z.enum(["Clean", "Salvage", "Flood", "Fire"]);
 const vehiclePrimaryDamageSchema = z.enum([
   "None",
@@ -216,13 +212,14 @@ const adminVehicleUpdateSchema = z.object({
   year: z.number().int().min(1886).max(2100).optional(),
   mileage: z.number().int().nonnegative().optional(),
   vin: z.string().trim().min(5).max(64).optional(),
+  photoUrls: z.array(z.string().trim().min(1)).optional(),
+  mulkiyaFrontUrl: z.union([z.string().trim().min(1), z.null()]).optional(),
+  mulkiyaBackUrl: z.union([z.string().trim().min(1), z.null()]).optional(),
   series: optionalAdminTextSchema,
-  marketPriceAed: z.number().nonnegative().nullable().optional(),
   fuelType: optionalAdminTextSchema,
   transmission: optionalAdminTextSchema,
   bodyType: optionalAdminTextSchema,
   regionSpec: optionalAdminTextSchema,
-  condition: optionalAdminTextSchema,
   serviceHistory: optionalAdminTextSchema,
   description: optionalAdminTextSchema,
   internalNotes: optionalAdminTextSchema,
@@ -325,8 +322,66 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
   throw new Error("Unable to convert decimal value");
 }
 
-async function toStoredJson(payload: unknown): Promise<any> {
-  return JSON.parse(JSON.stringify(payload));
+async function toStoredJson(payload: unknown): Promise<Prisma.InputJsonValue> {
+  return JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue;
+}
+
+async function toVehicleMediaCreateInput(input: {
+  images: string[];
+  mulkiyaFrontUrl?: string | null;
+  mulkiyaBackUrl?: string | null;
+}): Promise<Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }>> {
+  const items: Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }> = [];
+
+  for (const [index, url] of input.images.entries()) {
+    items.push({
+      url,
+      type: "PHOTO",
+      sortOrder: index,
+    });
+  }
+
+  if (input.mulkiyaFrontUrl) {
+    items.push({
+      url: input.mulkiyaFrontUrl,
+      type: "MULKIYA_FRONT",
+      sortOrder: 0,
+    });
+  }
+
+  if (input.mulkiyaBackUrl) {
+    items.push({
+      url: input.mulkiyaBackUrl,
+      type: "MULKIYA_BACK",
+      sortOrder: 0,
+    });
+  }
+
+  return items;
+}
+
+async function readVehicleMediaUrls(input: {
+  images: string[];
+  media: Array<{
+    url: string;
+    type: string;
+    sortOrder: number;
+  }>;
+}): Promise<{
+  photoUrls: string[];
+  mulkiyaFrontUrl: string | null;
+  mulkiyaBackUrl: string | null;
+}> {
+  const photoUrls = input.media
+    .filter((item) => item.type === "PHOTO")
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((item) => item.url);
+
+  return {
+    photoUrls: photoUrls.length > 0 ? photoUrls : input.images,
+    mulkiyaFrontUrl: input.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
+    mulkiyaBackUrl: input.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
+  };
 }
 
 function normalizeOptionalAdminText(value: string | null | undefined): string | null | undefined {
@@ -651,7 +706,6 @@ type AdminVehicleListRow = {
   model: string;
   year: number;
   vin: string;
-  marketPrice: DecimalLike;
   imageUrl: string | null;
   latestAuctionId: string | null;
   latestAuctionState: string | null;
@@ -672,7 +726,6 @@ type AdminVehicleDetailResponseBody = {
     series: string | null;
     mileage: number;
     vin: string;
-    marketPriceAed: number | null;
     status: string;
     photoUrls: string[];
     mulkiyaFrontUrl: string | null;
@@ -681,7 +734,6 @@ type AdminVehicleDetailResponseBody = {
     transmission: string | null;
     bodyType: string | null;
     regionSpec: string | null;
-    condition: string | null;
     serviceHistory: string | null;
     description: string | null;
     internalNotes: string | null;
@@ -742,7 +794,6 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
         model: true,
         year: true,
         vin: true,
-        marketPrice: true,
         images: true,
         media: {
           orderBy: {
@@ -797,7 +848,6 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       model: vehicle.model,
       year: vehicle.year,
       vin: vehicle.vin,
-      marketPrice: vehicle.marketPrice,
       imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
@@ -863,7 +913,6 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       model: vehicle.model,
       year: vehicle.year,
       vin: vehicle.vin,
-      marketPrice: 0,
       imageUrl: null,
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
@@ -1005,7 +1054,6 @@ async function loadAdminVehicleDetail(input: {
       series: vehicle.series,
       mileage: vehicle.mileage,
       vin: vehicle.vin,
-      marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
       status: await resolveVehicleStatus(
         latestAuction?.state ?? null,
         hasVehicleApprovalTransition(latestTransitions),
@@ -1017,7 +1065,6 @@ async function loadAdminVehicleDetail(input: {
       transmission: vehicle.transmission,
       bodyType: vehicle.bodyType,
       regionSpec: vehicle.regionSpec,
-      condition: vehicle.condition,
       serviceHistory: vehicle.serviceHistory,
       description: vehicle.description,
       internalNotes: vehicle.internalNotes,
@@ -1424,7 +1471,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           model: vehicle.model,
           year: vehicle.year,
           vin: vehicle.vin,
-          marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
           status: resolvedStatus,
           imageUrl: vehicle.imageUrl,
           label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
@@ -1512,6 +1558,14 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
         select: {
           id: true,
+          images: true,
+          media: {
+            select: {
+              url: true,
+              type: true,
+              sortOrder: true,
+            },
+          },
         },
       });
 
@@ -1523,6 +1577,27 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const payload = parsedBody.data;
+      const currentMedia = await readVehicleMediaUrls({
+        images: existingVehicle.images,
+        media: existingVehicle.media,
+      });
+      const shouldReplaceMedia =
+        payload.photoUrls !== undefined ||
+        payload.mulkiyaFrontUrl !== undefined ||
+        payload.mulkiyaBackUrl !== undefined;
+      const nextPhotoUrls =
+        payload.photoUrls?.map((url) => url.trim()).filter((url) => url.length > 0) ?? currentMedia.photoUrls;
+      const nextMulkiyaFrontUrl =
+        payload.mulkiyaFrontUrl === undefined ? currentMedia.mulkiyaFrontUrl : payload.mulkiyaFrontUrl;
+      const nextMulkiyaBackUrl =
+        payload.mulkiyaBackUrl === undefined ? currentMedia.mulkiyaBackUrl : payload.mulkiyaBackUrl;
+      const mediaItems = shouldReplaceMedia
+        ? await toVehicleMediaCreateInput({
+            images: nextPhotoUrls,
+            mulkiyaFrontUrl: nextMulkiyaFrontUrl,
+            mulkiyaBackUrl: nextMulkiyaBackUrl,
+          })
+        : [];
 
       try {
         await prisma.$transaction(async (tx) => {
@@ -1533,17 +1608,16 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             data: {
               brand: payload.brand,
               model: payload.model,
-              year: payload.year,
-              mileage: payload.mileage,
-              vin: payload.vin?.trim().toUpperCase(),
-              series: normalizeOptionalAdminText(payload.series),
-              marketPrice: toNullableDecimalInput(payload.marketPriceAed),
-              fuelType: normalizeOptionalAdminText(payload.fuelType),
-              transmission: normalizeOptionalAdminText(payload.transmission),
-              bodyType: normalizeOptionalAdminText(payload.bodyType),
-              regionSpec: normalizeOptionalAdminText(payload.regionSpec),
-              condition: normalizeOptionalAdminText(payload.condition),
-              serviceHistory: normalizeOptionalAdminText(payload.serviceHistory),
+            year: payload.year,
+            mileage: payload.mileage,
+            vin: payload.vin?.trim().toUpperCase(),
+            images: shouldReplaceMedia ? nextPhotoUrls : undefined,
+            series: normalizeOptionalAdminText(payload.series),
+            fuelType: normalizeOptionalAdminText(payload.fuelType),
+            transmission: normalizeOptionalAdminText(payload.transmission),
+            bodyType: normalizeOptionalAdminText(payload.bodyType),
+            regionSpec: normalizeOptionalAdminText(payload.regionSpec),
+            serviceHistory: normalizeOptionalAdminText(payload.serviceHistory),
               description: normalizeOptionalAdminText(payload.description),
               internalNotes: normalizeOptionalAdminText(payload.internalNotes),
               engine: normalizeOptionalAdminText(payload.engine),
@@ -1565,6 +1639,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
               tireCondition: payload.tireCondition,
               damageMap: payload.damageMap === undefined ? undefined : await toStoredJson(payload.damageMap),
               features: payload.features === undefined ? undefined : await toStoredJson(payload.features),
+              media: shouldReplaceMedia
+                ? {
+                    deleteMany: {},
+                    create: mediaItems,
+                  }
+                : undefined,
             },
           });
 
@@ -1878,81 +1958,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           // Fire-and-forget email dispatch must never affect the approval flow.
         }
       })();
-    },
-  );
-
-  fastify.post<{ Params: { id: string }; Body: unknown }>(
-    "/admin/vehicles/:id/set-market-price",
-    async function setAdminVehicleMarketPriceHandler(
-      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
-      reply: FastifyReply,
-    ): Promise<void> {
-      const actorId = request.auth?.userId;
-      const parsedParams = companyIdParamsSchema.safeParse(request.params);
-      const parsedBody = setMarketPriceSchema.safeParse(request.body ?? {});
-
-      if (!actorId) {
-        await reply.code(401).send({ error: "Unauthorized" });
-        return;
-      }
-
-      if (!parsedParams.success) {
-        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
-        return;
-      }
-
-      if (!parsedBody.success) {
-        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
-        return;
-      }
-
-      const { id } = parsedParams.data;
-      const vehicle = await prisma.vehicle.findUnique({
-        where: {
-          id,
-        },
-        select: {
-          id: true,
-          marketPrice: true,
-        },
-      });
-
-      if (!vehicle) {
-        await reply.code(404).send({
-          error: "VEHICLE_NOT_FOUND",
-        });
-        return;
-      }
-
-      await prisma.$transaction(async (tx) => {
-        await tx.vehicle.update({
-          where: {
-            id,
-          },
-          data: {
-            marketPrice: parsedBody.data.priceAed,
-          },
-        });
-
-        await createAuditLog(tx, {
-          actorId,
-          action: "VEHICLE_MARKET_PRICE_SET",
-          entityType: "Vehicle",
-          entityId: id,
-          payload: {
-            vehicleId: id,
-            previousMarketPrice:
-              vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
-            nextMarketPrice: parsedBody.data.priceAed,
-          },
-        });
-      });
-
-      await reply.code(200).send({
-        success: true,
-        vehicleId: id,
-        marketPriceAed: parsedBody.data.priceAed,
-      });
     },
   );
 
@@ -4051,7 +4056,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             model: true,
             year: true,
             vin: true,
-            marketPrice: true,
             images: true,
           },
         },
@@ -4088,7 +4092,6 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: lot.vehicleId,
           title: `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`,
           vin: lot.vehicle.vin,
-          marketPriceAed: lot.vehicle.marketPrice === null ? null : await toNumberValue(lot.vehicle.marketPrice),
           imageUrl: lot.vehicle.images[0] ?? null,
         })),
       ),

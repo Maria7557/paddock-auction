@@ -9,7 +9,6 @@ export type Vehicle = {
   transmission?: string | null;
   bodyType?: string | null;
   regionSpec?: string | null;
-  condition?: string | null;
   serviceHistory?: string | null;
 };
 
@@ -23,7 +22,6 @@ export type CreateVehicleCommand = {
   transmission?: string;
   bodyType?: string;
   regionSpec?: string;
-  condition?: string;
   serviceHistory?: string;
   description?: string;
   color?: string;

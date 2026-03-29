@@ -64,7 +64,6 @@ export function VehicleInfo({ lot, locale }: Props) {
         ),
       rowClassName: lot.damageItems.length > 0 ? styles.rowItemMulti : undefined,
     },
-    { label: isRu ? "Состояние" : "Condition", value: lot.condition },
     { label: isRu ? "Спецификация" : "Region Spec", value: lot.regionSpec },
   ] satisfies Array<{ label: string; value: ReactNode; rowClassName?: string }>;
 

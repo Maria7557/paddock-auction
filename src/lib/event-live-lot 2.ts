@@ -61,7 +61,6 @@ export type EventLotView = {
   model: string;
   year: number;
   mileageKm: number;
-  condition: string;
   regionSpec: string;
   fuelType: string;
   bodyStyle: string;
@@ -88,7 +87,6 @@ export function mapServerLotToEventLotView(lot: LotDetail): EventLotView {
     model: lot.model,
     year: lot.year,
     mileageKm: lot.mileageKm,
-    condition: lot.condition,
     regionSpec: lot.regionSpec,
     fuelType: lot.fuelType,
     bodyStyle: lot.bodyStyle,
@@ -128,7 +126,6 @@ export function mapAuctionPayloadToEventLotView(
     model,
     year,
     mileageKm: asNumber(vehicle.mileage ?? vehicle.mileageKm),
-    condition: asString(vehicle.condition, NOT_SPECIFIED),
     regionSpec: asString(vehicle.regionSpec, NOT_SPECIFIED),
     fuelType: asString(vehicle.fuelType, NOT_SPECIFIED),
     bodyStyle: asString(vehicle.bodyType ?? vehicle.bodyStyle, NOT_SPECIFIED),

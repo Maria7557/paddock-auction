@@ -167,12 +167,10 @@ model Vehicle {
   manufacturedIn String?        @map("manufactured_in")
   conditionGrade String?        @map("condition_grade")
   estimatedValue Decimal?       @map("estimated_value") @db.Decimal(18, 2)
-  marketPrice    Decimal?       @map("market_price") @db.Decimal(18, 2)
   fuelType       String?
   transmission   String?
   bodyType       String?
   regionSpec     String?
-  condition      String?
   serviceHistory String?
   description    String?
   internalNotes  String?        @map("internal_notes")
@@ -182,7 +180,7 @@ model Vehicle {
   exteriorColor  String?        @map("exterior_color")
   interiorColor  String?        @map("interior_color")
   airbags        String?
-  damage         String?        @default("None")
+  damage         String?
   damageMap      Json?          @map("damage_map")
   images         String[]       @default([])
   media          VehicleMedia[]

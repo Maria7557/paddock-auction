@@ -10,7 +10,6 @@ import { verifyJwt } from "@/src/lib/auth";
 export const runtime = "nodejs";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MIN_PHOTO_COUNT = 10;
 const PHOTO_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const MULKIYA_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const UPLOAD_ROOT = path.join(process.cwd(), ".tmp", "seller-vehicle-media");
@@ -37,7 +36,17 @@ function getExtension(file: File): string {
   return ".jpg";
 }
 
-async function requireSellerToken(): Promise<{ companyId: string } | NextResponse> {
+type VehicleMediaSession =
+  | {
+      batchPrefix: string;
+      role: "SELLER";
+    }
+  | {
+      batchPrefix: string;
+      role: "ADMIN";
+    };
+
+async function requireVehicleMediaSession(): Promise<VehicleMediaSession | NextResponse> {
   const cookieStore = await cookies();
   const token = cookieStore.get("token")?.value?.trim();
 
@@ -47,13 +56,25 @@ async function requireSellerToken(): Promise<{ companyId: string } | NextRespons
 
   const payload = await verifyJwt(token);
 
-  if (!payload || payload.role !== "SELLER" || !payload.companyId) {
+  if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return {
-    companyId: payload.companyId,
-  };
+  if (payload.role === "SELLER" && payload.companyId) {
+    return {
+      batchPrefix: payload.companyId,
+      role: "SELLER",
+    };
+  }
+
+  if (payload.role === "ADMIN" && payload.userId) {
+    return {
+      batchPrefix: `admin-${payload.userId}`,
+      role: "ADMIN",
+    };
+  }
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 async function persistFile(file: File, batchDir: string, targetName: string): Promise<void> {
@@ -82,7 +103,7 @@ function hasMultipartContentType(request: Request): boolean {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const session = await requireSellerToken();
+    const session = await requireVehicleMediaSession();
 
     if (session instanceof Response) {
       return session;
@@ -96,17 +117,12 @@ export async function POST(request: Request): Promise<Response> {
     const photos = formData.getAll("photos").filter(isFile);
     const mulkiyaFront = formData.get("mulkiyaFront");
     const mulkiyaBack = formData.get("mulkiyaBack");
+    const mulkiyaFrontFile = isFile(mulkiyaFront) ? mulkiyaFront : null;
+    const mulkiyaBackFile = isFile(mulkiyaBack) ? mulkiyaBack : null;
 
-    if (photos.length < MIN_PHOTO_COUNT) {
+    if (photos.length === 0 && !mulkiyaFrontFile && !mulkiyaBackFile) {
       return NextResponse.json(
-        { error: `Please upload at least ${MIN_PHOTO_COUNT} photos before submitting.` },
-        { status: 400 },
-      );
-    }
-
-    if (!isFile(mulkiyaFront) || !isFile(mulkiyaBack)) {
-      return NextResponse.json(
-        { error: "Please upload both front and back sides of the Mulkiya." },
+        { error: "Please upload at least one photo or document." },
         { status: 400 },
       );
     }
@@ -120,9 +136,13 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     for (const [file, label] of [
-      [mulkiyaFront, "Mulkiya front"],
-      [mulkiyaBack, "Mulkiya back"],
+      [mulkiyaFrontFile, "Mulkiya front"],
+      [mulkiyaBackFile, "Mulkiya back"],
     ] as const) {
+      if (!file) {
+        continue;
+      }
+
       const error = validateFile(file, MULKIYA_MIME_TYPES, label);
 
       if (error) {
@@ -130,7 +150,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const batchId = `${session.companyId}-${Date.now()}-${randomUUID()}`;
+    const batchId = `${session.batchPrefix}-${Date.now()}-${randomUUID()}`;
     const batchDir = path.join(UPLOAD_ROOT, batchId);
 
     await mkdir(batchDir, { recursive: true });
@@ -145,16 +165,25 @@ export async function POST(request: Request): Promise<Response> {
       photoUrls.push(`/api/seller/vehicles/media/${batchId}/${fileName}`);
     }
 
-    const mulkiyaFrontName = `mulkiya-front${getExtension(mulkiyaFront)}`;
-    const mulkiyaBackName = `mulkiya-back${getExtension(mulkiyaBack)}`;
+    let mulkiyaFrontUrl: string | null = null;
+    let mulkiyaBackUrl: string | null = null;
 
-    await persistFile(mulkiyaFront, batchDir, mulkiyaFrontName);
-    await persistFile(mulkiyaBack, batchDir, mulkiyaBackName);
+    if (mulkiyaFrontFile) {
+      const mulkiyaFrontName = `mulkiya-front${getExtension(mulkiyaFrontFile)}`;
+      await persistFile(mulkiyaFrontFile, batchDir, mulkiyaFrontName);
+      mulkiyaFrontUrl = `/api/seller/vehicles/media/${batchId}/${mulkiyaFrontName}`;
+    }
+
+    if (mulkiyaBackFile) {
+      const mulkiyaBackName = `mulkiya-back${getExtension(mulkiyaBackFile)}`;
+      await persistFile(mulkiyaBackFile, batchDir, mulkiyaBackName);
+      mulkiyaBackUrl = `/api/seller/vehicles/media/${batchId}/${mulkiyaBackName}`;
+    }
 
     return NextResponse.json({
       photos: photoUrls,
-      mulkiyaFrontUrl: `/api/seller/vehicles/media/${batchId}/${mulkiyaFrontName}`,
-      mulkiyaBackUrl: `/api/seller/vehicles/media/${batchId}/${mulkiyaBackName}`,
+      mulkiyaFrontUrl,
+      mulkiyaBackUrl,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to upload media";

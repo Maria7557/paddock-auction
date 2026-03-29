@@ -281,7 +281,6 @@ function buildSpecRows(lot: EventLotView | null): SpecRow[] {
     { label: "Year", value: String(lot.year || "—") },
     { label: "Mileage", value: lot.mileageKm > 0 ? `${lot.mileageKm.toLocaleString("en-AE")} km` : "—" },
     { label: "Region Spec", value: lot.regionSpec || "—" },
-    { label: "Condition", value: lot.condition || "—", green: true },
     { label: "Transmission", value: lot.transmission || "—" },
     { label: "Fuel", value: lot.fuelType || "—" },
     { label: "Body", value: lot.bodyStyle || "—" },

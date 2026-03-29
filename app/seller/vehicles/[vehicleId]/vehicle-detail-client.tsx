@@ -31,7 +31,6 @@ type VehicleDetailResponse = {
     cylinders: number | null;
     manufacturedIn: string | null;
     features: SellerVehicleFeatures | null;
-    condition: string | null;
     serviceHistory: string | null;
     description: string | null;
     damageMap: Record<string, "MINOR" | "MAJOR">;
@@ -71,7 +70,6 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     airbags: data.vehicle.airbags ?? "UNKNOWN",
     color: data.vehicle.exteriorColor ?? "",
     mileageKm: String(data.vehicle.mileage),
-    condition: data.vehicle.condition ?? "",
     serviceHistory: data.vehicle.serviceHistory ?? "",
     startCode: data.vehicle.startCode ?? "",
     numberOfKeys: data.vehicle.numberOfKeys ?? 1,
@@ -142,7 +140,6 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
       airbags: values.airbags,
       exteriorColor: values.color,
       mileage: Number(values.mileageKm),
-      condition: values.condition,
       serviceHistory: values.serviceHistory,
       startCode: values.startCode || undefined,
       numberOfKeys: values.numberOfKeys,
@@ -241,10 +238,6 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
           <article>
             <p>Mileage</p>
             <strong>{data.vehicle.mileage.toLocaleString("en-AE")} km</strong>
-          </article>
-          <article>
-            <p>Condition</p>
-            <strong>{data.vehicle.condition ?? "-"}</strong>
           </article>
           <article>
             <p>Service History</p>

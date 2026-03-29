@@ -72,12 +72,10 @@ type LotSummary = {
     model: string;
     year: number;
     mileage: number;
-    marketPrice: number | null;
     fuelType: string | null;
     transmission: string | null;
     bodyType: string | null;
     regionSpec: string | null;
-    condition: string | null;
     images: string[];
   };
 };
@@ -90,7 +88,6 @@ type RecommendedLot = {
   year: number;
   mileage: number;
   regionSpec: string | null;
-  marketPrice: number | null;
   buyNowPrice: number | null;
   imageUrl?: string;
   startsAt: string | null;
@@ -474,12 +471,10 @@ async function serializeLotSummary(
       model: string;
       year: number;
       mileage: number;
-      marketPrice: DecimalLike | null;
       fuelType: string | null;
       transmission: string | null;
       bodyType: string | null;
       regionSpec: string | null;
-      condition: string | null;
       images: string[];
     };
     _count?: {
@@ -511,13 +506,10 @@ async function serializeLotSummary(
       model: auction.vehicle.model,
       year: auction.vehicle.year,
       mileage: auction.vehicle.mileage,
-      marketPrice:
-        auction.vehicle.marketPrice === null ? null : await toNumberValue(auction.vehicle.marketPrice),
       fuelType: auction.vehicle.fuelType,
       transmission: auction.vehicle.transmission,
       bodyType: auction.vehicle.bodyType,
       regionSpec: auction.vehicle.regionSpec,
-      condition: auction.vehicle.condition,
       images: auction.vehicle.images,
     },
   };
@@ -950,7 +942,6 @@ export async function buyerRoutes(fastify: FastifyInstance): Promise<void> {
           year: lot.vehicle.year,
           mileage: lot.vehicle.mileage,
           regionSpec: lot.vehicle.regionSpec,
-          marketPrice: lot.vehicle.marketPrice,
           buyNowPrice: lot.buyNowPrice,
           imageUrl: lot.vehicle.images[0],
           startsAt: lot.startsAt,
