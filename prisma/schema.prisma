@@ -175,6 +175,7 @@ model Vehicle {
   condition      String?
   serviceHistory String?
   description    String?
+  internalNotes  String?        @map("internal_notes")
   features       Json?
   engine         String?
   driveType      String?        @map("drive_type")

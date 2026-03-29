@@ -741,6 +741,8 @@ export const api = {
         getRequest<T>(appendSearchParams("/api/admin/vehicles", query), options),
       get: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         getRequest<T>(`/api/admin/vehicles/${id}`, options),
+      update: async <T = unknown>(id: string, payload: Record<string, unknown>, options?: RequestInit): Promise<T> =>
+        patchJson<T>(`/api/admin/vehicles/${id}`, payload, options),
       approve: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/vehicles/${id}/approve`, undefined, options),
       reject: async <T = unknown>(id: string, options?: RequestInit): Promise<T> =>
