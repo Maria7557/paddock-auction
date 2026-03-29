@@ -557,7 +557,7 @@ function toVehicleUpdatePayload(draft: VehicleEditState): Record<string, unknown
 }
 
 function collectFeatureLabels(source: Record<string, boolean>, labels: Record<string, string>): string[] {
-  return Object.entries(source)
+  return Object.entries(source ?? {})
     .filter(([, enabled]) => enabled === true)
     .map(([key]) => labels[key] ?? key);
 }
