@@ -50,22 +50,28 @@
 }
 
 .tableShell {
-  background: var(--bg-card);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
+  width: 940px;
+  min-width: 940px;
+}
+
+.tableWrapper {
+  width: 100%;
+  overflow-x: auto;
 }
 
 .tableHeader {
   display: grid;
-  grid-template-columns: 180px minmax(240px, 320px) 120px 140px minmax(180px, 1fr);
+  grid-template-columns: 200px 280px 130px 150px 180px;
+  width: 940px;
+  min-width: 940px;
   background: var(--bg-subtle);
-  border-bottom: 0.5px solid var(--line-soft);
+  border: 0.5px solid var(--line-soft);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .tableHeader span {
-  padding: 14px 16px;
+  padding: 14px 12px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -79,6 +85,9 @@
 
 .lotTable {
   display: block;
+  width: 940px;
+  min-width: 940px;
+  padding-top: 8px;
 }
 
 .lotCards {
@@ -89,8 +98,11 @@
 }
 
 .tableSkeletonList {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 8px;
+  width: 940px;
+  min-width: 940px;
+  padding-top: 8px;
 }
 
 .tableSkeletonRow,
@@ -102,8 +114,9 @@
 }
 
 .tableSkeletonRow {
-  height: 148px;
-  border-bottom: 0.5px solid var(--line-soft);
+  height: 154px;
+  border: 0.5px solid var(--line-soft);
+  border-radius: 10px;
 }
 
 .cardSkeleton {
@@ -192,7 +205,7 @@
 }
 
 @media (max-width: 740px) {
-  .tableShell {
+  .tableWrapper {
     display: none;
   }
 

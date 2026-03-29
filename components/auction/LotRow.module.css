@@ -1,35 +1,45 @@
 .row {
   display: grid;
-  grid-template-columns: 200px minmax(240px, 320px) 120px 140px minmax(180px, 1fr);
+  grid-template-columns: 200px 280px 130px 150px 180px;
+  width: 940px;
+  min-width: 940px;
+  min-height: 134px;
+  box-sizing: border-box;
+  border: 0.5px solid var(--line-soft);
+  border-radius: 10px;
   background: var(--bg-card);
-  border-bottom: 0.5px solid var(--line-soft);
+  margin-bottom: 8px;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.row:last-child {
+  margin-bottom: 0;
 }
 
 .cell {
   min-width: 0;
-  padding: 14px 16px;
-}
-
-.cell + .cell {
-  border-left: 0.5px solid var(--line-soft);
 }
 
 .photoCell {
-  padding: 14px;
+  border-right: 0.5px solid var(--line-soft);
 }
 
-.photoWrap {
+.photo {
+  width: 200px;
+  height: 100%;
+  min-height: 134px;
   position: relative;
-  width: 100%;
-  height: 134px;
-  border-radius: 8px 0 0 8px;
   overflow: hidden;
   background: var(--bg-subtle);
 }
 
 .photoImage {
   width: 100%;
+  height: 100%;
+  min-height: 130px;
   object-fit: cover;
+  display: block;
 }
 
 .bookmarkButton {
@@ -70,35 +80,44 @@
   font-weight: 500;
 }
 
-.vehicleTitle {
-  display: inline-flex;
-  margin-bottom: 6px;
-  font-size: 13px;
-  line-height: 1.4;
-  font-weight: 600;
-  color: var(--ink-primary);
-  text-decoration: none;
+.vehicleCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 280px;
+  padding: 12px;
+  border-right: 0.5px solid var(--line-soft);
 }
 
-.vehicleCell {
-  max-width: 320px;
+.vehicleTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--ink-primary);
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .vehicleMetaMono {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 8px;
-  font-family: var(--font-ibm-plex-mono), monospace;
-  font-size: 10px;
+  margin-bottom: 6px;
+  font-family: var(--font-ibm-plex-mono), var(--font-mono), monospace;
+  font-size: 11px;
   letter-spacing: 0.05em;
-  color: var(--ink-secondary);
+  color: var(--ink-muted);
 }
 
 .vehicleMeta {
+  margin: 0;
   font-size: 11px;
+  line-height: 1.4;
   color: var(--ink-secondary);
-  margin-bottom: 10px;
 }
 
 .badges {
@@ -112,12 +131,13 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 22px;
   padding: 0 10px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line-soft);
   font-size: 11px;
   font-weight: 500;
+  line-height: 1;
 }
 
 .badgeGreen {
@@ -143,16 +163,21 @@
   color: var(--ink-secondary);
 }
 
-.infoCell,
-.statusCell {
+.conditionCell,
+.detailsCell {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 0.5px solid var(--line-soft);
 }
 
 .gradeRow {
   display: flex;
   align-items: center;
+  min-height: 24px;
+  margin-bottom: 2px;
 }
 
 .gradePill {
@@ -197,19 +222,28 @@
 .metaLine {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .metaLine span {
-  font-size: 11px;
-  color: var(--ink-secondary);
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--ink-muted);
 }
 
 .metaLine strong {
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
   font-weight: 500;
   color: var(--ink-primary);
+}
+
+.statusCell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
 }
 
 .livePill {
@@ -230,12 +264,13 @@
 
 .dateLabel {
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
   font-weight: 600;
   color: var(--ink-primary);
 }
 
 .timezoneLabel {
+  margin-top: -4px;
   font-size: 11px;
   color: var(--ink-muted);
 }

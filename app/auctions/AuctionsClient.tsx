@@ -774,18 +774,20 @@ export function AuctionsClient({
 
         {loading ? (
           <>
-            <div className={styles.tableShell}>
-              <div className={styles.tableHeader}>
-                <span>Photo</span>
-                <span>Vehicle</span>
-                <span>Condition</span>
-                <span>Details</span>
-                <span>Auction / Status</span>
-              </div>
-              <div className={styles.tableSkeletonList}>
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className={styles.tableSkeletonRow} />
-                ))}
+            <div className={styles.tableWrapper}>
+              <div className={styles.tableShell}>
+                <div className={styles.tableHeader}>
+                  <span>Photo</span>
+                  <span>Vehicle</span>
+                  <span>Condition</span>
+                  <span>Details</span>
+                  <span>Auction / Status</span>
+                </div>
+                <div className={styles.tableSkeletonList}>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <div key={index} className={styles.tableSkeletonRow} />
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -805,19 +807,21 @@ export function AuctionsClient({
           </div>
         ) : (
           <>
-            <div className={styles.tableShell}>
-              <div className={styles.tableHeader}>
-                <span>Photo</span>
-                <span>Vehicle</span>
-                <span>Condition</span>
-                <span>Details</span>
-                <span>Auction / Status</span>
-              </div>
+            <div className={styles.tableWrapper}>
+              <div className={styles.tableShell}>
+                <div className={styles.tableHeader}>
+                  <span>Photo</span>
+                  <span>Vehicle</span>
+                  <span>Condition</span>
+                  <span>Details</span>
+                  <span>Auction / Status</span>
+                </div>
 
-              <div className={styles.lotTable}>
-                {visibleLots.map((lot) => (
-                  <LotRow key={lot.id} lot={lot} display={display} />
-                ))}
+                <div className={styles.lotTable}>
+                  {visibleLots.map((lot) => (
+                    <LotRow key={lot.id} lot={lot} display={display} />
+                  ))}
+                </div>
               </div>
             </div>
 

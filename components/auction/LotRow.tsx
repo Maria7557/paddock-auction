@@ -94,7 +94,7 @@ export function LotRow({ lot, display }: LotRowProps) {
   return (
     <article className={styles.row}>
       <div className={`${styles.cell} ${styles.photoCell}`}>
-        <div className={styles.photoWrap}>
+        <div className={styles.photo}>
           <button
             type="button"
             className={`${styles.bookmarkButton} ${saved ? styles.bookmarkButtonActive : ""}`}
@@ -144,7 +144,7 @@ export function LotRow({ lot, display }: LotRowProps) {
         </div>
       </div>
 
-      <div className={`${styles.cell} ${styles.infoCell}`}>
+      <div className={`${styles.cell} ${styles.conditionCell}`}>
         <div className={styles.gradeRow}>
           {hasConditionGrade ? (
             <span
@@ -178,7 +178,7 @@ export function LotRow({ lot, display }: LotRowProps) {
         </div>
       </div>
 
-      <div className={`${styles.cell} ${styles.infoCell}`}>
+      <div className={`${styles.cell} ${styles.detailsCell}`}>
         <div className={styles.metaLine}>
           <span>Engine</span>
           <strong>{lot.engine || "—"}</strong>
