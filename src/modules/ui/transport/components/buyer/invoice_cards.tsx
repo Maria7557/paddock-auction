@@ -7,12 +7,12 @@ import {
   formatAed,
   formatShortDateTime,
   getInvoiceDeadlineTone,
-  type InvoiceReadModel,
-} from "@/src/modules/ui/domain/marketplace_read_model";
+  type InvoiceSummaryViewModel,
+} from "@/src/modules/ui/domain/invoice_presentation";
 import { LiveCountdown } from "@/src/modules/ui/transport/components/shared/live_countdown";
 
 type InvoiceCardsProps = {
-  invoices: InvoiceReadModel[];
+  invoices: InvoiceSummaryViewModel[];
   locale: SupportedLocale;
 };
 

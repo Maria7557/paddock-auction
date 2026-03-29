@@ -30,7 +30,14 @@ type SellerVehiclesResponse = {
   }>;
 };
 
-const STATUS_OPTIONS = ["ALL", "DRAFT", "SCHEDULED", "LIVE", "ENDED"] as const;
+const STATUS_OPTIONS = [
+  { value: "ALL", label: "All" },
+  { value: "AWAITING_SELLER_DECISION", label: "Pending Decision" },
+  { value: "DRAFT", label: "Draft" },
+  { value: "SCHEDULED", label: "Scheduled" },
+  { value: "LIVE", label: "Live" },
+  { value: "ENDED", label: "Ended" },
+] as const;
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
@@ -41,14 +48,21 @@ const SORT_OPTIONS = [
 export default function SellerVehiclesPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("ALL");
+  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]["value"]>("ALL");
   const [sort, setSort] = useState<(typeof SORT_OPTIONS)[number]["value"]>("newest");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SellerVehiclesResponse>({ total: 0, vehicles: [] });
 
-  const loadVehicles = useCallback(async () => {
-    setLoading(true);
+  const redirectToLogin = useCallback(() => {
+    router.replace("/login?next=/seller/vehicles");
+  }, [router]);
+
+  const loadVehicles = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
@@ -74,18 +88,20 @@ export default function SellerVehiclesPage() {
       setData(payload ?? { total: 0, vehicles: [] });
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.statusCode === 401) {
-        router.replace("/login?next=/seller/vehicles");
+        redirectToLogin();
         return;
       }
 
       setError(getApiErrorMessage(requestError, "Unexpected error"));
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
-  }, [router, search, status, sort]);
+  }, [redirectToLogin, search, sort, status]);
 
   const handleAuctionDecision = useCallback(
-    async (vehicleId: string, auctionId: string, decision: "accept" | "decline") => {
+    async (auctionId: string, decision: "accept" | "decline") => {
       try {
         await api.seller.auctions.decision(
           auctionId,
@@ -96,31 +112,16 @@ export default function SellerVehiclesPage() {
         );
       } catch (requestError) {
         if (requestError instanceof ApiError && requestError.statusCode === 401) {
-          router.replace("/login?next=/seller/vehicles");
+          redirectToLogin();
           return;
         }
 
         throw requestError;
       }
 
-      setData((current) => ({
-        ...current,
-        vehicles: current.vehicles.map((vehicle) => {
-          if (vehicle.id !== vehicleId || !vehicle.latestAuction || vehicle.latestAuction.id !== auctionId) {
-            return vehicle;
-          }
-
-          return {
-            ...vehicle,
-            latestAuction: {
-              ...vehicle.latestAuction,
-              state: decision === "accept" ? "PAYMENT_PENDING" : "RELISTED",
-            },
-          };
-        }),
-      }));
+      await loadVehicles(false);
     },
-    [router],
+    [loadVehicles, redirectToLogin],
   );
 
   useEffect(() => {
@@ -152,10 +153,10 @@ export default function SellerVehiclesPage() {
 
           <label className="seller-filter-field">
             Status
-            <select value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number])}>
+            <select value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS_OPTIONS)[number]["value"])}>
               {STATUS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -201,7 +202,7 @@ export default function SellerVehiclesPage() {
             <VehicleListCard
               key={vehicle.id}
               vehicle={vehicle}
-              onDecision={(auctionId, decision) => handleAuctionDecision(vehicle.id, auctionId, decision)}
+              onDecision={handleAuctionDecision}
             />
           ))}
         </section>

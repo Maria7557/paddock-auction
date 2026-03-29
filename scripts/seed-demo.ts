@@ -214,6 +214,26 @@ async function main() {
       lockedBalance: dec(0),
     },
   });
+  await prisma.depositWallet.upsert({
+    where: {
+      companyId_currency: {
+        companyId: buyerCompany.id,
+        currency: "AED",
+      },
+    },
+    update: {
+      availableBalance: dec(5000),
+      lockedBalance: dec(0),
+      pendingWithdrawalBalance: dec(0),
+    },
+    create: {
+      companyId: buyerCompany.id,
+      currency: "AED",
+      availableBalance: dec(5000),
+      lockedBalance: dec(0),
+      pendingWithdrawalBalance: dec(0),
+    },
+  });
   console.log("✅ Buyer user: buyer@demo.ae / Demo1234! (wallet: 5,000 AED)");
 
   // 5. Vehicles

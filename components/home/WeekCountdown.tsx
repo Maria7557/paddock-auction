@@ -8,11 +8,17 @@ import { formatCountdown, pad } from "@/src/lib/utils";
 import styles from "./HomeSections.module.css";
 
 export default function WeekCountdown({ auctionDate, locale = "en" }: { auctionDate: string; locale?: SupportedLocale }) {
-  const [cd, setCd] = useState(() => formatCountdown(new Date(auctionDate).getTime() - Date.now()));
+  const [cd, setCd] = useState(() => formatCountdown(0));
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const updateCountdown = () => {
       setCd(formatCountdown(new Date(auctionDate).getTime() - Date.now()));
+    };
+
+    updateCountdown();
+
+    const timer = setInterval(() => {
+      updateCountdown();
     }, 1000);
 
     return () => clearInterval(timer);

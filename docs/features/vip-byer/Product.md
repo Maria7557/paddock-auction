@@ -1380,4 +1380,3 @@ The following must not be added, changed, or assumed by this specification:
 * backend schema design specifics
 * manual release flows
 * backfill of historical approved vehicles
-
