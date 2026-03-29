@@ -1643,11 +1643,11 @@ function VehicleDetailPanel({
               {SAFETY_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features.safety[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${draft.features?.safety?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features.safety[item.key]}
+                    checked={draft.features?.safety?.[item.key]}
                     onChange={(event) => updateFeatureFlag("safety", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
@@ -1698,11 +1698,11 @@ function VehicleDetailPanel({
               {TECHNOLOGY_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features.technology[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${draft.features?.technology?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features.technology[item.key]}
+                    checked={draft.features?.technology?.[item.key]}
                     onChange={(event) => updateFeatureFlag("technology", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
@@ -1736,11 +1736,11 @@ function VehicleDetailPanel({
               {EXTERIOR_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features.exterior[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${draft.features?.exterior?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features.exterior[item.key]}
+                    checked={draft.features?.exterior?.[item.key]}
                     onChange={(event) => updateFeatureFlag("exterior", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
