@@ -1,0 +1,191 @@
+.detailsSection {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.featureSection {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.featureSectionIntro {
+  display: grid;
+  gap: 6px;
+}
+
+.featureSectionIntro p {
+  margin: 0;
+}
+
+.featureSectionsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.featureCard {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.featureToggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-primary);
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.featureToggle:hover {
+  background: var(--bg-subtle);
+}
+
+.featureToggleCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.featureToggleTitle {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.featureToggleMeta {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.featureCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--green-100);
+  color: var(--green-700);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.featureToggleRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-muted);
+}
+
+.chevron {
+  transition: transform 0.2s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.featureBody {
+  padding: 0 var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.featureHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px var(--space-3);
+}
+
+.checkboxItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--bg-page);
+  cursor: pointer;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.checkboxItem input {
+  margin: 0;
+  accent-color: var(--green-600);
+  width: 16px;
+  height: 16px;
+}
+
+.checkboxItemChecked {
+  border-color: var(--green-600);
+  background: var(--green-100);
+}
+
+.radioGroup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.radioCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--bg-page);
+  cursor: pointer;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.radioCard input {
+  margin: 0;
+  accent-color: var(--green-600);
+}
+
+.radioCardActive {
+  border-color: var(--green-600);
+  background: var(--green-100);
+}
+
+.soundBrandRow {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 980px) {
+  .detailsGrid,
+  .featureSectionsGrid,
+  .featureGrid,
+  .radioGroup {
+    grid-template-columns: 1fr;
+  }
+}

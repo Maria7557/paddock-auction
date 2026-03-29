@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuctionStatusBadge } from "@/components/seller/AuctionStatusBadge";
 import { type SellerVehicleFormValues, VehicleForm } from "@/components/seller/VehicleForm";
+import { EMPTY_VEHICLE_FEATURES, type SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { formatAed, formatSellerAuctionBid, formatSellerDateTime } from "@/components/seller/utils";
 
@@ -23,6 +24,13 @@ type VehicleDetailResponse = {
     transmission: string | null;
     airbags: string | null;
     exteriorColor: string | null;
+    startCode: string | null;
+    numberOfKeys: number | null;
+    warrantyStatus: string | null;
+    series: string | null;
+    cylinders: number | null;
+    manufacturedIn: string | null;
+    features: SellerVehicleFeatures | null;
     condition: string | null;
     serviceHistory: string | null;
     description: string | null;
@@ -65,6 +73,13 @@ function toEditValues(data: VehicleDetailResponse): SellerVehicleFormValues {
     mileageKm: String(data.vehicle.mileage),
     condition: data.vehicle.condition ?? "",
     serviceHistory: data.vehicle.serviceHistory ?? "",
+    startCode: data.vehicle.startCode ?? "",
+    numberOfKeys: data.vehicle.numberOfKeys ?? 1,
+    warrantyStatus: data.vehicle.warrantyStatus ?? "None",
+    series: data.vehicle.series ?? "",
+    cylinders: data.vehicle.cylinders,
+    manufacturedIn: data.vehicle.manufacturedIn ?? "",
+    features: data.vehicle.features ?? EMPTY_VEHICLE_FEATURES,
     description: data.vehicle.description ?? "",
     damageMap: data.vehicle.damageMap ?? {},
     photoUrls: data.vehicle.photoUrls ?? data.vehicle.images ?? [],
@@ -116,21 +131,28 @@ export default function SellerVehicleDetailClient({ vehicleId }: SellerVehicleDe
 
   async function handleEditSubmit(values: SellerVehicleFormValues): Promise<void> {
     await api.seller.vehicles.update(vehicleId, {
-        brand: values.brand,
-        model: values.model,
-        year: Number(values.year),
-        vin: values.vin,
-        regionSpec: values.regionSpec,
-        bodyType: values.bodyType,
-        fuelType: values.fuelType,
-        transmission: values.transmission,
-        airbags: values.airbags,
-        exteriorColor: values.color,
-        mileage: Number(values.mileageKm),
-        condition: values.condition,
-        serviceHistory: values.serviceHistory,
-        description: values.description,
-        damageMap: values.damageMap,
+      brand: values.brand,
+      model: values.model,
+      year: Number(values.year),
+      vin: values.vin,
+      regionSpec: values.regionSpec,
+      bodyType: values.bodyType,
+      fuelType: values.fuelType,
+      transmission: values.transmission,
+      airbags: values.airbags,
+      exteriorColor: values.color,
+      mileage: Number(values.mileageKm),
+      condition: values.condition,
+      serviceHistory: values.serviceHistory,
+      startCode: values.startCode || undefined,
+      numberOfKeys: values.numberOfKeys,
+      warrantyStatus: values.warrantyStatus || undefined,
+      series: values.series.trim() || undefined,
+      cylinders: values.cylinders ?? undefined,
+      manufacturedIn: values.manufacturedIn.trim() || undefined,
+      features: values.features,
+      description: values.description,
+      damageMap: values.damageMap,
     });
 
     setEditing(false);

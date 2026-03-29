@@ -1,13 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigationGuard } from "@/components/navigation/NavigationGuard";
 import {
   hasVehicleFormUnsavedChanges,
+  type SellerVehicleFeatures,
   type SellerVehicleFormValues,
   toVehicleFormValues,
 } from "@/components/seller/vehicle-form-state";
+import { IconArrowRight } from "@/components/ui/icons";
+import styles from "@/components/seller/VehicleForm.module.css";
 
 import {
   BODY_TYPES,
@@ -37,6 +40,69 @@ const AIRBAG_OPTIONS = [
   { value: "10_PLUS", label: "10+ — Full + Knee airbags" },
   { value: "UNKNOWN", label: "Unknown" },
 ] as const;
+const START_CODE_OPTIONS = ["Run and Drive", "Stationary", "Does Not Start"] as const;
+const KEY_COUNT_OPTIONS = [0, 1, 2, 3] as const;
+const WARRANTY_STATUS_OPTIONS = ["Active", "Expired", "None"] as const;
+const CYLINDER_OPTIONS = [3, 4, 5, 6, 8, 10, 12] as const;
+const INTERIOR_MATERIAL_OPTIONS = ["Leather", "Fabric", "Alcantara", "Partial Leather"] as const;
+const SOUND_BRAND_OPTIONS = ["B&O", "Bose", "Harman Kardon", "JBL", "Burmester", "Other"] as const;
+
+type FeatureSectionKey = "comfortInterior" | "safety" | "technology" | "exterior";
+type FeatureSectionGroup = Pick<SellerVehicleFeatures, FeatureSectionKey>;
+type FeatureOption<K extends FeatureSectionKey> = {
+  key: keyof FeatureSectionGroup[K];
+  label: string;
+};
+
+const COMFORT_INTERIOR_OPTIONS = [
+  { key: "heatedFrontSeats", label: "Heated front seats" },
+  { key: "heatedRearSeats", label: "Heated rear seats" },
+  { key: "ventilatedSeats", label: "Ventilated seats" },
+  { key: "heatedSteeringWheel", label: "Heated steering wheel" },
+  { key: "memorySeats", label: "Memory seats" },
+  { key: "powerSeats", label: "Power seats" },
+  { key: "massageSeats", label: "Massage seats" },
+  { key: "sunroof", label: "Sunroof" },
+  { key: "panoramicRoof", label: "Panoramic roof" },
+  { key: "thirdRowSeats", label: "Third-row seats" },
+  { key: "rearEntertainment", label: "Rear entertainment" },
+  { key: "ambientLighting", label: "Ambient lighting" },
+] as const satisfies ReadonlyArray<FeatureOption<"comfortInterior">>;
+
+const SAFETY_OPTIONS = [
+  { key: "blindSpotMonitoring", label: "Blind spot monitoring" },
+  { key: "laneDepatureWarning", label: "Lane departure warning" },
+  { key: "frontParkingSensors", label: "Front parking sensors" },
+  { key: "rearParkingSensors", label: "Rear parking sensors" },
+  { key: "rearCamera", label: "Rear camera" },
+  { key: "surroundCamera", label: "Surround camera" },
+  { key: "adaptiveCruiseControl", label: "Adaptive cruise control" },
+  { key: "automaticEmergencyBraking", label: "Automatic emergency braking" },
+  { key: "nightVision", label: "Night vision" },
+  { key: "headUpDisplay", label: "Head-up display" },
+] as const satisfies ReadonlyArray<FeatureOption<"safety">>;
+
+const TECHNOLOGY_OPTIONS = [
+  { key: "appleCarPlay", label: "Apple CarPlay" },
+  { key: "androidAuto", label: "Android Auto" },
+  { key: "navigationSystem", label: "Navigation system" },
+  { key: "wirelessCharging", label: "Wireless charging" },
+  { key: "premiumSound", label: "Premium sound" },
+  { key: "digitalInstrumentCluster", label: "Digital instrument cluster" },
+  { key: "otaUpdates", label: "OTA updates" },
+  { key: "wifiHotspot", label: "Wi-Fi hotspot" },
+] as const satisfies ReadonlyArray<FeatureOption<"technology">>;
+
+const EXTERIOR_OPTIONS = [
+  { key: "towHitch", label: "Tow hitch" },
+  { key: "runningBoards", label: "Running boards" },
+  { key: "roofRails", label: "Roof rails" },
+  { key: "sportExhaust", label: "Sport exhaust" },
+  { key: "wheels20plus", label: "20-inch+ wheels" },
+  { key: "wheels21plus", label: "21-inch+ wheels" },
+  { key: "spareTire", label: "Spare tire" },
+  { key: "selfClosingDoors", label: "Self-closing doors" },
+] as const satisfies ReadonlyArray<FeatureOption<"exterior">>;
 
 type UploadPhoto = {
   file: File;
@@ -135,6 +201,64 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function countSelectedFlags(value: Record<string, boolean>): number {
+  return Object.values(value).filter(Boolean).length;
+}
+
+function getFeatureSectionCount(section: FeatureSectionKey, features: SellerVehicleFeatures): number {
+  if (section === "comfortInterior") {
+    return countSelectedFlags(features.comfortInterior) + (features.interiorMaterial ? 1 : 0);
+  }
+
+  if (section === "safety") {
+    return countSelectedFlags(features.safety);
+  }
+
+  if (section === "technology") {
+    return countSelectedFlags(features.technology);
+  }
+
+  return countSelectedFlags(features.exterior);
+}
+
+type FeatureSectionCardProps = {
+  title: string;
+  description: string;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+};
+
+function FeatureSectionCard({
+  title,
+  description,
+  count,
+  isOpen,
+  onToggle,
+  children,
+}: FeatureSectionCardProps) {
+  return (
+    <article className={styles.featureCard}>
+      <button type="button" className={styles.featureToggle} onClick={onToggle} aria-expanded={isOpen}>
+        <span className={styles.featureToggleCopy}>
+          <span className={styles.featureToggleTitle}>{title}</span>
+          <span className={styles.featureToggleMeta}>{description}</span>
+        </span>
+        <span className={styles.featureToggleRight}>
+          <span className={styles.featureCount}>{count}</span>
+          <IconArrowRight
+            size={16}
+            className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ""}`.trim()}
+          />
+        </span>
+      </button>
+
+      {isOpen ? <div className={styles.featureBody}>{children}</div> : null}
+    </article>
+  );
+}
+
 export function VehicleForm({
   initialValues,
   submitLabel,
@@ -153,6 +277,12 @@ export function VehicleForm({
   const [isDragging, setIsDragging] = useState(false);
   const [mulkiyaFront, setMulkiyaFront] = useState<File | null>(null);
   const [mulkiyaBack, setMulkiyaBack] = useState<File | null>(null);
+  const [expandedFeatureSections, setExpandedFeatureSections] = useState<Record<FeatureSectionKey, boolean>>({
+    comfortInterior: true,
+    safety: true,
+    technology: true,
+    exterior: true,
+  });
   const photosRef = useRef<UploadPhoto[]>([]);
 
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -268,6 +398,58 @@ export function VehicleForm({
     setValues((previous) => ({
       ...previous,
       [key]: value,
+    }));
+  }
+
+  function toggleFeatureSection(section: FeatureSectionKey): void {
+    setExpandedFeatureSections((previous) => ({
+      ...previous,
+      [section]: !previous[section],
+    }));
+  }
+
+  function updateFeatureFlag<
+    K extends FeatureSectionKey,
+    T extends keyof FeatureSectionGroup[K],
+  >(section: K, featureKey: T, checked: boolean): void {
+    setValues((previous) => {
+      const nextSection = {
+        ...previous.features[section],
+        [featureKey]: checked,
+      } as FeatureSectionGroup[K];
+      const nextFeatures: SellerVehicleFeatures = {
+        ...previous.features,
+        [section]: nextSection,
+      };
+
+      if (section === "technology" && featureKey === "premiumSound" && !checked) {
+        nextFeatures.soundBrand = "";
+      }
+
+      return {
+        ...previous,
+        features: nextFeatures,
+      };
+    });
+  }
+
+  function updateInteriorMaterial(value: SellerVehicleFeatures["interiorMaterial"]): void {
+    setValues((previous) => ({
+      ...previous,
+      features: {
+        ...previous.features,
+        interiorMaterial: value,
+      },
+    }));
+  }
+
+  function updateSoundBrand(value: SellerVehicleFeatures["soundBrand"]): void {
+    setValues((previous) => ({
+      ...previous,
+      features: {
+        ...previous.features,
+        soundBrand: value,
+      },
     }));
   }
 
@@ -686,6 +868,228 @@ export function VehicleForm({
           placeholder="Vehicle notes for buyers"
         />
       </label>
+
+      <section className={`seller-form-full form-section ${styles.detailsSection}`}>
+        <div className={styles.featureSectionIntro}>
+          <h3 className="form-section-title">Vehicle Details</h3>
+          <p className="field-hint">Add drivetrain and ownership details buyers commonly expect to review before bidding.</p>
+        </div>
+
+        <div className={styles.detailsGrid}>
+          <label>
+            Start Code
+            <select value={values.startCode} onChange={(event) => updateField("startCode", event.target.value)}>
+              <option value="">Select start code</option>
+              {START_CODE_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Number of Keys
+            <select
+              value={String(values.numberOfKeys)}
+              onChange={(event) => updateField("numberOfKeys", Number(event.target.value))}
+            >
+              {KEY_COUNT_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Warranty Status
+            <select value={values.warrantyStatus} onChange={(event) => updateField("warrantyStatus", event.target.value)}>
+              {WARRANTY_STATUS_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Series / Trim
+            <input
+              value={values.series}
+              onChange={(event) => updateField("series", event.target.value)}
+              placeholder="Premium Plus 55 TFSI Quattro"
+            />
+          </label>
+
+          <label>
+            Cylinders
+            <select
+              value={values.cylinders === null ? "" : String(values.cylinders)}
+              onChange={(event) => updateField("cylinders", event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Select cylinders</option>
+              {CYLINDER_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Manufactured In
+            <input
+              value={values.manufacturedIn}
+              onChange={(event) => updateField("manufacturedIn", event.target.value)}
+              placeholder="Germany"
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className={`seller-form-full form-section ${styles.featureSection}`}>
+        <div className={styles.featureSectionIntro}>
+          <h3 className="form-section-title">Features &amp; Equipment</h3>
+          <p className="field-hint">Use the checklist to describe comfort, safety, technology, and exterior equipment in a structured way.</p>
+        </div>
+
+        <div className={styles.featureSectionsGrid}>
+          <FeatureSectionCard
+            title="Comfort & Interior"
+            description="Seat comfort, cabin ambience, and interior material."
+            count={getFeatureSectionCount("comfortInterior", values.features)}
+            isOpen={expandedFeatureSections.comfortInterior}
+            onToggle={() => toggleFeatureSection("comfortInterior")}
+          >
+            <p className={styles.featureHint}>Tick every comfort option present in the vehicle.</p>
+            <div className={styles.featureGrid}>
+              {COMFORT_INTERIOR_OPTIONS.map((item) => (
+                <label
+                  key={item.key}
+                  className={`${styles.checkboxItem} ${values.features.comfortInterior[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={values.features.comfortInterior[item.key]}
+                    onChange={(event) => updateFeatureFlag("comfortInterior", item.key, event.target.checked)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div>
+              <p className={styles.featureHint}>Interior material</p>
+              <div className={styles.radioGroup}>
+                {INTERIOR_MATERIAL_OPTIONS.map((item) => (
+                  <label
+                    key={item}
+                    className={`${styles.radioCard} ${values.features.interiorMaterial === item ? styles.radioCardActive : ""}`.trim()}
+                  >
+                    <input
+                      type="radio"
+                      name="interiorMaterial"
+                      checked={values.features.interiorMaterial === item}
+                      onChange={() => updateInteriorMaterial(item)}
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </FeatureSectionCard>
+
+          <FeatureSectionCard
+            title="Safety"
+            description="Driver assistance, parking aids, and visibility."
+            count={getFeatureSectionCount("safety", values.features)}
+            isOpen={expandedFeatureSections.safety}
+            onToggle={() => toggleFeatureSection("safety")}
+          >
+            <p className={styles.featureHint}>Select the active safety and parking features included with this lot.</p>
+            <div className={styles.featureGrid}>
+              {SAFETY_OPTIONS.map((item) => (
+                <label
+                  key={item.key}
+                  className={`${styles.checkboxItem} ${values.features.safety[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={values.features.safety[item.key]}
+                    onChange={(event) => updateFeatureFlag("safety", item.key, event.target.checked)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          </FeatureSectionCard>
+
+          <FeatureSectionCard
+            title="Technology"
+            description="Connectivity, infotainment, and premium tech."
+            count={getFeatureSectionCount("technology", values.features)}
+            isOpen={expandedFeatureSections.technology}
+            onToggle={() => toggleFeatureSection("technology")}
+          >
+            <p className={styles.featureHint}>Mark technology equipment buyers will care about in live bidding.</p>
+            <div className={styles.featureGrid}>
+              {TECHNOLOGY_OPTIONS.map((item) => (
+                <label
+                  key={item.key}
+                  className={`${styles.checkboxItem} ${values.features.technology[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={values.features.technology[item.key]}
+                    onChange={(event) => updateFeatureFlag("technology", item.key, event.target.checked)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {values.features.technology.premiumSound ? (
+              <label className={styles.soundBrandRow}>
+                Premium Sound Brand
+                <select value={values.features.soundBrand} onChange={(event) => updateSoundBrand(event.target.value as SellerVehicleFeatures["soundBrand"])}>
+                  <option value="">Select sound brand</option>
+                  {SOUND_BRAND_OPTIONS.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </FeatureSectionCard>
+
+          <FeatureSectionCard
+            title="Exterior"
+            description="Exterior hardware and utility equipment."
+            count={getFeatureSectionCount("exterior", values.features)}
+            isOpen={expandedFeatureSections.exterior}
+            onToggle={() => toggleFeatureSection("exterior")}
+          >
+            <p className={styles.featureHint}>Capture the exterior extras that influence buyer demand.</p>
+            <div className={styles.featureGrid}>
+              {EXTERIOR_OPTIONS.map((item) => (
+                <label
+                  key={item.key}
+                  className={`${styles.checkboxItem} ${values.features.exterior[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={values.features.exterior[item.key]}
+                    onChange={(event) => updateFeatureFlag("exterior", item.key, event.target.checked)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          </FeatureSectionCard>
+        </div>
+      </section>
 
       <section className="seller-form-full form-section">
         <h3 className="form-section-title">Damage Report</h3>
