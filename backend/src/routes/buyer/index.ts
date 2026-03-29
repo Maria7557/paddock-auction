@@ -267,6 +267,18 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
   throw new Error("Unable to convert value to number");
 }
 
+async function toOptionalNumberValue(value: DecimalLike | null | undefined): Promise<number | null> {
+  if (value == null) {
+    return null;
+  }
+
+  try {
+    return await toNumberValue(value);
+  } catch {
+    return null;
+  }
+}
+
 async function toIsoString(value: Date | string | null | undefined): Promise<string | null> {
   if (!value) {
     return null;
@@ -474,7 +486,7 @@ async function serializeLotSummary(
       model: string;
       year: number;
       mileage: number;
-      marketPrice: DecimalLike | null;
+      estimatedValue?: DecimalLike | null;
       fuelType: string | null;
       transmission: string | null;
       bodyType: string | null;
@@ -511,8 +523,7 @@ async function serializeLotSummary(
       model: auction.vehicle.model,
       year: auction.vehicle.year,
       mileage: auction.vehicle.mileage,
-      marketPrice:
-        auction.vehicle.marketPrice === null ? null : await toNumberValue(auction.vehicle.marketPrice),
+      marketPrice: await toOptionalNumberValue(auction.vehicle.estimatedValue),
       fuelType: auction.vehicle.fuelType,
       transmission: auction.vehicle.transmission,
       bodyType: auction.vehicle.bodyType,

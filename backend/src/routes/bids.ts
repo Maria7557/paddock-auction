@@ -155,6 +155,18 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
   throw new Error("Unable to convert value to number");
 }
 
+async function toOptionalNumberValue(value: DecimalLike | null | undefined): Promise<number | null> {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  try {
+    return await toNumberValue(value);
+  } catch {
+    return null;
+  }
+}
+
 async function toIsoString(value: Date | string | null | undefined): Promise<string | null> {
   if (!value) {
     return null;
@@ -215,6 +227,65 @@ async function readStoredResponseBody(value: unknown): Promise<JsonRecord> {
   return {};
 }
 
+function readJsonRecord(value: unknown): JsonRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as JsonRecord;
+}
+
+function readJsonString(record: JsonRecord | null | undefined, key: string): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readJsonNumber(record: JsonRecord | null | undefined, key: string): number | null {
+  const value = record?.[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return null;
+}
+
+async function readLatestVehicleOverrideMap(vehicleIds: string[]): Promise<Map<string, JsonRecord>> {
+  if (vehicleIds.length === 0) {
+    return new Map();
+  }
+
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      action: "ADMIN_VEHICLE_UPDATED",
+      entityType: "Vehicle",
+      entityId: {
+        in: vehicleIds,
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      entityId: true,
+      payload: true,
+    },
+  });
+
+  const overrideByVehicleId = new Map<string, JsonRecord>();
+
+  for (const log of logs) {
+    if (overrideByVehicleId.has(log.entityId)) {
+      continue;
+    }
+
+    const payload = await readStoredResponseBody(log.payload);
+    const changes = await readStoredResponseBody(payload.changes);
+
+    overrideByVehicleId.set(log.entityId, changes);
+  }
+
+  return overrideByVehicleId;
+}
+
 async function toStoredJson(value: unknown): Promise<Prisma.InputJsonValue> {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -222,11 +293,7 @@ async function toStoredJson(value: unknown): Promise<Prisma.InputJsonValue> {
 async function serializeBuyNowPrice(
   value: DecimalLike | null,
 ): Promise<number | null> {
-  if (value === null) {
-    return null;
-  }
-
-  return toNumberValue(value);
+  return toOptionalNumberValue(value);
 }
 
 async function sendValidationError(
@@ -731,7 +798,8 @@ async function serializeVehicle(vehicle: {
   year: number;
   mileage: number;
   vin: string;
-  marketPrice: DecimalLike | null;
+  marketPrice?: DecimalLike | null;
+  estimatedValue?: DecimalLike | null;
   fuelType: string | null;
   transmission: string | null;
   bodyType: string | null;
@@ -739,6 +807,16 @@ async function serializeVehicle(vehicle: {
   condition: string | null;
   serviceHistory: string | null;
   description: string | null;
+  conditionGrade?: string | null;
+  primaryDamage?: string | null;
+  titleStatus?: string | null;
+  tireCondition?: number | null;
+  numberOfKeys?: number | null;
+  warrantyStatus?: string | null;
+  startCode?: string | null;
+  manufacturedIn?: string | null;
+  series?: string | null;
+  features?: unknown;
   engine: string | null;
   driveType: string | null;
   exteriorColor: string | null;
@@ -747,14 +825,69 @@ async function serializeVehicle(vehicle: {
   damage: string | null;
   damageMap: unknown;
   images: string[];
-}): Promise<JsonRecord> {
-  const marketPrice = vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice);
-  const conditionGrade = getConditionGrade(vehicle.condition);
-  const primaryDamage = getPrimaryDamage(vehicle.damage);
-  const startCode = getStartCode({
-    damage: vehicle.damage,
-    condition: vehicle.condition,
-  });
+}, adminOverride: JsonRecord | null = null): Promise<JsonRecord> {
+  const marketPriceSource = vehicle.marketPrice ?? vehicle.estimatedValue ?? null;
+  const marketPrice = await toOptionalNumberValue(marketPriceSource);
+  const featureOverrides = readJsonRecord(adminOverride?.features);
+  const conditionGrade =
+    readJsonString(adminOverride, "conditionGrade") ??
+    (typeof vehicle.conditionGrade === "string" && vehicle.conditionGrade.trim().length > 0
+      ? vehicle.conditionGrade
+      : getConditionGrade(vehicle.condition));
+  const primaryDamage =
+    readJsonString(adminOverride, "primaryDamage") ??
+    (typeof vehicle.primaryDamage === "string" && vehicle.primaryDamage.trim().length > 0
+      ? vehicle.primaryDamage
+      : getPrimaryDamage(vehicle.damage));
+  const startCode =
+    readJsonString(adminOverride, "startCode") ??
+    (typeof vehicle.startCode === "string" && vehicle.startCode.trim().length > 0
+      ? vehicle.startCode
+      : getStartCode({
+          damage: vehicle.damage,
+          condition: vehicle.condition,
+        }));
+  const titleStatus =
+    readJsonString(adminOverride, "titleStatus") ??
+    (typeof vehicle.titleStatus === "string" && vehicle.titleStatus.trim().length > 0
+      ? vehicle.titleStatus
+      : getTitleStatus(vehicle.damage));
+  const tireCondition =
+    readJsonNumber(adminOverride, "tireCondition") ??
+    (typeof vehicle.tireCondition === "number" && Number.isFinite(vehicle.tireCondition)
+      ? vehicle.tireCondition
+      : getTireCondition({
+          mileage: vehicle.mileage,
+          year: vehicle.year,
+        }));
+  const numberOfKeys =
+    readJsonNumber(adminOverride, "numberOfKeys") ??
+    (typeof vehicle.numberOfKeys === "number" && Number.isFinite(vehicle.numberOfKeys)
+      ? vehicle.numberOfKeys
+      : getNumberOfKeys({
+          condition: vehicle.condition,
+          startCode,
+        }));
+  const warrantyStatus =
+    readJsonString(adminOverride, "warrantyStatus") ??
+    (typeof vehicle.warrantyStatus === "string" && vehicle.warrantyStatus.trim().length > 0
+      ? vehicle.warrantyStatus
+      : getWarrantyStatus({
+          year: vehicle.year,
+          serviceHistory: vehicle.serviceHistory,
+          description: vehicle.description,
+        }));
+  const manufacturedIn =
+    readJsonString(adminOverride, "manufacturedIn") ??
+    (typeof vehicle.manufacturedIn === "string" && vehicle.manufacturedIn.trim().length > 0
+      ? vehicle.manufacturedIn
+      : getManufacturedIn(vehicle.brand));
+  const series =
+    readJsonString(adminOverride, "series") ??
+    (typeof vehicle.series === "string" && vehicle.series.trim().length > 0
+      ? vehicle.series
+      : getSeries(vehicle.model));
+  const features = featureOverrides ?? (vehicle.features ?? buildFeatureSet(vehicle));
 
   return {
     id: vehicle.id,
@@ -771,29 +904,19 @@ async function serializeVehicle(vehicle: {
     condition: vehicle.condition,
     conditionGrade,
     primaryDamage,
-    titleStatus: getTitleStatus(vehicle.damage),
-    tireCondition: getTireCondition({
-      mileage: vehicle.mileage,
-      year: vehicle.year,
-    }),
-    numberOfKeys: getNumberOfKeys({
-      condition: vehicle.condition,
-      startCode,
-    }),
-    warrantyStatus: getWarrantyStatus({
-      year: vehicle.year,
-      serviceHistory: vehicle.serviceHistory,
-      description: vehicle.description,
-    }),
+    titleStatus,
+    tireCondition,
+    numberOfKeys,
+    warrantyStatus,
     serviceHistory: vehicle.serviceHistory,
     description: vehicle.description,
     engine: vehicle.engine,
     driveType: vehicle.driveType,
     startCode,
-    manufacturedIn: getManufacturedIn(vehicle.brand),
-    series: getSeries(vehicle.model),
-    estimatedValue: marketPrice,
-    features: buildFeatureSet(vehicle),
+    manufacturedIn,
+    series,
+    estimatedValue: readJsonNumber(adminOverride, "estimatedValueAed") ?? marketPrice,
+    features,
     exteriorColor: vehicle.exteriorColor,
     interiorColor: vehicle.interiorColor,
     airbags: vehicle.airbags,
@@ -886,6 +1009,9 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             },
           })
         : [];
+      const vehicleOverrideById = await readLatestVehicleOverrideMap(
+        auctions.map((auction) => auction.vehicle.id),
+      );
       const companyById = new Map(companies.map((company) => [company.id, company]));
       const accessibleItems: JsonRecord[] = [];
 
@@ -920,9 +1046,9 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         accessibleItems.push({
           id: auction.id,
           state: auction.state,
-          currentPrice: await toNumberValue(auction.currentPrice),
-          minIncrement: await toNumberValue(auction.minIncrement),
-          startingPrice: await toNumberValue(auction.startingPrice),
+          currentPrice: (await toOptionalNumberValue(auction.currentPrice)) ?? 0,
+          minIncrement: (await toOptionalNumberValue(auction.minIncrement)) ?? 0,
+          startingPrice: (await toOptionalNumberValue(auction.startingPrice)) ?? 0,
           buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
           startsAt: await toIsoString(auction.startsAt),
           endsAt: await toIsoString(auction.endsAt),
@@ -931,7 +1057,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           location: company?.country ?? "UAE",
           totalBids: auction._count?.bids ?? 0,
           showVipEarlyAccessBadge: decision.showVipEarlyAccessBadge,
-          vehicle: await serializeVehicle(auction.vehicle),
+          vehicle: await serializeVehicle(auction.vehicle, vehicleOverrideById.get(auction.vehicle.id) ?? null),
         });
       }
 
@@ -1615,14 +1741,16 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
+      const vehicleOverrideById = await readLatestVehicleOverrideMap([auction.vehicle.id]);
+
       await reply.code(200).send({
         auction: {
           id: auction.id,
           state: auction.state,
           version: auction.version,
-          currentPrice: await toNumberValue(auction.currentPrice),
-          minIncrement: await toNumberValue(auction.minIncrement),
-          startingPrice: await toNumberValue(auction.startingPrice),
+          currentPrice: (await toOptionalNumberValue(auction.currentPrice)) ?? 0,
+          minIncrement: (await toOptionalNumberValue(auction.minIncrement)) ?? 0,
+          startingPrice: (await toOptionalNumberValue(auction.startingPrice)) ?? 0,
           buyNowPrice: await serializeBuyNowPrice(auction.buyNowPrice),
           startsAt: await toIsoString(auction.startsAt),
           endsAt: await toIsoString(auction.endsAt),
@@ -1630,7 +1758,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
           extensionCount: auction.extensionCount,
           highestBidId: auction.highestBidId,
           showVipEarlyAccessBadge: detailDecision.showVipEarlyAccessBadge,
-          vehicle: await serializeVehicle(auction.vehicle),
+          vehicle: await serializeVehicle(auction.vehicle, vehicleOverrideById.get(auction.vehicle.id) ?? null),
           bids: await Promise.all(
             auction.bids.map(async (bid) =>
               serializeBid({

@@ -115,6 +115,45 @@ const adminVehicleQuerySchema = z.object({
   unassigned: z.enum(["true", "false"]).optional(),
 });
 
+const adminVehicleUpdateSchema = z.object({
+  photoUrls: z.array(z.string().trim().min(1)).optional(),
+  images: z.array(z.string().trim().min(1)).optional(),
+  mulkiyaFrontUrl: z.string().trim().min(1).nullable().optional(),
+  mulkiyaBackUrl: z.string().trim().min(1).nullable().optional(),
+  brand: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  year: z.coerce.number().int().min(1886).max(2100).optional(),
+  series: z.string().trim().min(1).nullable().optional(),
+  mileage: z.coerce.number().int().nonnegative().optional(),
+  vin: z.string().trim().min(5).max(64).optional(),
+  cylinders: z.coerce.number().int().nonnegative().nullable().optional(),
+  fuelType: z.string().trim().min(1).nullable().optional(),
+  transmission: z.string().trim().min(1).nullable().optional(),
+  bodyType: z.string().trim().min(1).nullable().optional(),
+  regionSpec: z.string().trim().min(1).nullable().optional(),
+  serviceHistory: z.string().trim().min(1).nullable().optional(),
+  description: z.string().trim().min(1).nullable().optional(),
+  engine: z.string().trim().min(1).nullable().optional(),
+  driveType: z.string().trim().min(1).nullable().optional(),
+  exteriorColor: z.string().trim().min(1).nullable().optional(),
+  interiorColor: z.string().trim().min(1).nullable().optional(),
+  manufacturedIn: z.string().trim().min(1).nullable().optional(),
+  numberOfKeys: z.coerce.number().int().nonnegative().nullable().optional(),
+  warrantyStatus: z.string().trim().min(1).nullable().optional(),
+  startCode: z.string().trim().min(1).nullable().optional(),
+  airbags: z.string().trim().min(1).nullable().optional(),
+  damage: z.string().trim().min(1).nullable().optional(),
+  damageMap: z.record(z.string(), z.unknown()).nullable().optional(),
+  conditionGrade: z.string().trim().min(1).nullable().optional(),
+  estimatedValueAed: z.coerce.number().nonnegative().nullable().optional(),
+  titleStatus: z.string().trim().min(1).nullable().optional(),
+  primaryDamage: z.string().trim().min(1).nullable().optional(),
+  lossType: z.string().trim().min(1).nullable().optional(),
+  tireCondition: z.coerce.number().min(0).max(100).nullable().optional(),
+  internalNotes: z.string().trim().min(1).nullable().optional(),
+  features: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
 const companyIdParamsSchema = z.object({
   id: z.string().trim().min(1),
 });
@@ -275,6 +314,44 @@ async function toNumberValue(value: DecimalLike): Promise<number> {
 
 async function toStoredJson(payload: unknown): Promise<any> {
   return JSON.parse(JSON.stringify(payload));
+}
+
+async function normalizeVin(vin: string): Promise<string> {
+  return vin.trim().toUpperCase();
+}
+
+async function toVehicleMediaCreateInput(input: {
+  images: string[];
+  mulkiyaFrontUrl?: string | null;
+  mulkiyaBackUrl?: string | null;
+}): Promise<Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }>> {
+  const items: Array<{ url: string; type: "PHOTO" | "MULKIYA_FRONT" | "MULKIYA_BACK"; sortOrder: number }> = [];
+
+  for (const [index, url] of input.images.entries()) {
+    items.push({
+      url,
+      type: "PHOTO",
+      sortOrder: index,
+    });
+  }
+
+  if (input.mulkiyaFrontUrl) {
+    items.push({
+      url: input.mulkiyaFrontUrl,
+      type: "MULKIYA_FRONT",
+      sortOrder: 0,
+    });
+  }
+
+  if (input.mulkiyaBackUrl) {
+    items.push({
+      url: input.mulkiyaBackUrl,
+      type: "MULKIYA_BACK",
+      sortOrder: 0,
+    });
+  }
+
+  return items;
 }
 
 async function createPayloadHash(payload: unknown): Promise<string> {
@@ -531,6 +608,299 @@ async function readDatabaseCurrentTime(tx: {
   return currentTime;
 }
 
+async function readAdminVehicleDetail(
+  vehicleId: string,
+  actorUserId: string | null | undefined,
+): Promise<{
+  vehicle: {
+    id: string;
+    label: string;
+    brand: string;
+    model: string;
+    year: number;
+    series: string | null;
+    mileage: number;
+    vin: string;
+    marketPriceAed: number | null;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    photoUrls: string[];
+    mulkiyaFrontUrl: string | null;
+    mulkiyaBackUrl: string | null;
+    fuelType: string | null;
+    transmission: string | null;
+    bodyType: string | null;
+    regionSpec: string | null;
+    condition: string | null;
+    serviceHistory: string | null;
+    description: string | null;
+    internalNotes: string | null;
+    engine: string | null;
+    driveType: string | null;
+    exteriorColor: string | null;
+    interiorColor: string | null;
+    manufacturedIn: string | null;
+    airbags: string | null;
+    damage: string | null;
+    damageMap: Prisma.JsonValue | null;
+    features: null;
+    startCode: string | null;
+    numberOfKeys: number | null;
+    warrantyStatus: string | null;
+    cylinders: number | null;
+    conditionGrade: string | null;
+    estimatedValueAed: number | null;
+    titleStatus: string | null;
+    primaryDamage: string | null;
+    lossType: string | null;
+    tireCondition: number | null;
+    company: {
+      id: string;
+      name: string;
+      status: string;
+    } | null;
+    latestAuction: {
+      id: string;
+      state: string;
+      startsAt: string;
+      endsAt: string;
+      inspectionDropoffDate: string | null;
+      viewingEndsAt: string | null;
+      auctionStartsAt: string | null;
+      auctionEndsAt: string | null;
+      approvalStatusLabel?: string | null;
+      currentPriceAed: number;
+      startingPriceAed: number;
+      buyNowPriceAed: number | null;
+      minIncrementAed: number;
+    } | null;
+    assignedEvent: {
+      id: string;
+      title: string;
+      status: string;
+      startsAt: string;
+    } | null;
+  };
+} | null> {
+  const [now, vehicle, latestAdminUpdateLog] = await Promise.all([
+    readTrustedCurrentTime(prisma),
+    prisma.vehicle.findUnique({
+      where: {
+        id: vehicleId,
+      },
+      include: {
+        media: {
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: {
+            url: true,
+            type: true,
+            sortOrder: true,
+          },
+        },
+        auctions: {
+          where: {
+            transitions: {
+              none: {
+                trigger: "EVENT_META",
+              },
+            },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            id: true,
+            state: true,
+            sellerCompanyId: true,
+            startsAt: true,
+            endsAt: true,
+            inspectionDropoffDate: true,
+            viewingEndsAt: true,
+            auctionStartsAt: true,
+            auctionEndsAt: true,
+            approvedAt: true,
+            vipAccessPolicy: true,
+            vipReleaseAt: true,
+            currentPrice: true,
+            startingPrice: true,
+            buyNowPrice: true,
+            minIncrement: true,
+            transitions: {
+              where: {
+                trigger: {
+                  in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED", "ADMIN_VEHICLE_APPROVED"],
+                },
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              take: 3,
+              select: {
+                trigger: true,
+                reason: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.auditLog.findFirst({
+      where: {
+        action: "ADMIN_VEHICLE_UPDATED",
+        entityType: "Vehicle",
+        entityId: vehicleId,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        payload: true,
+      },
+    }),
+  ]);
+
+  if (!vehicle) {
+    return null;
+  }
+
+  const latestAuction = vehicle.auctions[0] ?? null;
+  const latestTransitions = latestAuction?.transitions ?? [];
+  const latestUpdatePayload = readJsonRecord(latestAdminUpdateLog?.payload);
+  const latestChanges = readJsonRecord((latestUpdatePayload?.changes ?? null) as Prisma.JsonValue | null);
+  const featureOverrides = readJsonRecord((latestChanges?.features ?? null) as Prisma.JsonValue | null);
+  const assignedEventId = await resolveAssignedEventId(readLatestEventAssignmentTransition(latestTransitions));
+  const sellerCompanyId = latestAuction?.sellerCompanyId ?? null;
+  const [company, assignedEvent] = await Promise.all([
+    sellerCompanyId
+      ? prisma.company.findUnique({
+          where: {
+            id: sellerCompanyId,
+          },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        })
+      : null,
+    assignedEventId
+      ? prisma.auction.findUnique({
+          where: {
+            id: assignedEventId,
+          },
+          select: {
+            id: true,
+            startsAt: true,
+            state: true,
+            transitions: {
+              where: {
+                trigger: "EVENT_META",
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              take: 1,
+              select: {
+                reason: true,
+              },
+            },
+          },
+        })
+      : null,
+  ]);
+  const eventMeta = await parseEventMeta(assignedEvent?.transitions[0]?.reason ?? null);
+  const photoUrls = vehicle.media
+    .filter((item) => item.type === "PHOTO")
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((item) => item.url);
+
+  return {
+    vehicle: {
+      id: vehicle.id,
+      label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      series: readJsonString(latestChanges, "series"),
+      mileage: vehicle.mileage,
+      vin: vehicle.vin,
+      marketPriceAed: vehicle.estimatedValue === null ? null : await toNumberValue(vehicle.estimatedValue),
+      status: await resolveVehicleStatus(
+        latestAuction?.state ?? null,
+        hasVehicleApprovalTransition(latestTransitions),
+      ),
+      photoUrls: photoUrls.length > 0 ? photoUrls : vehicle.images,
+      mulkiyaFrontUrl: vehicle.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
+      mulkiyaBackUrl: vehicle.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
+      fuelType: vehicle.fuelType,
+      transmission: vehicle.transmission,
+      bodyType: vehicle.bodyType,
+      regionSpec: vehicle.regionSpec,
+      condition: vehicle.condition,
+      serviceHistory: vehicle.serviceHistory,
+      description: vehicle.description,
+      internalNotes: null,
+      engine: vehicle.engine,
+      driveType: vehicle.driveType,
+      exteriorColor: vehicle.exteriorColor,
+      interiorColor: vehicle.interiorColor,
+      manufacturedIn: readJsonString(latestChanges, "manufacturedIn"),
+      airbags: vehicle.airbags,
+      damage: vehicle.damage,
+      damageMap: vehicle.damageMap,
+      features: featureOverrides,
+      startCode: readJsonString(latestChanges, "startCode"),
+      numberOfKeys: readJsonNumber(latestChanges, "numberOfKeys"),
+      warrantyStatus: readJsonString(latestChanges, "warrantyStatus"),
+      cylinders: readJsonNumber(latestChanges, "cylinders"),
+      conditionGrade: readJsonString(latestChanges, "conditionGrade"),
+      estimatedValueAed: readJsonNumber(latestChanges, "estimatedValueAed"),
+      titleStatus: readJsonString(latestChanges, "titleStatus"),
+      primaryDamage: readJsonString(latestChanges, "primaryDamage"),
+      lossType: readJsonString(latestChanges, "lossType"),
+      tireCondition: readJsonNumber(latestChanges, "tireCondition"),
+      company: company
+        ? {
+            id: company.id,
+            name: company.name,
+            status: company.status,
+          }
+        : null,
+      latestAuction: latestAuction
+        ? {
+            id: latestAuction.id,
+            state: latestAuction.state,
+            startsAt: latestAuction.startsAt.toISOString(),
+            endsAt: latestAuction.endsAt.toISOString(),
+            inspectionDropoffDate: latestAuction.inspectionDropoffDate?.toISOString() ?? null,
+            viewingEndsAt: latestAuction.viewingEndsAt?.toISOString() ?? null,
+            auctionStartsAt: latestAuction.auctionStartsAt?.toISOString() ?? null,
+            auctionEndsAt: latestAuction.auctionEndsAt?.toISOString() ?? null,
+            approvalStatusLabel: evaluateVipAccess({
+              actorBase: createAdminActorBase(actorUserId),
+              snapshot: {
+                approvedAt: latestAuction.approvedAt,
+                vipAccessPolicy: latestAuction.vipAccessPolicy,
+                vipReleaseAt: latestAuction.vipReleaseAt,
+                sellerCompanyId: latestAuction.sellerCompanyId,
+              },
+              now,
+            }).sellerAdminStatusText,
+            currentPriceAed: await toNumberValue(latestAuction.currentPrice),
+            startingPriceAed: await toNumberValue(latestAuction.startingPrice),
+            buyNowPriceAed:
+              latestAuction.buyNowPrice === null ? null : await toNumberValue(latestAuction.buyNowPrice),
+            minIncrementAed: await toNumberValue(latestAuction.minIncrement),
+          }
+        : null,
+      assignedEvent: assignedEvent
+        ? {
+            id: assignedEvent.id,
+            title: eventMeta.title?.trim() || `Auction Event ${assignedEvent.id.slice(0, 8).toUpperCase()}`,
+            status: assignedEvent.state,
+            startsAt: assignedEvent.startsAt.toISOString(),
+          }
+        : null,
+    },
+  };
+}
+
 function isSchemaDriftPrismaError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -594,7 +964,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
         model: true,
         year: true,
         vin: true,
-        marketPrice: true,
+        estimatedValue: true,
         images: true,
         media: {
           orderBy: {
@@ -649,7 +1019,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       model: vehicle.model,
       year: vehicle.year,
       vin: vehicle.vin,
-      marketPrice: vehicle.marketPrice,
+      marketPrice: vehicle.estimatedValue,
       imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
@@ -715,7 +1085,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       model: vehicle.model,
       year: vehicle.year,
       vin: vehicle.vin,
-      marketPrice: 0,
+      marketPrice: null,
       imageUrl: null,
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
@@ -1106,21 +1476,54 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      const [now, vehicle] = await Promise.all([
-        readTrustedCurrentTime(prisma),
-        prisma.vehicle.findUnique({
+      const detail = await readAdminVehicleDetail(parsedParams.data.id, request.auth?.userId);
+
+      if (!detail) {
+        await reply.code(404).send({
+          error: "VEHICLE_NOT_FOUND",
+        });
+        return;
+      }
+
+      await reply.code(200).send(detail);
+    },
+  );
+
+  fastify.patch<{ Params: { id: string }; Body: unknown }>(
+    "/admin/vehicles/:id",
+    async function updateAdminVehicleHandler(
+      request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const actorId = request.auth?.userId;
+      const parsedParams = companyIdParamsSchema.safeParse(request.params);
+
+      if (!actorId) {
+        await reply.code(401).send({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!parsedParams.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedParams.error.issues));
+        return;
+      }
+
+      const parsedBody = adminVehicleUpdateSchema.safeParse(request.body);
+
+      if (!parsedBody.success) {
+        await sendValidationError(reply, await mapZodIssues(parsedBody.error.issues));
+        return;
+      }
+
+      const { id } = parsedParams.data;
+      const payload = parsedBody.data;
+      const existingVehicle = await prisma.vehicle.findUnique({
         where: {
-          id: parsedParams.data.id,
+          id,
         },
-        include: {
-          media: {
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-            select: {
-              url: true,
-              type: true,
-              sortOrder: true,
-            },
-          },
+        select: {
+          id: true,
+          images: true,
           auctions: {
             where: {
               transitions: {
@@ -1134,171 +1537,109 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             select: {
               id: true,
               state: true,
-              sellerCompanyId: true,
-              startsAt: true,
-              endsAt: true,
-              inspectionDropoffDate: true,
-              viewingEndsAt: true,
-              auctionStartsAt: true,
-              auctionEndsAt: true,
-              approvedAt: true,
-              vipAccessPolicy: true,
-              vipReleaseAt: true,
-              currentPrice: true,
-              startingPrice: true,
-              buyNowPrice: true,
-              minIncrement: true,
-              transitions: {
-                where: {
-                  trigger: {
-                    in: ["EVENT_ASSIGNED", "EVENT_UNASSIGNED", "ADMIN_VEHICLE_APPROVED"],
-                  },
-                },
-                orderBy: {
-                  createdAt: "desc",
-                },
-                take: 3,
-                select: {
-                  trigger: true,
-                  reason: true,
-                },
-              },
             },
           },
         },
-        }),
-      ]);
+      });
 
-      if (!vehicle) {
+      if (!existingVehicle) {
         await reply.code(404).send({
           error: "VEHICLE_NOT_FOUND",
         });
         return;
       }
 
-      const latestAuction = vehicle.auctions[0] ?? null;
-      const latestTransitions = latestAuction?.transitions ?? [];
-      const assignedEventId = await resolveAssignedEventId(readLatestEventAssignmentTransition(latestTransitions));
-      const sellerCompanyId = latestAuction?.sellerCompanyId ?? null;
-      const [company, assignedEvent] = await Promise.all([
-        sellerCompanyId
-          ? prisma.company.findUnique({
-              where: {
-                id: sellerCompanyId,
-              },
-              select: {
-                id: true,
-                name: true,
-                status: true,
-              },
-            })
-          : null,
-        assignedEventId
-          ? prisma.auction.findUnique({
-              where: {
-                id: assignedEventId,
-              },
-              select: {
-                id: true,
-                startsAt: true,
-                state: true,
-                transitions: {
-                  where: {
-                    trigger: "EVENT_META",
-                  },
-                  orderBy: {
-                    createdAt: "desc",
-                  },
-                  take: 1,
-                  select: {
-                    reason: true,
-                  },
-                },
-              },
-            })
-          : null,
-      ]);
-      const eventMeta = await parseEventMeta(assignedEvent?.transitions[0]?.reason ?? null);
-      const photoUrls = vehicle.media
-        .filter((item) => item.type === "PHOTO")
-        .sort((left, right) => left.sortOrder - right.sortOrder)
-        .map((item) => item.url);
+      const latestAuction = existingVehicle.auctions[0] ?? null;
 
-      await reply.code(200).send({
-        vehicle: {
-          id: vehicle.id,
-          label: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
-          brand: vehicle.brand,
-          model: vehicle.model,
-          year: vehicle.year,
-          mileage: vehicle.mileage,
-          vin: vehicle.vin,
-          marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
-          status: await resolveVehicleStatus(
-            latestAuction?.state ?? null,
-            hasVehicleApprovalTransition(latestTransitions),
-          ),
-          photoUrls: photoUrls.length > 0 ? photoUrls : vehicle.images,
-          mulkiyaFrontUrl: vehicle.media.find((item) => item.type === "MULKIYA_FRONT")?.url ?? null,
-          mulkiyaBackUrl: vehicle.media.find((item) => item.type === "MULKIYA_BACK")?.url ?? null,
-          fuelType: vehicle.fuelType,
-          transmission: vehicle.transmission,
-          bodyType: vehicle.bodyType,
-          regionSpec: vehicle.regionSpec,
-          condition: vehicle.condition,
-          serviceHistory: vehicle.serviceHistory,
-          description: vehicle.description,
-          engine: vehicle.engine,
-          driveType: vehicle.driveType,
-          exteriorColor: vehicle.exteriorColor,
-          interiorColor: vehicle.interiorColor,
-          airbags: vehicle.airbags,
-          damage: vehicle.damage,
-          damageMap: vehicle.damageMap,
-          company: company
-            ? {
-                id: company.id,
-                name: company.name,
-                status: company.status,
-              }
-            : null,
-          latestAuction: latestAuction
-            ? {
-                id: latestAuction.id,
-                state: latestAuction.state,
-                startsAt: latestAuction.startsAt.toISOString(),
-                endsAt: latestAuction.endsAt.toISOString(),
-                inspectionDropoffDate: latestAuction.inspectionDropoffDate?.toISOString() ?? null,
-                viewingEndsAt: latestAuction.viewingEndsAt?.toISOString() ?? null,
-                auctionStartsAt: latestAuction.auctionStartsAt?.toISOString() ?? null,
-                auctionEndsAt: latestAuction.auctionEndsAt?.toISOString() ?? null,
-                approvalStatusLabel: evaluateVipAccess({
-                  actorBase: createAdminActorBase(request.auth?.userId),
-                  snapshot: {
-                    approvedAt: latestAuction.approvedAt,
-                    vipAccessPolicy: latestAuction.vipAccessPolicy,
-                    vipReleaseAt: latestAuction.vipReleaseAt,
-                    sellerCompanyId: latestAuction.sellerCompanyId,
-                  },
-                  now,
-                }).sellerAdminStatusText,
-                currentPriceAed: await toNumberValue(latestAuction.currentPrice),
-                startingPriceAed: await toNumberValue(latestAuction.startingPrice),
-                buyNowPriceAed:
-                  latestAuction.buyNowPrice === null ? null : await toNumberValue(latestAuction.buyNowPrice),
-                minIncrementAed: await toNumberValue(latestAuction.minIncrement),
-              }
-            : null,
-          assignedEvent: assignedEvent
-            ? {
-                id: assignedEvent.id,
-                title: eventMeta.title?.trim() || `Auction Event ${assignedEvent.id.slice(0, 8).toUpperCase()}`,
-                status: assignedEvent.state,
-                startsAt: assignedEvent.startsAt.toISOString(),
-              }
-            : null,
-        },
-      });
+      if (latestAuction && latestAuction.state !== "DRAFT") {
+        await reply.code(409).send({
+          error: "VEHICLE_EDIT_LOCKED",
+          message: "Vehicle can only be edited while linked auction is DRAFT",
+        });
+        return;
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          const images = payload.photoUrls ?? payload.images ?? existingVehicle.images ?? [];
+          const mediaItems = await toVehicleMediaCreateInput({
+            images,
+            mulkiyaFrontUrl: payload.mulkiyaFrontUrl ?? undefined,
+            mulkiyaBackUrl: payload.mulkiyaBackUrl ?? undefined,
+          });
+          const shouldRewriteMedia =
+            payload.photoUrls !== undefined ||
+            payload.images !== undefined ||
+            payload.mulkiyaFrontUrl !== undefined ||
+            payload.mulkiyaBackUrl !== undefined;
+
+          await tx.vehicle.update({
+            where: {
+              id,
+            },
+            data: {
+              brand: payload.brand,
+              model: payload.model,
+              year: payload.year,
+              mileage: payload.mileage,
+              vin: payload.vin === undefined ? undefined : await normalizeVin(payload.vin),
+              fuelType: payload.fuelType === undefined ? undefined : payload.fuelType,
+              transmission: payload.transmission === undefined ? undefined : payload.transmission,
+              bodyType: payload.bodyType === undefined ? undefined : payload.bodyType,
+              regionSpec: payload.regionSpec === undefined ? undefined : payload.regionSpec,
+              serviceHistory: payload.serviceHistory === undefined ? undefined : payload.serviceHistory,
+              description: payload.description === undefined ? undefined : payload.description,
+              engine: payload.engine === undefined ? undefined : payload.engine,
+              driveType: payload.driveType === undefined ? undefined : payload.driveType,
+              exteriorColor: payload.exteriorColor === undefined ? undefined : payload.exteriorColor,
+              interiorColor: payload.interiorColor === undefined ? undefined : payload.interiorColor,
+              airbags: payload.airbags === undefined ? undefined : payload.airbags,
+              damage: payload.damage === undefined ? undefined : payload.damage,
+              damageMap: payload.damageMap === undefined ? undefined : await toStoredJson(payload.damageMap),
+              images: shouldRewriteMedia ? images : undefined,
+              media: shouldRewriteMedia
+                ? {
+                    deleteMany: {},
+                    create: mediaItems,
+                  }
+                : undefined,
+            },
+          });
+
+          await createAuditLog(tx, {
+            actorId,
+            action: "ADMIN_VEHICLE_UPDATED",
+            entityType: "Vehicle",
+            entityId: id,
+            payload: {
+              vehicleId: id,
+              changes: payload,
+            },
+          });
+        });
+      } catch (error) {
+        const prismaError = error as { code?: string };
+
+        if (prismaError.code === "P2002") {
+          await reply.code(409).send({
+            error: "VIN_ALREADY_EXISTS",
+          });
+          return;
+        }
+
+        throw error;
+      }
+
+      const detail = await readAdminVehicleDetail(id, actorId);
+
+      if (!detail) {
+        await reply.code(404).send({
+          error: "VEHICLE_NOT_FOUND",
+        });
+        return;
+      }
+
+      await reply.code(200).send(detail);
     },
   );
 
@@ -1607,7 +1948,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
         select: {
           id: true,
-          marketPrice: true,
+          estimatedValue: true,
         },
       });
 
@@ -1624,7 +1965,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             id,
           },
           data: {
-            marketPrice: parsedBody.data.priceAed,
+            estimatedValue: parsedBody.data.priceAed,
           },
         });
 
@@ -1636,7 +1977,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           payload: {
             vehicleId: id,
             previousMarketPrice:
-              vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
+              vehicle.estimatedValue === null ? null : await toNumberValue(vehicle.estimatedValue),
             nextMarketPrice: parsedBody.data.priceAed,
           },
         });
@@ -3745,7 +4086,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             model: true,
             year: true,
             vin: true,
-            marketPrice: true,
+            estimatedValue: true,
             images: true,
           },
         },
@@ -3782,7 +4123,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: lot.vehicleId,
           title: `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`,
           vin: lot.vehicle.vin,
-          marketPriceAed: lot.vehicle.marketPrice === null ? null : await toNumberValue(lot.vehicle.marketPrice),
+          marketPriceAed: lot.vehicle.estimatedValue === null ? null : await toNumberValue(lot.vehicle.estimatedValue),
           imageUrl: lot.vehicle.images[0] ?? null,
         })),
       ),
