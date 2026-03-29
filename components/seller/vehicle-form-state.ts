@@ -90,3 +90,5 @@ export function hasVehicleFormUnsavedChanges(
 
   return JSON.stringify(normalizeVehicleFormValues(initialValues)) !== JSON.stringify(normalizeVehicleFormValues(draftState.values));
 }
+
+export const EMPTY_VEHICLE_FEATURES = EMPTY_VEHICLE_FORM.features;
