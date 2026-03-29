@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { getAdminCopy } from "@/app/admin/i18n";
 import { DamageDiagram, type DamageMapValue } from "@/components/seller/DamageDiagram";
-import { EMPTY_VEHICLE_FORM, type SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
+import { EMPTY_VEHICLE_FEATURES, type SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
 import { IconCar, IconShield, IconTag, IconZap } from "@/components/ui/icons";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
@@ -480,63 +480,6 @@ function readDamageMap(value: unknown): DamageMapValue {
   );
 }
 
-function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
-  if (!isRecord(value)) {
-    return EMPTY_VEHICLE_FORM;
-  }
-
-  const comfortInterior = isRecord(value.comfortInterior) ? value.comfortInterior : {};
-  const safety = isRecord(value.safety) ? value.safety : {};
-  const technology = isRecord(value.technology) ? value.technology : {};
-  const exterior = isRecord(value.exterior) ? value.exterior : {};
-
-  const normalizedTechnology = {
-    ...EMPTY_VEHICLE_FORM.technology,
-    ...Object.fromEntries(
-      Object.keys(EMPTY_VEHICLE_FORM.technology).map((key) => [key, technology[key] === true]),
-    ),
-  };
-
-  return {
-    comfortInterior: {
-      ...EMPTY_VEHICLE_FORM.comfortInterior,
-      ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FORM.comfortInterior).map((key) => [key, comfortInterior[key] === true]),
-      ),
-    },
-    interiorMaterial:
-      value.interiorMaterial === "Leather" ||
-      value.interiorMaterial === "Fabric" ||
-      value.interiorMaterial === "Alcantara" ||
-      value.interiorMaterial === "Partial Leather"
-        ? value.interiorMaterial
-        : "",
-    safety: {
-      ...EMPTY_VEHICLE_FORM.safety,
-      ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FORM.safety).map((key) => [key, safety[key] === true]),
-      ),
-    },
-    technology: normalizedTechnology,
-    soundBrand:
-      normalizedTechnology.premiumSound &&
-      (value.soundBrand === "B&O" ||
-        value.soundBrand === "Bose" ||
-        value.soundBrand === "Harman Kardon" ||
-        value.soundBrand === "JBL" ||
-        value.soundBrand === "Burmester" ||
-        value.soundBrand === "Other")
-        ? value.soundBrand
-        : "",
-    exterior: {
-      ...EMPTY_VEHICLE_FORM.exterior,
-      ...Object.fromEntries(
-        Object.keys(EMPTY_VEHICLE_FORM.exterior).map((key) => [key, exterior[key] === true]),
-      ),
-    },
-  };
-}
-
 function formatStatusLabel(value: string, locale: SupportedLocale): string {
   const t = getAdminCopy(locale);
 
@@ -696,7 +639,7 @@ function toVehicleEditState(vehicle: VehicleDetailResponse["vehicle"]): VehicleE
     lossType: vehicle.lossType ?? "",
     tireCondition: vehicle.tireCondition == null ? "" : String(vehicle.tireCondition),
     internalNotes: vehicle.internalNotes ?? "",
-    features: readVehicleFeatures(vehicle.features),
+    features: vehicle.features ?? EMPTY_VEHICLE_FEATURES,
   };
 }
 
@@ -933,6 +876,12 @@ function VehicleDetailPanel({
     [draft.manufacturedIn],
   );
   const damageSummaryOptions = useMemo(() => withCurrentOption(DAMAGE_SUMMARY_OPTIONS, draft.damage), [draft.damage]);
+  const comfortInteriorFeatures = draft.features?.comfortInterior ?? {};
+  const safetyFeatures = draft.features?.safety ?? {};
+  const technologyFeatures = draft.features?.technology ?? {};
+  const exteriorFeatures = draft.features?.exterior ?? {};
+  const interiorMaterial = draft.features?.interiorMaterial ?? "";
+  const soundBrand = draft.features?.soundBrand ?? "";
 
   function updateDraft<K extends keyof VehicleEditState>(key: K, value: VehicleEditState[K]): void {
     setDraft((previous) => ({
@@ -1055,11 +1004,11 @@ function VehicleDetailPanel({
   >(section: K, featureKey: T, checked: boolean): void {
     setDraft((previous) => {
       const nextSection = {
-        ...previous.features[section],
+        ...(previous.features?.[section] ?? {}),
         [featureKey]: checked,
       } as FeatureSectionGroup[K];
       const nextFeatures: SellerVehicleFeatures = {
-        ...previous.features,
+        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
         [section]: nextSection,
       };
 
@@ -1078,7 +1027,7 @@ function VehicleDetailPanel({
     setDraft((previous) => ({
       ...previous,
       features: {
-        ...previous.features,
+        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
         interiorMaterial: value,
       },
     }));
@@ -1088,7 +1037,7 @@ function VehicleDetailPanel({
     setDraft((previous) => ({
       ...previous,
       features: {
-        ...previous.features,
+        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
         soundBrand: value,
       },
     }));
@@ -1616,11 +1565,11 @@ function VehicleDetailPanel({
               {COMFORT_INTERIOR_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features?.comfortInterior?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${comfortInteriorFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features?.comfortInterior?.[item.key]}
+                    checked={comfortInteriorFeatures[item.key] ?? false}
                     onChange={(event) => updateFeatureFlag("comfortInterior", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
@@ -1643,11 +1592,11 @@ function VehicleDetailPanel({
               {SAFETY_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features?.safety?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${safetyFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features?.safety?.[item.key]}
+                    checked={safetyFeatures[item.key] ?? false}
                     onChange={(event) => updateFeatureFlag("safety", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
@@ -1670,12 +1619,12 @@ function VehicleDetailPanel({
               {INTERIOR_MATERIAL_OPTIONS.map((item) => (
                 <label
                   key={item}
-                  className={`${styles.radioCard} ${draft.features.interiorMaterial === item ? styles.radioCardActive : ""}`.trim()}
+                  className={`${styles.radioCard} ${interiorMaterial === item ? styles.radioCardActive : ""}`.trim()}
                 >
                   <input
                     type="radio"
                     name="admin-interior-material"
-                    checked={draft.features.interiorMaterial === item}
+                    checked={interiorMaterial === item}
                     onChange={() => updateInteriorMaterial(item)}
                   />
                   <span>{item}</span>
@@ -1698,20 +1647,20 @@ function VehicleDetailPanel({
               {TECHNOLOGY_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features?.technology?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${technologyFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features?.technology?.[item.key]}
+                    checked={technologyFeatures[item.key] ?? false}
                     onChange={(event) => updateFeatureFlag("technology", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
                 </label>
               ))}
             </div>
-            {draft.features.technology.premiumSound ? (
+            {technologyFeatures.premiumSound ? (
               <EditableField label="Premium Sound Brand">
-                <select value={draft.features.soundBrand} onChange={(event) => updateSoundBrand(event.target.value as SellerVehicleFeatures["soundBrand"])}>
+                <select value={soundBrand} onChange={(event) => updateSoundBrand(event.target.value as SellerVehicleFeatures["soundBrand"])}>
                   {SOUND_BRAND_OPTIONS.map((option) => (
                     <option key={option || "empty"} value={option}>
                       {option || "Select sound brand"}
@@ -1736,11 +1685,11 @@ function VehicleDetailPanel({
               {EXTERIOR_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features?.exterior?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${exteriorFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features?.exterior?.[item.key]}
+                    checked={exteriorFeatures[item.key] ?? false}
                     onChange={(event) => updateFeatureFlag("exterior", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>

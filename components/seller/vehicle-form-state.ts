@@ -1,5 +1,56 @@
 import type { DamageMapValue } from "@/components/seller/DamageDiagram";
 
+export type SellerVehicleFeatures = {
+  comfortInterior: {
+    heatedFrontSeats?: boolean;
+    heatedRearSeats?: boolean;
+    ventilatedSeats?: boolean;
+    heatedSteeringWheel?: boolean;
+    memorySeats?: boolean;
+    powerSeats?: boolean;
+    massageSeats?: boolean;
+    sunroof?: boolean;
+    panoramicRoof?: boolean;
+    thirdRowSeats?: boolean;
+    rearEntertainment?: boolean;
+    ambientLighting?: boolean;
+  };
+  safety: {
+    blindSpotMonitoring?: boolean;
+    laneDepatureWarning?: boolean;
+    frontParkingSensors?: boolean;
+    rearParkingSensors?: boolean;
+    rearCamera?: boolean;
+    surroundCamera?: boolean;
+    adaptiveCruiseControl?: boolean;
+    automaticEmergencyBraking?: boolean;
+    nightVision?: boolean;
+    headUpDisplay?: boolean;
+  };
+  technology: {
+    appleCarPlay?: boolean;
+    androidAuto?: boolean;
+    navigationSystem?: boolean;
+    wirelessCharging?: boolean;
+    premiumSound?: boolean;
+    digitalInstrumentCluster?: boolean;
+    otaUpdates?: boolean;
+    wifiHotspot?: boolean;
+  };
+  exterior: {
+    towHitch?: boolean;
+    runningBoards?: boolean;
+    roofRails?: boolean;
+    sportExhaust?: boolean;
+    wheels20plus?: boolean;
+    wheels21plus?: boolean;
+    spareTire?: boolean;
+    selfClosingDoors?: boolean;
+  };
+  interiorMaterial: "" | "Leather" | "Fabric" | "Alcantara" | "Partial Leather";
+  soundBrand: "" | "B&O" | "Bose" | "Harman Kardon" | "JBL" | "Burmester" | "Other";
+};
+
 export type SellerVehicleFormValues = {
   brand: string;
   model: string;
@@ -46,6 +97,15 @@ export const EMPTY_VEHICLE_FORM: SellerVehicleFormValues = {
   inspectionDropoffDate: "",
 };
 
+export const EMPTY_VEHICLE_FEATURES: SellerVehicleFeatures = {
+  comfortInterior: {},
+  safety: {},
+  technology: {},
+  exterior: {},
+  interiorMaterial: "",
+  soundBrand: "",
+};
+
 type VehicleFormDraftState = {
   values: SellerVehicleFormValues;
   hasPendingPhotoUploads: boolean;
@@ -90,5 +150,3 @@ export function hasVehicleFormUnsavedChanges(
 
   return JSON.stringify(normalizeVehicleFormValues(initialValues)) !== JSON.stringify(normalizeVehicleFormValues(draftState.values));
 }
-
-export const EMPTY_VEHICLE_FEATURES = EMPTY_VEHICLE_FORM.features;
