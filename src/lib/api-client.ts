@@ -406,9 +406,16 @@ async function postJson<T>(path: string, body?: unknown, options?: RequestInit):
 }
 
 async function patchJson<T>(path: string, body?: unknown, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   return apiFetch<T>(path, {
     ...options,
     method: "PATCH",
+    headers,
     body: body === undefined ? options?.body : JSON.stringify(body),
   });
 }
@@ -710,7 +717,7 @@ export const api = {
   admin: {
     auctions: {
       relist: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
-        patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
+        patchJson<T>(`/api/admin/auctions/${auctionId}/relist`, {}, options),
       relistInvoiceAuction: async <T = unknown>(auctionId: string, options?: RequestInit): Promise<T> =>
         postJson<T>(`/api/admin/auctions/${auctionId}/relist`, undefined, options),
       forceDecision: async <T = unknown>(
