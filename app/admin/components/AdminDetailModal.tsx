@@ -1616,11 +1616,11 @@ function VehicleDetailPanel({
               {COMFORT_INTERIOR_OPTIONS.map((item) => (
                 <label
                   key={item.key}
-                  className={`${styles.checkboxItem} ${draft.features.comfortInterior[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
+                  className={`${styles.checkboxItem} ${draft.features?.comfortInterior?.[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.features.comfortInterior[item.key]}
+                    checked={draft.features?.comfortInterior?.[item.key]}
                     onChange={(event) => updateFeatureFlag("comfortInterior", item.key, event.target.checked)}
                   />
                   <span>{item.label}</span>
