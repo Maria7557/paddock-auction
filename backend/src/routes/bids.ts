@@ -472,12 +472,10 @@ async function serializeVehicle(vehicle: {
   year: number;
   mileage: number;
   vin: string;
-  marketPrice: DecimalLike | null;
   fuelType: string | null;
   transmission: string | null;
   bodyType: string | null;
   regionSpec: string | null;
-  condition: string | null;
   serviceHistory: string | null;
   description: string | null;
   engine: string | null;
@@ -496,12 +494,10 @@ async function serializeVehicle(vehicle: {
     year: vehicle.year,
     mileage: vehicle.mileage,
     vin: vehicle.vin,
-    marketPrice: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
     fuelType: vehicle.fuelType,
     transmission: vehicle.transmission,
     bodyType: vehicle.bodyType,
     regionSpec: vehicle.regionSpec,
-    condition: vehicle.condition,
     serviceHistory: vehicle.serviceHistory,
     description: vehicle.description,
     engine: vehicle.engine,

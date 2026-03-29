@@ -33,7 +33,6 @@ export function AuctionLotCard({ lot }: AuctionLotCardProps) {
       currentBid={lot.currentBidAed}
       status={lot.status}
       endTime={lot.endsAt}
-      marketPrice={lot.marketPriceAed ?? undefined}
       showWishlistControl
     />
   );

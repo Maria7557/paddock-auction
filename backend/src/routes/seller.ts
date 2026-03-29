@@ -33,6 +33,64 @@ type DecimalLike =
 type IdempotencyResponseBody = Record<string, unknown>;
 const DEFAULT_SELLER_AUCTION_MIN_INCREMENT = 500;
 const PAYMENT_WINDOW_HOURS = 48;
+const vehicleInteriorMaterialSchema = z.union([
+  z.literal(""),
+  z.enum(["Leather", "Fabric", "Alcantara", "Partial Leather"]),
+]);
+const vehicleSoundBrandSchema = z.union([
+  z.literal(""),
+  z.enum(["B&O", "Bose", "Harman Kardon", "JBL", "Burmester", "Other"]),
+]);
+const sellerVehicleFeaturesSchema = z.object({
+  comfortInterior: z.object({
+    heatedFrontSeats: z.boolean(),
+    heatedRearSeats: z.boolean(),
+    ventilatedSeats: z.boolean(),
+    heatedSteeringWheel: z.boolean(),
+    memorySeats: z.boolean(),
+    powerSeats: z.boolean(),
+    massageSeats: z.boolean(),
+    sunroof: z.boolean(),
+    panoramicRoof: z.boolean(),
+    thirdRowSeats: z.boolean(),
+    rearEntertainment: z.boolean(),
+    ambientLighting: z.boolean(),
+  }),
+  interiorMaterial: vehicleInteriorMaterialSchema,
+  safety: z.object({
+    blindSpotMonitoring: z.boolean(),
+    laneDepatureWarning: z.boolean(),
+    frontParkingSensors: z.boolean(),
+    rearParkingSensors: z.boolean(),
+    rearCamera: z.boolean(),
+    surroundCamera: z.boolean(),
+    adaptiveCruiseControl: z.boolean(),
+    automaticEmergencyBraking: z.boolean(),
+    nightVision: z.boolean(),
+    headUpDisplay: z.boolean(),
+  }),
+  technology: z.object({
+    appleCarPlay: z.boolean(),
+    androidAuto: z.boolean(),
+    navigationSystem: z.boolean(),
+    wirelessCharging: z.boolean(),
+    premiumSound: z.boolean(),
+    digitalInstrumentCluster: z.boolean(),
+    otaUpdates: z.boolean(),
+    wifiHotspot: z.boolean(),
+  }),
+  soundBrand: vehicleSoundBrandSchema,
+  exterior: z.object({
+    towHitch: z.boolean(),
+    runningBoards: z.boolean(),
+    roofRails: z.boolean(),
+    sportExhaust: z.boolean(),
+    wheels20plus: z.boolean(),
+    wheels21plus: z.boolean(),
+    spareTire: z.boolean(),
+    selfClosingDoors: z.boolean(),
+  }),
+});
 
 type LockedAuctionDecisionRow = {
   id: string;
@@ -66,13 +124,18 @@ const sellerVehicleSchema = z.object({
   year: z.coerce.number().int().min(1886).max(2100),
   mileage: z.coerce.number().int().nonnegative(),
   vin: z.string().trim().min(5).max(64),
-  marketPrice: z.coerce.number().nonnegative().optional(),
   fuelType: z.string().trim().min(1).optional(),
   transmission: z.string().trim().min(1).optional(),
   bodyType: z.string().trim().min(1).optional(),
   regionSpec: z.string().trim().min(1).optional(),
-  condition: z.string().trim().min(1).optional(),
   serviceHistory: z.string().trim().min(1).optional(),
+  startCode: z.enum(["Run and Drive", "Stationary", "Does Not Start"]).optional(),
+  numberOfKeys: z.coerce.number().int().min(0).max(3).optional(),
+  warrantyStatus: z.enum(["Active", "Expired", "None"]).optional(),
+  series: z.string().trim().min(1).optional(),
+  cylinders: z.coerce.number().int().min(1).optional(),
+  manufacturedIn: z.string().trim().min(1).optional(),
+  features: sellerVehicleFeaturesSchema.optional(),
   description: z.string().trim().min(1).optional(),
   engine: z.string().trim().min(1).optional(),
   driveType: z.string().trim().min(1).optional(),
@@ -804,13 +867,18 @@ async function findSellerVehicle(
   year: number;
   mileage: number;
   vin: string;
-  marketPrice: DecimalLike | null;
   fuelType: string | null;
   transmission: string | null;
   bodyType: string | null;
   regionSpec: string | null;
-  condition: string | null;
   serviceHistory: string | null;
+  startCode: string | null;
+  numberOfKeys: number | null;
+  warrantyStatus: string | null;
+  series: string | null;
+  cylinders: number | null;
+  manufacturedIn: string | null;
+  features: unknown;
   description: string | null;
   engine: string | null;
   driveType: string | null;
@@ -1598,13 +1666,18 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             year: payload.year,
             mileage: payload.mileage,
             vin: await normalizeVin(payload.vin),
-            marketPrice: payload.marketPrice ?? null,
             fuelType: payload.fuelType,
             transmission: payload.transmission,
             bodyType: payload.bodyType,
             regionSpec: payload.regionSpec,
-            condition: payload.condition,
             serviceHistory: payload.serviceHistory,
+            startCode: payload.startCode,
+            numberOfKeys: payload.numberOfKeys,
+            warrantyStatus: payload.warrantyStatus,
+            series: payload.series,
+            cylinders: payload.cylinders,
+            manufacturedIn: payload.manufacturedIn,
+            features: payload.features === undefined ? undefined : await toStoredJson(payload.features),
             description: payload.description,
             engine: payload.engine,
             driveType: payload.driveType,
@@ -1685,10 +1758,6 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           year: createdVehicle.vehicle.year,
           mileage: createdVehicle.vehicle.mileage,
           vin: createdVehicle.vehicle.vin,
-          marketPrice:
-            createdVehicle.vehicle.marketPrice === null
-              ? null
-              : await toNumberValue(createdVehicle.vehicle.marketPrice),
         },
         vehicleId: createdVehicle.vehicle.id,
         auctionId: createdVehicle.auction.id,
@@ -1746,13 +1815,18 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         mileage: vehicle.mileage,
         mileageKm: vehicle.mileage,
         vin: vehicle.vin,
-        marketPrice: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
         fuelType: vehicle.fuelType,
         transmission: vehicle.transmission,
         bodyType: vehicle.bodyType,
         regionSpec: vehicle.regionSpec,
-        condition: vehicle.condition,
         serviceHistory: vehicle.serviceHistory,
+        startCode: vehicle.startCode,
+        numberOfKeys: vehicle.numberOfKeys,
+        warrantyStatus: vehicle.warrantyStatus,
+        series: vehicle.series,
+        cylinders: vehicle.cylinders,
+        manufacturedIn: vehicle.manufacturedIn,
+        features: vehicle.features,
         description: vehicle.description,
         engine: vehicle.engine,
         driveType: vehicle.driveType,
@@ -1859,13 +1933,18 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               year: payload.year,
               mileage: payload.mileage,
               vin: payload.vin ? await normalizeVin(payload.vin) : undefined,
-              marketPrice: payload.marketPrice === undefined ? undefined : payload.marketPrice,
               fuelType: payload.fuelType,
               transmission: payload.transmission,
               bodyType: payload.bodyType,
               regionSpec: payload.regionSpec,
-              condition: payload.condition,
               serviceHistory: payload.serviceHistory,
+              startCode: payload.startCode,
+              numberOfKeys: payload.numberOfKeys,
+              warrantyStatus: payload.warrantyStatus,
+              series: payload.series,
+              cylinders: payload.cylinders,
+              manufacturedIn: payload.manufacturedIn,
+              features: payload.features === undefined ? undefined : await toStoredJson(payload.features),
               description: payload.description,
               engine: payload.engine,
               driveType: payload.driveType,
@@ -1911,7 +1990,6 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             year: updatedVehicle.year,
             mileage: updatedVehicle.mileage,
             vin: updatedVehicle.vin,
-            marketPrice: updatedVehicle.marketPrice === null ? null : await toNumberValue(updatedVehicle.marketPrice),
           },
         });
       } catch (error) {

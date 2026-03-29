@@ -18,7 +18,6 @@ const createVehiclePayloadSchema = z
     transmission: z.string().trim().min(1).optional(),
     bodyType: z.string().trim().min(1).optional(),
     regionSpec: z.string().trim().min(1).optional(),
-    condition: z.string().trim().min(1).optional(),
     serviceHistory: z.string().trim().min(1).optional(),
     description: z.string().trim().optional(),
   })
@@ -126,7 +125,6 @@ export function createPostVehicleHandler(
         transmission: payload.transmission,
         bodyType: payload.bodyType,
         regionSpec: payload.regionSpec,
-        condition: payload.condition,
         serviceHistory: payload.serviceHistory,
         description: payload.description,
       });

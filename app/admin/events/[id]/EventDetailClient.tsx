@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { api } from "@/src/lib/api-client";
 import { getAdminCopy } from "@/app/admin/i18n";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
-import { formatAed } from "@/src/lib/utils";
 
 import styles from "./page.module.css";
 
@@ -16,7 +15,6 @@ type EventLot = {
   title: string;
   vin: string;
   imageUrl: string | null;
-  marketPriceAed: number | null;
   sequence: number;
 };
 
@@ -217,7 +215,6 @@ export function EventDetailClient({
                 <th>{t.eventDetail.table.photo}</th>
                 <th>{t.eventDetail.table.vehicle}</th>
                 <th>{t.eventDetail.table.vin}</th>
-                <th>{t.eventDetail.table.marketPrice}</th>
                 <th>{t.eventDetail.table.actions}</th>
               </tr>
             </thead>
@@ -258,7 +255,6 @@ export function EventDetailClient({
                   </td>
                   <td>{lot.title}</td>
                   <td className={styles.mono}>{lot.vin}</td>
-                  <td>{lot.marketPriceAed === null ? "-" : formatAed(lot.marketPriceAed)}</td>
                   <td>
                     <button
                       type="button"
@@ -273,7 +269,7 @@ export function EventDetailClient({
               ))}
               {lotRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className={styles.emptyCell}>
+                  <td colSpan={5} className={styles.emptyCell}>
                     {t.eventDetail.emptyLots}
                   </td>
                 </tr>

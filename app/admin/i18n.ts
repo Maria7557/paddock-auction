@@ -86,7 +86,6 @@ type AdminLocaleCopy = {
       vin: string;
       status: string;
       company: string;
-      marketPrice: string;
       event: string;
       actions: string;
     };
@@ -128,7 +127,6 @@ type AdminLocaleCopy = {
       photo: string;
       vehicle: string;
       vin: string;
-      marketPrice: string;
       actions: string;
     };
     actions: {
@@ -251,7 +249,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         vin: "VIN",
         status: "Status",
         company: "Company",
-        marketPrice: "Market Price",
         event: "Event",
         actions: "Actions",
       },
@@ -293,7 +290,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         photo: "Photo",
         vehicle: "Brand / Model / Year",
         vin: "VIN",
-        marketPrice: "Market Price",
         actions: "Actions",
       },
       actions: {
@@ -414,7 +410,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         vin: "VIN",
         status: "Статус",
         company: "Компания",
-        marketPrice: "Рыночная цена",
         event: "Событие",
         actions: "Действия",
       },
@@ -456,7 +451,6 @@ const ADMIN_COPY: Record<SupportedLocale, AdminLocaleCopy> = {
         photo: "Фото",
         vehicle: "Марка / Модель / Год",
         vin: "VIN",
-        marketPrice: "Рыночная цена",
         actions: "Действия",
       },
       actions: {

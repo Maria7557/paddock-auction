@@ -82,7 +82,6 @@ function mapToHomeLot(lot: AuctionLot): Lot {
   const bodyType = getSpec(lot, "Body Type");
   const regionSpec = getSpec(lot, "Region");
   const color = getSpec(lot, "Color");
-  const condition = getSpec(lot, "Condition");
 
   return {
     id: lot.id,
@@ -92,7 +91,6 @@ function mapToHomeLot(lot: AuctionLot): Lot {
     model: lot.model,
     year: lot.year,
     mileageKm: lot.mileageKm,
-    condition,
     fuelType,
     bodyType,
     regionSpec,
@@ -102,7 +100,6 @@ function mapToHomeLot(lot: AuctionLot): Lot {
     status: mapStatus(lot.status),
     currentBidAed: lot.currentBidAed,
     startingBidAed: lot.currentBidAed,
-    marketPriceAed: lot.marketPriceAed ?? null,
     buyNowPriceAed: lot.buyNowPriceAed ?? null,
     minStepAed: lot.minimumStepAed,
     startsAt: lot.startsAt,

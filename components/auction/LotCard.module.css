@@ -156,17 +156,11 @@
 
 .divider { width: 1px; background: var(--line-soft); }
 
-.marketPrice,
 .buyNowStripPrice {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1;
-}
-
-.marketPrice {
-  color: var(--ink-muted);
-  text-decoration: line-through;
 }
 
 .buyNowStripPrice {

@@ -48,7 +48,6 @@ type BuyerDashboardResponse = {
     year: number;
     mileage: number;
     regionSpec: string | null;
-    marketPrice: number | null;
     buyNowPrice: number | null;
     imageUrl?: string;
     startsAt: string | null;

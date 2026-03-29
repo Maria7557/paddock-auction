@@ -152,23 +152,35 @@ model Vehicle {
   id             String         @id @default(uuid())
   brand          String
   model          String
+  series         String?
   year           Int
   mileage        Int
   vin            String         @unique
-  marketPrice    Decimal?       @map("market_price") @db.Decimal(18, 2)
+  titleStatus    String?        @map("title_status")
+  primaryDamage  String?        @map("primary_damage")
+  lossType       String?        @map("loss_type")
+  startCode      String?        @map("start_code")
+  numberOfKeys   Int?           @map("number_of_keys")
+  warrantyStatus String?        @map("warranty_status")
+  tireCondition  Int?           @map("tire_condition")
+  cylinders      Int?
+  manufacturedIn String?        @map("manufactured_in")
+  conditionGrade String?        @map("condition_grade")
+  estimatedValue Decimal?       @map("estimated_value") @db.Decimal(18, 2)
   fuelType       String?
   transmission   String?
   bodyType       String?
   regionSpec     String?
-  condition      String?
   serviceHistory String?
   description    String?
+  internalNotes  String?        @map("internal_notes")
+  features       Json?
   engine         String?
   driveType      String?        @map("drive_type")
   exteriorColor  String?        @map("exterior_color")
   interiorColor  String?        @map("interior_color")
   airbags        String?
-  damage         String?        @default("None")
+  damage         String?
   damageMap      Json?          @map("damage_map")
   images         String[]       @default([])
   media          VehicleMedia[]

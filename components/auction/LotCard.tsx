@@ -27,7 +27,6 @@ type LotCardProps = {
   currentBid: number;
   status: string;
   endTime: string;
-  marketPrice?: number;
   buyNowPrice?: number | null;
   totalBids?: number;
   showVipEarlyAccessBadge?: boolean;
@@ -119,7 +118,6 @@ export function LotCard({
   currentBid,
   status,
   endTime,
-  marketPrice,
   buyNowPrice,
   showVipEarlyAccessBadge = false,
   display = DEFAULT_DISPLAY,
@@ -133,7 +131,6 @@ export function LotCard({
   const hidePrice = isScheduledWithoutBids(status, currentBid);
   const visibleTitle = trimYearFromTitle(title, year);
   const hasBuyNowPrice = typeof buyNowPrice === "number" && buyNowPrice > 0;
-  const showMarketFallback = typeof marketPrice === "number" && marketPrice > 0;
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [saved, setSaved] = useState(defaultWatchlisted);
   const [wishlistBusy, setWishlistBusy] = useState(false);
@@ -244,17 +241,10 @@ export function LotCard({
           </div>
 
           <div className={styles.strip}>
-            {hidePrice && (hasBuyNowPrice || showMarketFallback) ? (
+            {hidePrice && hasBuyNowPrice ? (
               <div className={`${styles.stripCell} ${styles.fullWidthCell}`}>
-                <div className={styles.stripLbl}>
-                  {hasBuyNowPrice ? (isRu ? "Цена Buy Now" : "Buy Now price") : isRu ? "Рыночная цена" : "Market price"}
-                </div>
-                <div className={hasBuyNowPrice ? styles.buyNowStripPrice : styles.marketPrice}>
-                  {formatMoneyFromAed(hasBuyNowPrice ? buyNowPrice : marketPrice!, display)}
-                </div>
-                {!hasBuyNowPrice && showMarketFallback ? (
-                  <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
-                ) : null}
+                <div className={styles.stripLbl}>{isRu ? "Цена Buy Now" : "Buy Now price"}</div>
+                <div className={styles.buyNowStripPrice}>{formatMoneyFromAed(buyNowPrice, display)}</div>
               </div>
             ) : (
               <>
@@ -262,19 +252,12 @@ export function LotCard({
                   <div className={styles.stripLbl}>{isRu ? "Текущий pre-bid" : "Current pre-bid"}</div>
                   <div className={styles.stripPrice}>{hidePrice ? (isRu ? "Pre-Bid" : "Pre-Bid") : formatMoneyFromAed(currentBid, display)}</div>
                 </div>
-                {hasBuyNowPrice || showMarketFallback ? (
+                {hasBuyNowPrice ? (
                   <>
                     <div className={styles.divider} />
                     <div className={styles.stripCell}>
-                      <div className={styles.stripLbl}>
-                        {hasBuyNowPrice ? (isRu ? "Цена Buy Now" : "Buy Now price") : isRu ? "Рыночная цена" : "Market price"}
-                      </div>
-                      <div className={hasBuyNowPrice ? styles.buyNowStripPrice : styles.marketPrice}>
-                        {formatMoneyFromAed(hasBuyNowPrice ? buyNowPrice : marketPrice!, display)}
-                      </div>
-                      {!hasBuyNowPrice && showMarketFallback ? (
-                        <div className={styles.otherLbl}>{isRu ? "Другие площадки" : "Other listings"}</div>
-                      ) : null}
+                      <div className={styles.stripLbl}>{isRu ? "Цена Buy Now" : "Buy Now price"}</div>
+                      <div className={styles.buyNowStripPrice}>{formatMoneyFromAed(buyNowPrice, display)}</div>
                     </div>
                   </>
                 ) : null}

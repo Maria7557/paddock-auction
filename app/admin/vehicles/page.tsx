@@ -17,7 +17,6 @@ type VehicleRow = {
   vin: string;
   status: VehicleStatus;
   companyName: string;
-  marketPriceAed: number | null;
   auctionId: string | null;
   assignedEventId: string | null;
   assignedEventLabel: string | null;
@@ -44,7 +43,6 @@ async function getVehiclesData(
         model: string;
         year: number;
         vin: string;
-        marketPriceAed: number | null;
         status: VehicleStatus;
         imageUrl: string | null;
         label: string;
@@ -95,7 +93,6 @@ async function getVehiclesData(
       vin: vehicle.vin,
       status: vehicle.status,
       companyName: vehicle.companyName?.trim() || t.defaults.fleetOperator,
-      marketPriceAed: vehicle.marketPriceAed ?? null,
       auctionId: vehicle.latestAuctionId ?? null,
       assignedEventId: vehicle.assignedEventId ?? matchingEvent?.id ?? null,
       assignedEventLabel: matchingEvent?.label ?? null,

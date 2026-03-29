@@ -68,7 +68,6 @@ export default function LotsSection({ lots, totalCount, display = DEFAULT_DISPLA
                 imageUrl={lot.images[0] ?? "/vehicle-photo.svg"}
                 currentBid={lot.currentBidAed}
                 buyNowPrice={lot.buyNowPriceAed ?? undefined}
-                marketPrice={lot.marketPriceAed ?? undefined}
                 status={lot.status}
                 endTime={
                   isLiveAuctionState(lot.status)

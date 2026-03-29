@@ -8,7 +8,6 @@ export interface Lot {
   model: string;
   year: number;
   mileageKm: number;
-  condition: string;
   fuelType: string;
   bodyType: string;
   regionSpec: string;
@@ -18,7 +17,6 @@ export interface Lot {
   status: LotStatus;
   currentBidAed: number;
   startingBidAed: number;
-  marketPriceAed: number | null;
   buyNowPriceAed?: number | null;
   minStepAed: number;
   startsAt: string;

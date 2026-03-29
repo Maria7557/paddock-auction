@@ -56,7 +56,6 @@ export type AuctionLot = {
   vin: string;
   status: AuctionStatus;
   currentBidAed: number;
-  marketPriceAed?: number | null;
   buyNowPriceAed?: number | null;
   minimumStepAed: number;
   endsAt: string;
@@ -408,7 +407,6 @@ function buildSpecs(vehicle: DbVehicle | null): AuctionSpec[] {
     vehicle.transmission ? { label: "Transmission", value: vehicle.transmission } : null,
     vehicle.bodyType ? { label: "Body Type", value: vehicle.bodyType } : null,
     vehicle.regionSpec ? { label: "Region", value: vehicle.regionSpec } : null,
-    vehicle.condition ? { label: "Condition", value: vehicle.condition } : null,
     vehicle.serviceHistory ? { label: "Service", value: vehicle.serviceHistory } : null,
   ].filter((spec): spec is AuctionSpec => spec !== null);
 }
@@ -447,7 +445,6 @@ function toAuctionLot({
     vin: vehicle?.vin ?? "PENDING",
     status,
     currentBidAed,
-    marketPriceAed: vehicle?.marketPrice ? Number(vehicle.marketPrice.toString()) : null,
     buyNowPriceAed: auction.buyNowPrice === null ? null : Number(auction.buyNowPrice.toString()),
     minimumStepAed,
     endsAt: auction.endsAt.toISOString(),

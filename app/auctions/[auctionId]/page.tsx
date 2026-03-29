@@ -54,7 +54,6 @@ export type LotDetail = {
   mileageKm: number;
   color: string;
   colorInterior: string;
-  condition: string;
   regionSpec: string;
   airbags: string;
   damage: string;

@@ -32,7 +32,6 @@ interface Lot {
   mileageKm: number;
   imageUrl: string;
   currentBidAed: number;
-  marketPriceAed?: number | null;
   buyNowPrice?: number | null;
   endsAt: string | null;
   startsAt: string | null;
@@ -78,7 +77,6 @@ type ApiAuction = {
     fuelType?: string;
     regionSpec?: string;
     images?: string[];
-    marketPrice?: number | null;
   };
 };
 
@@ -228,8 +226,6 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
         ? vehicle.images[0]
         : "/vehicle-photo.svg",
     currentBidAed: Number(auction.currentPrice ?? auction.startingPrice ?? 0),
-    marketPriceAed:
-      vehicle.marketPrice === null || vehicle.marketPrice === undefined ? null : Number(vehicle.marketPrice),
     buyNowPrice: auction.buyNowPrice === null || auction.buyNowPrice === undefined ? null : Number(auction.buyNowPrice),
     endsAt: auction.endsAt ?? null,
     startsAt: auction.startsAt ?? null,
@@ -650,7 +646,6 @@ export function AuctionsClient({
                 regionSpec={lot.vehicle.regionSpec}
                 imageUrl={lot.imageUrl}
                 currentBid={lot.currentBidAed}
-                marketPrice={lot.marketPriceAed ?? undefined}
                 buyNowPrice={lot.buyNowPrice ?? undefined}
                 status={lot.state}
                 totalBids={lot.totalBids}
