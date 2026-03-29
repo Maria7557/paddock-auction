@@ -7,7 +7,7 @@ import type {
   Company as DbCompany,
   InvoiceStatus as DbInvoiceStatus,
   LedgerType,
-  Vehicle as DbVehicle,
+  Prisma,
 } from "@prisma/client";
 
 import prisma from "@/src/infrastructure/database/prisma";
@@ -123,6 +123,33 @@ export type InvoiceReadModel = {
   status: InvoiceStatus;
   stripePaymentIntentId: string | null;
 };
+
+const READ_MODEL_VEHICLE_SELECT = {
+  id: true,
+  brand: true,
+  model: true,
+  year: true,
+  mileage: true,
+  vin: true,
+  fuelType: true,
+  transmission: true,
+  bodyType: true,
+  regionSpec: true,
+  serviceHistory: true,
+  description: true,
+  engine: true,
+  driveType: true,
+  exteriorColor: true,
+  interiorColor: true,
+  airbags: true,
+  damage: true,
+  damageMap: true,
+  images: true,
+} satisfies Prisma.VehicleSelect;
+
+type ReadModelVehicle = Prisma.VehicleGetPayload<{
+  select: typeof READ_MODEL_VEHICLE_SELECT;
+}>;
 
 export type MyBidReadModel = {
   id: string;
@@ -372,7 +399,7 @@ function buildWalletTransactionNote(type: LedgerType, reference: string | null):
   return "Withdrawal";
 }
 
-function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
+function deriveLotImages(vehicle: ReadModelVehicle | null, index: number): string[] {
   if (vehicle?.images && vehicle.images.length > 0) {
     return vehicle.images;
   }
@@ -398,68 +425,16 @@ function deriveLotImages(vehicle: DbVehicle | null, index: number): string[] {
   return [FALLBACK_LOT_IMAGES[index % FALLBACK_LOT_IMAGES.length] ?? "/vehicle-photo.svg"];
 }
 
-function readVehicleCondition(vehicle: DbVehicle | null): string | null {
-  if (!vehicle) {
-    return null;
-  }
-
-  const source = vehicle as unknown as Record<string, unknown>;
-  const condition = source.condition;
-  const conditionGrade = source.conditionGrade;
-
-  if (typeof condition === "string" && condition.trim().length > 0) {
-    return condition;
-  }
-
-  if (typeof conditionGrade === "string" && conditionGrade.trim().length > 0) {
-    return conditionGrade;
-  }
-
-  return null;
-}
-
-function readVehicleMarketPrice(vehicle: DbVehicle | null): number | null {
-  if (!vehicle) {
-    return null;
-  }
-
-  const source = vehicle as unknown as Record<string, unknown>;
-  const marketPrice = source.marketPrice;
-
-  if (marketPrice == null) {
-    return null;
-  }
-
-  if (typeof marketPrice === "number") {
-    return marketPrice;
-  }
-
-  if (typeof marketPrice === "string") {
-    const parsed = Number(marketPrice);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (typeof marketPrice === "object" && typeof (marketPrice as { toString?: () => string }).toString === "function") {
-    const parsed = Number((marketPrice as { toString: () => string }).toString());
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
-}
-
-function buildSpecs(vehicle: DbVehicle | null): AuctionSpec[] {
+function buildSpecs(vehicle: ReadModelVehicle | null): AuctionSpec[] {
   if (!vehicle) {
     return [];
   }
-
-  const condition = readVehicleCondition(vehicle);
 
   return [
     vehicle.fuelType ? { label: "Fuel", value: vehicle.fuelType } : null,
     vehicle.transmission ? { label: "Transmission", value: vehicle.transmission } : null,
     vehicle.bodyType ? { label: "Body Type", value: vehicle.bodyType } : null,
     vehicle.regionSpec ? { label: "Region", value: vehicle.regionSpec } : null,
-    condition ? { label: "Condition", value: condition } : null,
     vehicle.serviceHistory ? { label: "Service", value: vehicle.serviceHistory } : null,
   ].filter((spec): spec is AuctionSpec => spec !== null);
 }
@@ -471,7 +446,7 @@ function toAuctionLot({
   index,
 }: {
   auction: DbAuction;
-  vehicle: DbVehicle | null;
+  vehicle: ReadModelVehicle | null;
   company: DbCompany | null;
   index: number;
 }): AuctionLot {
@@ -482,7 +457,6 @@ function toAuctionLot({
   const sellerVerifiedYears = company
     ? Math.max(1, new Date().getUTCFullYear() - company.createdAt.getUTCFullYear())
     : 1;
-  const marketPriceAed = readVehicleMarketPrice(vehicle);
 
   return {
     id: auction.id,
@@ -499,7 +473,7 @@ function toAuctionLot({
     vin: vehicle?.vin ?? "PENDING",
     status,
     currentBidAed,
-    marketPriceAed,
+    marketPriceAed: null,
     buyNowPriceAed: auction.buyNowPrice === null ? null : Number(auction.buyNowPrice.toString()),
     minimumStepAed,
     endsAt: auction.endsAt.toISOString(),
@@ -545,6 +519,7 @@ async function hydrateAuctionLots(auctions: DbAuction[]): Promise<AuctionLot[]> 
           in: vehicleIds,
         },
       },
+      select: READ_MODEL_VEHICLE_SELECT,
     }),
     prisma.company.findMany({
       where: {
