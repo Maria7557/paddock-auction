@@ -570,7 +570,7 @@ function getFeatureSummaryGroups(features: SellerVehicleFeatures): FeatureSummar
 
   const safety = collectFeatureLabels(features.safety, SAFETY_FEATURE_LABELS);
   const technology = collectFeatureLabels(features.technology, TECHNOLOGY_FEATURE_LABELS);
-  if (features.technology.premiumSound && features.soundBrand) {
+  if (features.technology?.premiumSound && features.soundBrand) {
     technology.push(`Sound brand: ${features.soundBrand}`);
   }
 
