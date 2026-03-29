@@ -40,7 +40,7 @@ interface Lot {
   endsAt: string | null;
   totalBids: number;
   showVipEarlyAccessBadge?: boolean;
-  conditionGrade: "A" | "B" | "C" | "D";
+  conditionGrade: "A" | "B" | "C" | "D" | "";
   primaryDamage: string;
   titleStatus: string;
   tireCondition: number | null;
@@ -141,8 +141,8 @@ type QuickFilterId =
 
 const DEFAULT_FILTERS: Filters = {
   vipEarlyAccess: "",
-  minYear: "",
-  maxYear: "",
+  minYear: "2015",
+  maxYear: "2026",
   brand: "",
   model: "",
   status: "",
@@ -309,7 +309,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
     endsAt: auction.endsAt ?? null,
     totalBids: Number(auction.totalBids ?? 0),
     showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
-    conditionGrade: vehicle.conditionGrade ?? "D",
+    conditionGrade: vehicle.conditionGrade ?? "",
     primaryDamage: String(vehicle.primaryDamage ?? "None"),
     titleStatus: String(vehicle.titleStatus ?? "—"),
     tireCondition: vehicle.tireCondition == null ? null : Number(vehicle.tireCondition),

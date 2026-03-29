@@ -1,6 +1,6 @@
 .row {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr) 120px 140px 160px;
+  grid-template-columns: 180px minmax(240px, 320px) 120px 140px minmax(180px, 1fr);
   background: var(--bg-card);
   border-bottom: 0.5px solid var(--line-soft);
 }
@@ -21,7 +21,7 @@
 .photoWrap {
   position: relative;
   height: 120px;
-  border-radius: 12px;
+  border-radius: 8px 0 0 8px;
   overflow: hidden;
   background: var(--bg-subtle);
 }
@@ -76,6 +76,10 @@
   font-weight: 600;
   color: var(--ink-primary);
   text-decoration: none;
+}
+
+.vehicleCell {
+  max-width: 320px;
 }
 
 .vehicleMetaMono {
@@ -142,14 +146,6 @@
   gap: 10px;
 }
 
-.cellLabel {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
 .gradeRow {
   display: flex;
   align-items: center;
@@ -184,6 +180,13 @@
 
 .gradeD {
   background: var(--bg-subtle);
+  color: var(--ink-secondary);
+}
+
+.gradeEmpty {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 500;
   color: var(--ink-muted);
 }
 
@@ -279,11 +282,6 @@
   color: #fff;
 }
 
-.statusButtonBuyNow {
-  background: var(--bg-card);
-  color: var(--ink-primary);
-}
-
 .orDivider {
   display: flex;
   align-items: center;
@@ -300,4 +298,19 @@
   font-size: 11px;
   font-style: normal;
   color: var(--ink-muted);
+}
+
+.buyNowLink {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--green-600);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
 }

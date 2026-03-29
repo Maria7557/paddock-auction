@@ -59,7 +59,7 @@
 
 .tableHeader {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr) 120px 140px 160px;
+  grid-template-columns: 180px minmax(240px, 320px) 120px 140px minmax(180px, 1fr);
   background: var(--bg-subtle);
   border-bottom: 0.5px solid var(--line-soft);
 }

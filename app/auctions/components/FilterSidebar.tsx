@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, type CSSProperties } from "react";
+
 import type { DisplaySettings } from "@/src/lib/money";
 import { formatInteger } from "@/src/lib/money";
 
@@ -10,6 +12,10 @@ const BODY_TYPES = ["SUV", "Sedan", "Pickup", "Van", "Hatchback", "Coupe", "Conv
 const FUEL_TYPES = ["Petrol", "Diesel", "Electric", "Hybrid"];
 const PRICE_OPTIONS = ["", "25000", "50000", "75000", "100000", "150000", "200000", "300000", "500000"];
 const MILEAGE_OPTIONS = ["", "30000", "60000", "100000", "150000"];
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2026;
+const DEFAULT_MIN_YEAR = 2015;
+const DEFAULT_MAX_YEAR = 2026;
 
 type Props = {
   filters: Record<string, string>;
@@ -30,6 +36,16 @@ function formatPriceOption(value: string, locale: DisplaySettings["locale"]): st
   return formatInteger(Number(value), locale);
 }
 
+function parseYearValue(value: string, fallback: number): number {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.min(MAX_YEAR, Math.max(MIN_YEAR, Math.trunc(numeric)));
+}
+
 export function FilterSidebar({
   filters,
   brands,
@@ -41,6 +57,28 @@ export function FilterSidebar({
   display,
 }: Props) {
   const isRu = display.locale === "ru";
+  const selectedMinYear = parseYearValue(filters.minYear, DEFAULT_MIN_YEAR);
+  const selectedMaxYear = parseYearValue(filters.maxYear, DEFAULT_MAX_YEAR);
+  const sliderProgress = useMemo(() => {
+    const totalRange = MAX_YEAR - MIN_YEAR;
+    const start = ((selectedMinYear - MIN_YEAR) / totalRange) * 100;
+    const end = ((selectedMaxYear - MIN_YEAR) / totalRange) * 100;
+
+    return {
+      start: `${start}%`,
+      end: `${100 - end}%`,
+    };
+  }, [selectedMaxYear, selectedMinYear]);
+
+  function handleMinYearChange(nextValue: number): void {
+    const safeValue = Math.min(nextValue, selectedMaxYear);
+    onChange("minYear", String(safeValue));
+  }
+
+  function handleMaxYearChange(nextValue: number): void {
+    const safeValue = Math.max(nextValue, selectedMinYear);
+    onChange("maxYear", String(safeValue));
+  }
 
   return (
     <div className={styles.sidebar}>
@@ -85,25 +123,30 @@ export function FilterSidebar({
 
       <div className={styles.group}>
         <label className={styles.label}>{isRu ? "Год выпуска" : "Year"}</label>
-        <div className={styles.rangeRow}>
-          <input
-            type="number"
-            min={2000}
-            max={2026}
-            className={styles.input}
-            value={filters.minYear}
-            onChange={(event) => onChange("minYear", event.target.value)}
-            placeholder={isRu ? "От" : "From"}
-          />
-          <input
-            type="number"
-            min={2000}
-            max={2026}
-            className={styles.input}
-            value={filters.maxYear}
-            onChange={(event) => onChange("maxYear", event.target.value)}
-            placeholder={isRu ? "До" : "To"}
-          />
+        <div className={styles.yearRange}>
+          <div className={styles.yearRangeValue}>{`${selectedMinYear} — ${selectedMaxYear}`}</div>
+          <div className={styles.dualRange} style={{ "--range-start": sliderProgress.start, "--range-end": sliderProgress.end } as CSSProperties}>
+            <div className={styles.dualRangeTrack} aria-hidden />
+            <div className={styles.dualRangeFill} aria-hidden />
+            <input
+              type="range"
+              min={MIN_YEAR}
+              max={MAX_YEAR}
+              value={selectedMinYear}
+              className={`${styles.rangeInput} ${styles.rangeInputMin}`}
+              onChange={(event) => handleMinYearChange(Number(event.target.value))}
+              aria-label={isRu ? "Минимальный год" : "Minimum year"}
+            />
+            <input
+              type="range"
+              min={MIN_YEAR}
+              max={MAX_YEAR}
+              value={selectedMaxYear}
+              className={`${styles.rangeInput} ${styles.rangeInputMax}`}
+              onChange={(event) => handleMaxYearChange(Number(event.target.value))}
+              aria-label={isRu ? "Максимальный год" : "Maximum year"}
+            />
+          </div>
         </div>
       </div>
 

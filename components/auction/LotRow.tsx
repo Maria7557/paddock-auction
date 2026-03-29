@@ -29,7 +29,7 @@ type LotRowProps = {
     buyNowPrice?: number | null;
     startsAt: string | null;
     endsAt: string | null;
-    conditionGrade: "A" | "B" | "C" | "D";
+    conditionGrade: "A" | "B" | "C" | "D" | "";
     primaryDamage: string;
     titleStatus: string;
     tireCondition: number | null;
@@ -76,7 +76,12 @@ export function LotRow({ lot, display }: LotRowProps) {
   const detailHref = withLocalePath(`/auctions/${lot.id}`, display.locale);
   const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
   const hasBuyNow = typeof lot.buyNowPrice === "number" && lot.buyNowPrice > 0;
+  const hasCurrentBid = Number(lot.currentBidAed) > 0;
   const isServiceHistoryAvailable = lot.serviceHistory.trim().length > 0;
+  const normalizedWarrantyStatus = lot.warrantyStatus.trim().toUpperCase();
+  const showWarrantyBadge = normalizedWarrantyStatus === "ACTIVE" || normalizedWarrantyStatus === "EXPIRED";
+  const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
+  const hasConditionGrade = ["A", "B", "C", "D"].includes(normalizedConditionGrade);
 
   async function toggleWatchlist(): Promise<void> {
     setSaved((current) => !current);
@@ -110,7 +115,7 @@ export function LotRow({ lot, display }: LotRowProps) {
             src={lot.imageUrl || "/vehicle-photo.svg"}
             alt={lot.title}
             fill
-            sizes="160px"
+            sizes="180px"
             className={styles.photoImage}
           />
 
@@ -139,38 +144,33 @@ export function LotRow({ lot, display }: LotRowProps) {
             <span className={`${styles.badge} ${styles.badgeBlue}`}>{`${lot.numberOfKeys} keys`}</span>
           ) : null}
           {isServiceHistoryAvailable ? <span className={`${styles.badge} ${styles.badgeGreen}`}>Service history</span> : null}
-          <span
-            className={`${styles.badge} ${
-              lot.warrantyStatus === "EXPIRED"
-                ? styles.badgeAmber
-                : lot.warrantyStatus === "ACTIVE"
-                  ? styles.badgeGray
-                  : styles.badgeGray
-            }`}
-          >
-            {`Warranty: ${
-              lot.warrantyStatus === "ACTIVE" ? "Active" : lot.warrantyStatus === "EXPIRED" ? "Expired" : "None"
-            }`}
-          </span>
+          {showWarrantyBadge ? (
+            <span className={`${styles.badge} ${normalizedWarrantyStatus === "EXPIRED" ? styles.badgeAmber : styles.badgeGray}`}>
+              {`Warranty: ${normalizedWarrantyStatus === "ACTIVE" ? "Active" : "Expired"}`}
+            </span>
+          ) : null}
         </div>
       </div>
 
       <div className={`${styles.cell} ${styles.infoCell}`}>
-        <span className={styles.cellLabel}>CONDITION</span>
         <div className={styles.gradeRow}>
-          <span
-            className={`${styles.gradePill} ${
-              lot.conditionGrade === "A"
-                ? styles.gradeA
-                : lot.conditionGrade === "B"
-                  ? styles.gradeB
-                  : lot.conditionGrade === "C"
-                    ? styles.gradeC
-                    : styles.gradeD
-            }`}
-          >
-            {lot.conditionGrade}
-          </span>
+          {hasConditionGrade ? (
+            <span
+              className={`${styles.gradePill} ${
+                normalizedConditionGrade === "A"
+                  ? styles.gradeA
+                  : normalizedConditionGrade === "B"
+                    ? styles.gradeB
+                    : normalizedConditionGrade === "C"
+                      ? styles.gradeC
+                      : styles.gradeD
+              }`}
+            >
+              {normalizedConditionGrade}
+            </span>
+          ) : (
+            <span className={styles.gradeEmpty}>—</span>
+          )}
         </div>
         <div className={styles.metaLine}>
           <span>Damage</span>
@@ -187,7 +187,6 @@ export function LotRow({ lot, display }: LotRowProps) {
       </div>
 
       <div className={`${styles.cell} ${styles.infoCell}`}>
-        <span className={styles.cellLabel}>DETAILS</span>
         <div className={styles.metaLine}>
           <span>Engine</span>
           <strong>{lot.engine || "—"}</strong>
@@ -207,8 +206,6 @@ export function LotRow({ lot, display }: LotRowProps) {
       </div>
 
       <div className={`${styles.cell} ${styles.statusCell}`}>
-        <span className={styles.cellLabel}>AUCTION / STATUS</span>
-
         {isLive ? (
           <>
             <div className={styles.livePill}>
@@ -223,10 +220,12 @@ export function LotRow({ lot, display }: LotRowProps) {
           <>
             <div className={styles.dateLabel}>{formatDubaiDate(lot.startsAt, display.locale)}</div>
             <div className={styles.timezoneLabel}>Dubai Time</div>
-            <div className={styles.currentBidBlock}>
-              <span className={styles.currentBidLabel}>CURRENT BID</span>
-              <strong className={styles.currentBidValue}>{formatAed(lot.currentBidAed)}</strong>
-            </div>
+            {hasCurrentBid ? (
+              <div className={styles.currentBidBlock}>
+                <span className={styles.currentBidLabel}>CURRENT BID</span>
+                <strong className={styles.currentBidValue}>{formatAed(lot.currentBidAed)}</strong>
+              </div>
+            ) : null}
             <Link href={detailHref} className={`${styles.statusButton} ${styles.statusButtonPreBid}`}>
               Pre-Bid
             </Link>
@@ -237,7 +236,7 @@ export function LotRow({ lot, display }: LotRowProps) {
                   <em>or</em>
                   <span />
                 </div>
-                <Link href={detailHref} className={`${styles.statusButton} ${styles.statusButtonBuyNow}`}>
+                <Link href={detailHref} className={styles.buyNowLink}>
                   {`Buy Now — ${formatAed(lot.buyNowPrice ?? 0)}`}
                 </Link>
               </>
