@@ -7,16 +7,18 @@ import styles from "./SortBar.module.css";
 
 const SORT_OPTIONS = {
   en: [
-    { value: "ending_soon", label: "Ending Soon" },
+    { value: "ending_soon", label: "Ending soon" },
     { value: "newest", label: "Newest" },
-    { value: "price_asc", label: "Price Low to High" },
-    { value: "price_desc", label: "Price High to Low" },
+    { value: "price_asc", label: "Price: low" },
+    { value: "price_desc", label: "Price: high" },
+    { value: "mileage_asc", label: "Mileage: low" },
   ],
   ru: [
     { value: "ending_soon", label: "Скоро завершатся" },
     { value: "newest", label: "Новые" },
     { value: "price_asc", label: "Цена по возрастанию" },
     { value: "price_desc", label: "Цена по убыванию" },
+    { value: "mileage_asc", label: "Пробег по возрастанию" },
   ],
 } as const;
 

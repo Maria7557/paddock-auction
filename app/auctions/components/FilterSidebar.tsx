@@ -1,7 +1,5 @@
 "use client";
 
-import { Star } from "lucide-react";
-
 import type { DisplaySettings } from "@/src/lib/money";
 import { formatInteger } from "@/src/lib/money";
 
@@ -12,7 +10,6 @@ const BODY_TYPES = ["SUV", "Sedan", "Pickup", "Van", "Hatchback", "Coupe", "Conv
 const FUEL_TYPES = ["Petrol", "Diesel", "Electric", "Hybrid"];
 const PRICE_OPTIONS = ["", "25000", "50000", "75000", "100000", "150000", "200000", "300000", "500000"];
 const MILEAGE_OPTIONS = ["", "30000", "60000", "100000", "150000"];
-const YEAR_OPTIONS = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
 
 type Props = {
   filters: Record<string, string>;
@@ -81,11 +78,32 @@ export function FilterSidebar({
             aria-disabled={!canUseVipEarlyAccessFilter}
             disabled={!canUseVipEarlyAccessFilter}
           >
-            <span className={styles.vipToggleContent}>
-              <Star size={14} className={styles.vipToggleIcon} fill="currentColor" aria-hidden="true" />
-              <span>VIP</span>
-            </span>
+            VIP
           </button>
+        </div>
+      </div>
+
+      <div className={styles.group}>
+        <label className={styles.label}>{isRu ? "Год выпуска" : "Year"}</label>
+        <div className={styles.rangeRow}>
+          <input
+            type="number"
+            min={2000}
+            max={2026}
+            className={styles.input}
+            value={filters.minYear}
+            onChange={(event) => onChange("minYear", event.target.value)}
+            placeholder={isRu ? "От" : "From"}
+          />
+          <input
+            type="number"
+            min={2000}
+            max={2026}
+            className={styles.input}
+            value={filters.maxYear}
+            onChange={(event) => onChange("maxYear", event.target.value)}
+            placeholder={isRu ? "До" : "To"}
+          />
         </div>
       </div>
 
@@ -149,7 +167,7 @@ export function FilterSidebar({
       </div>
 
       <div className={styles.group}>
-        <label className={styles.label}>{isRu ? `Цена (${display.currency})` : `Price (${display.currency})`}</label>
+        <label className={styles.label}>{isRu ? "Цена (AED)" : "Price (AED)"}</label>
         <div className={styles.rangeRow}>
           <select className={styles.select} value={filters.minPrice} onChange={(event) => onChange("minPrice", event.target.value)}>
             {PRICE_OPTIONS.map((value) => (
@@ -164,7 +182,6 @@ export function FilterSidebar({
               </option>
             ))}
           </select>
-          <span className={styles.rangeSep}>-</span>
           <select className={styles.select} value={filters.maxPrice} onChange={(event) => onChange("maxPrice", event.target.value)}>
             {PRICE_OPTIONS.map((value) => (
               <option key={`max-${value || "any"}`} value={value}>
@@ -269,25 +286,6 @@ export function FilterSidebar({
                 : isRu
                   ? `До ${formatInteger(Number(value), display.locale)} км`
                   : `Under ${formatInteger(Number(value), display.locale)} km`}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className={styles.group}>
-        <label className={styles.label} htmlFor="auctions-filter-year">
-          {isRu ? "Год (от)" : "Year (from)"}
-        </label>
-        <select
-          id="auctions-filter-year"
-          className={styles.select}
-          value={filters.minYear}
-          onChange={(event) => onChange("minYear", event.target.value)}
-        >
-          <option value="">{isRu ? "Любой год" : "Any year"}</option>
-          {YEAR_OPTIONS.map((year) => (
-            <option key={year} value={String(year)}>
-              {year}+
             </option>
           ))}
         </select>

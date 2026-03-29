@@ -1,66 +1,79 @@
-/* app/lot/[id]/components/BidHistory.module.css */
-
-.card {
+.section {
   background: var(--bg-card);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-card);
-  padding: 22px 26px;
   box-shadow: var(--shadow-soft);
   overflow: hidden;
 }
+
+.header {
+  padding: 16px 18px;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+
 .title {
-  font-size: 17px; font-weight: 700; color: var(--ink-primary);
-  margin: 0 0 18px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid var(--line-soft);
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--ink-primary);
 }
+
 .empty {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 10px; padding: 28px;
-  font-size: 14px; color: var(--ink-muted);
-  text-align: center;
+  padding: 20px 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
 }
-.empty span { font-size: 28px; }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+.list {
+  display: flex;
+  flex-direction: column;
 }
-.table thead tr {
-  border-bottom: 1px solid var(--line-soft);
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 0.5px solid var(--line-soft);
 }
-.table th {
-  padding: 8px 12px;
-  font-size: 11px;
-  font-weight: 700;
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.bidder {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.timeAgo {
+  font-size: 12px;
   color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: left;
 }
-.table td {
-  padding: 12px 12px;
-  border-bottom: 1px solid var(--line-soft);
-  vertical-align: middle;
+
+.amount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  white-space: nowrap;
 }
-.table tbody tr:last-child td { border-bottom: none; }
-.table tbody tr:hover td { background: var(--bg-subtle); }
 
-.topBid td { background: var(--green-100); }
-.topBid:hover td { background: #daeee4 !important; }
+.amountLead {
+  color: var(--green-600);
+}
 
-.rank { font-size: 13px; color: var(--ink-muted); font-family: var(--font-mono); width: 48px; }
-.crown { font-size: 16px; }
-.bidder { color: var(--ink-secondary); font-weight: 500; }
-.topBid .bidder { color: var(--ink-primary); }
-.amount { font-weight: 700; color: var(--ink-primary); }
-.topBid .amount { color: var(--green-600); font-size: 15px; }
-.time { font-size: 12px; color: var(--ink-muted); font-family: var(--font-mono); }
+@media (max-width: 600px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
 
-@media (max-width: 480px) {
-  .table th:first-child,
-  .table td:first-child,
-  .table th:last-child,
-  .table td:last-child { display: none; }
+  .amount,
+  .timeAgo {
+    justify-self: start;
+  }
 }

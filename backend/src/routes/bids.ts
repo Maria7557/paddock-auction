@@ -81,6 +81,7 @@ const auctionParamsSchema = z.object({
 
 const listAuctionsQuerySchema = z.object({
   vipEarlyAccess: z.enum(["active"]).optional(),
+  maxYear: z.coerce.number().int().min(2000).max(2026).optional(),
 });
 
 const auctionBidsQuerySchema = z.object({
@@ -420,6 +421,264 @@ function buildCompanyInitials(name: string | null | undefined): string {
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
+const LUXURY_BRANDS = new Set([
+  "Audi",
+  "Bentley",
+  "BMW",
+  "Cadillac",
+  "Genesis",
+  "Infiniti",
+  "Lamborghini",
+  "Land Rover",
+  "Lexus",
+  "Lincoln",
+  "Mercedes-Benz",
+  "Porsche",
+  "Range Rover",
+  "Tesla",
+]);
+
+const BRAND_ORIGIN_MAP: Record<string, string> = {
+  Audi: "Germany",
+  Bentley: "United Kingdom",
+  BMW: "Germany",
+  Cadillac: "United States",
+  Chevrolet: "United States",
+  Ford: "United States",
+  Genesis: "South Korea",
+  Honda: "Japan",
+  Hyundai: "South Korea",
+  Infiniti: "Japan",
+  Jeep: "United States",
+  Kia: "South Korea",
+  Lamborghini: "Italy",
+  "Land Rover": "United Kingdom",
+  Lexus: "Japan",
+  Lincoln: "United States",
+  "Mercedes-Benz": "Germany",
+  Nissan: "Japan",
+  Porsche: "Germany",
+  "Range Rover": "United Kingdom",
+  Tesla: "United States",
+  Toyota: "Japan",
+  Volkswagen: "Germany",
+};
+
+const FEATURE_KEYWORDS = new Map<string, string[]>([
+  ["adaptive cruise", ["Adaptive Cruise Control"]],
+  ["blind spot", ["Blind Spot Monitor"]],
+  ["camera", ["Reverse Camera", "360 Camera"]],
+  ["carplay", ["Apple CarPlay"]],
+  ["cool", ["Cooled Seats"]],
+  ["heated", ["Heated Seats"]],
+  ["lane", ["Lane Assist"]],
+  ["leather", ["Leather Seats"]],
+  ["nav", ["Navigation"]],
+  ["parking", ["Parking Sensors"]],
+  ["roof", ["Sunroof"]],
+  ["sensor", ["Parking Sensors"]],
+  ["theatre", ["Digital Displays"]],
+  ["ventilat", ["Cooled Seats"]],
+]);
+
+function normalizeText(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function getConditionGrade(condition: string | null | undefined): "A" | "B" | "C" | "D" {
+  const normalized = normalizeText(condition).toLowerCase();
+
+  if (!normalized) {
+    return "D";
+  }
+
+  if (normalized.includes("excellent") || normalized.includes("new") || normalized.includes("mint")) {
+    return "A";
+  }
+
+  if (normalized.includes("good")) {
+    return "B";
+  }
+
+  if (normalized.includes("fair") || normalized.includes("used")) {
+    return "C";
+  }
+
+  return "D";
+}
+
+function getPrimaryDamage(damage: string | null | undefined): string {
+  const normalized = normalizeText(damage);
+
+  return normalized && normalized.toLowerCase() !== "none" ? normalized : "None";
+}
+
+function getStartCode(input: {
+  damage: string | null | undefined;
+  condition: string | null | undefined;
+}): "Run & Drive" | "Stationary" {
+  const damage = normalizeText(input.damage).toLowerCase();
+  const condition = normalizeText(input.condition).toLowerCase();
+  const stationaryKeywords = ["flood", "frame", "rollover", "burn", "biohazard", "non-runner", "stationary"];
+
+  if (stationaryKeywords.some((keyword) => damage.includes(keyword) || condition.includes(keyword))) {
+    return "Stationary";
+  }
+
+  return "Run & Drive";
+}
+
+function getTitleStatus(damage: string | null | undefined): string {
+  const normalized = normalizeText(damage).toLowerCase();
+
+  if (!normalized || normalized === "none") {
+    return "Clean";
+  }
+
+  if (normalized.includes("major") || normalized.includes("frame") || normalized.includes("rollover")) {
+    return "Salvage";
+  }
+
+  return "Clean";
+}
+
+function getNumberOfKeys(input: {
+  condition: string | null | undefined;
+  startCode: "Run & Drive" | "Stationary";
+}): number {
+  if (input.startCode === "Stationary") {
+    return 1;
+  }
+
+  const grade = getConditionGrade(input.condition);
+
+  if (grade === "A") {
+    return 2;
+  }
+
+  if (grade === "B") {
+    return 1;
+  }
+
+  return 0;
+}
+
+function getWarrantyStatus(input: {
+  year: number;
+  serviceHistory: string | null | undefined;
+  description: string | null | undefined;
+}): "ACTIVE" | "EXPIRED" | "NONE" {
+  const currentYear = new Date().getUTCFullYear();
+  const combined = `${normalizeText(input.serviceHistory)} ${normalizeText(input.description)}`.toLowerCase();
+  const yearMatch = combined.match(/20\d{2}/);
+  const explicitYear = yearMatch ? Number(yearMatch[0]) : null;
+
+  if (combined.includes("warranty")) {
+    if (explicitYear && explicitYear >= currentYear) {
+      return "ACTIVE";
+    }
+
+    return input.year >= currentYear - 2 ? "ACTIVE" : "EXPIRED";
+  }
+
+  if (input.year >= currentYear - 2) {
+    return "ACTIVE";
+  }
+
+  if (input.year >= currentYear - 5) {
+    return "EXPIRED";
+  }
+
+  return "NONE";
+}
+
+function getTireCondition(input: { mileage: number; year: number }): number {
+  const agePenalty = Math.max(0, (new Date().getUTCFullYear() - input.year) * 5);
+  const mileagePenalty = Math.floor(input.mileage / 6_000);
+
+  return Math.max(38, Math.min(96, 94 - agePenalty - mileagePenalty));
+}
+
+function getManufacturedIn(brand: string | null | undefined): string {
+  return BRAND_ORIGIN_MAP[normalizeText(brand)] ?? "International";
+}
+
+function getSeries(model: string | null | undefined): string | null {
+  const value = normalizeText(model);
+  const parts = value.split(" ");
+
+  if (parts.length <= 1) {
+    return null;
+  }
+
+  return parts.slice(1).join(" ");
+}
+
+function buildFeatureSet(vehicle: {
+  brand: string;
+  model: string;
+  year: number;
+  bodyType: string | null;
+  transmission: string | null;
+  condition: string | null;
+  description: string | null;
+  serviceHistory: string | null;
+  airbags: string | null;
+}): string[] {
+  const features = new Set<string>();
+  const grade = getConditionGrade(vehicle.condition);
+  const normalizedBodyType = normalizeText(vehicle.bodyType).toLowerCase();
+  const searchText = `${normalizeText(vehicle.model)} ${normalizeText(vehicle.description)} ${normalizeText(vehicle.serviceHistory)}`.toLowerCase();
+
+  if (normalizeText(vehicle.airbags)) {
+    features.add("Airbags");
+    features.add("ABS");
+  }
+
+  if (normalizeText(vehicle.transmission).toLowerCase().includes("auto")) {
+    features.add("Automatic Climate Control");
+  }
+
+  if (vehicle.year >= 2021) {
+    features.add("LED Headlights");
+    features.add("Reverse Camera");
+    features.add("Parking Sensors");
+  }
+
+  if (vehicle.year >= 2022) {
+    features.add("Apple CarPlay");
+    features.add("Digital Displays");
+  }
+
+  if (vehicle.year >= 2023 && (grade === "A" || grade === "B")) {
+    features.add("Blind Spot Monitor");
+    features.add("Adaptive Cruise Control");
+    features.add("Lane Assist");
+  }
+
+  if (normalizedBodyType === "suv" || normalizedBodyType === "van") {
+    features.add("Rear AC Vents");
+  }
+
+  if (LUXURY_BRANDS.has(vehicle.brand) || searchText.includes("vip") || searchText.includes("platinum")) {
+    features.add("Leather Seats");
+    features.add("Navigation");
+    features.add("Power Seats");
+    features.add("Sunroof");
+    features.add("360 Camera");
+  }
+
+  for (const [keyword, mappedFeatures] of FEATURE_KEYWORDS.entries()) {
+    if (!searchText.includes(keyword)) {
+      continue;
+    }
+
+    mappedFeatures.forEach((feature) => features.add(feature));
+  }
+
+  return Array.from(features);
+}
+
 function buildBidLocationLabel(city: string | null | undefined, country: string | null | undefined): string {
   const cityValue = city?.trim();
   const countryLabel = normalizeCountryLabel(country);
@@ -489,6 +748,14 @@ async function serializeVehicle(vehicle: {
   damageMap: unknown;
   images: string[];
 }): Promise<JsonRecord> {
+  const marketPrice = vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice);
+  const conditionGrade = getConditionGrade(vehicle.condition);
+  const primaryDamage = getPrimaryDamage(vehicle.damage);
+  const startCode = getStartCode({
+    damage: vehicle.damage,
+    condition: vehicle.condition,
+  });
+
   return {
     id: vehicle.id,
     brand: vehicle.brand,
@@ -496,16 +763,37 @@ async function serializeVehicle(vehicle: {
     year: vehicle.year,
     mileage: vehicle.mileage,
     vin: vehicle.vin,
-    marketPrice: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
+    marketPrice,
     fuelType: vehicle.fuelType,
     transmission: vehicle.transmission,
     bodyType: vehicle.bodyType,
     regionSpec: vehicle.regionSpec,
     condition: vehicle.condition,
+    conditionGrade,
+    primaryDamage,
+    titleStatus: getTitleStatus(vehicle.damage),
+    tireCondition: getTireCondition({
+      mileage: vehicle.mileage,
+      year: vehicle.year,
+    }),
+    numberOfKeys: getNumberOfKeys({
+      condition: vehicle.condition,
+      startCode,
+    }),
+    warrantyStatus: getWarrantyStatus({
+      year: vehicle.year,
+      serviceHistory: vehicle.serviceHistory,
+      description: vehicle.description,
+    }),
     serviceHistory: vehicle.serviceHistory,
     description: vehicle.description,
     engine: vehicle.engine,
     driveType: vehicle.driveType,
+    startCode,
+    manufacturedIn: getManufacturedIn(vehicle.brand),
+    series: getSeries(vehicle.model),
+    estimatedValue: marketPrice,
+    features: buildFeatureSet(vehicle),
     exteriorColor: vehicle.exteriorColor,
     interiorColor: vehicle.interiorColor,
     airbags: vehicle.airbags,
@@ -557,6 +845,15 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
             state: {
               in: [...PUBLIC_AUCTION_STATES],
             },
+            ...(parsedQuery.data.maxYear !== undefined
+              ? {
+                  vehicle: {
+                    year: {
+                      lte: parsedQuery.data.maxYear,
+                    },
+                  },
+                }
+              : {}),
             transitions: {
               none: {
                 trigger: "EVENT_META",

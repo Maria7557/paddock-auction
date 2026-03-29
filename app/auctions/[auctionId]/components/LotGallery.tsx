@@ -1,109 +1,124 @@
-'use client';
-// app/lot/[id]/components/LotGallery.tsx
+"use client";
 
-import Image from 'next/image';
-import { useState, useCallback } from 'react';
-import styles from './LotGallery.module.css';
+import Image from "next/image";
+import { useMemo, useState } from "react";
+
+import { GalleryLightbox } from "@/components/gallery/GalleryLightbox";
+import { IconArrowRight, IconEye } from "@/components/ui/icons";
+import type { SupportedLocale } from "@/src/i18n/routing";
+
+import styles from "./LotGallery.module.css";
 
 type Props = {
   images: string[];
-  title:  string;
+  title: string;
+  locale: SupportedLocale;
 };
 
-export function LotGallery({ images, title }: Props) {
-  const imgs = images.length > 0 ? images : ['/vehicle-photo.svg'];
-  const [active, setActive] = useState(0);
-
-  const prev = useCallback(() => setActive((i) => Math.max(0, i - 1)), []);
-  const next = useCallback(() => setActive((i) => Math.min(imgs.length - 1, i + 1)), [imgs.length]);
-
-  // keyboard nav on main image
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowLeft') prev();
-    if (e.key === 'ArrowRight') next();
-  };
+export function LotGallery({ images, title, locale }: Props) {
+  const isRu = locale === "ru";
+  const galleryImages = images.length > 0 ? images : ["/vehicle-photo.svg"];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const safeIndex = Math.min(Math.max(activeIndex, 0), galleryImages.length - 1);
+  const photos = useMemo(
+    () =>
+      galleryImages.map((url, index) => ({
+        id: `${url}-${index}`,
+        label: `${isRu ? "Фото" : "Photo"} ${index + 1}`,
+        url,
+        alt: `${title} - ${isRu ? "фото" : "photo"} ${index + 1}`,
+      })),
+    [galleryImages, isRu, title],
+  );
 
   return (
-    <div className={styles.gallery} role="region" aria-label="Vehicle image gallery">
-      {/* ── Main image ── */}
-      <div
-        className={styles.main}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        aria-label={`Image ${active + 1} of ${imgs.length}: ${title}`}
-      >
+    <section className={styles.section} aria-label={isRu ? "Галерея автомобиля" : "Vehicle gallery"}>
+      <div className={styles.stage} onClick={() => setIsLightboxOpen(true)} role="button" tabIndex={0}>
         <Image
-          key={imgs[active]}
-          src={imgs[active]}
-          alt={`${title} — photo ${active + 1}`}
+          src={galleryImages[safeIndex]}
+          alt={`${title} - ${isRu ? "фото" : "photo"} ${safeIndex + 1}`}
           fill
-          sizes="(max-width: 1080px) 100vw, 65vw"
-          style={{ objectFit: 'cover' }}
-          priority={active === 0}
+          priority={safeIndex === 0}
+          sizes="(max-width: 980px) 100vw, 860px"
+          className={styles.stageImage}
         />
 
-        {/* Count badge */}
-        <div className={styles.count} aria-hidden>
-          {active + 1}&thinsp;/&thinsp;{imgs.length}
-        </div>
+        <div className={styles.photoBadge}>{`${galleryImages.length} ${isRu ? "фото" : "photos"}`}</div>
 
-        {/* Nav arrows */}
-        {active > 0 && (
-          <button
-            className={`${styles.arrow} ${styles.arrowPrev}`}
-            onClick={prev}
-            aria-label="Previous image"
-          >
-            ‹
-          </button>
-        )}
-        {active < imgs.length - 1 && (
-          <button
-            className={`${styles.arrow} ${styles.arrowNext}`}
-            onClick={next}
-            aria-label="Next image"
-          >
-            ›
-          </button>
-        )}
+        <button
+          type="button"
+          className={styles.hdButton}
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsLightboxOpen(true);
+          }}
+        >
+          <IconEye size={14} strokeWidth={1.9} />
+          <span>HD View</span>
+        </button>
 
-        {/* Expand hint */}
-        <div className={styles.expandHint} aria-hidden>
-          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
-          </svg>
-          {imgs.length} photos
-        </div>
+        <div className={styles.counter}>{`${safeIndex + 1} / ${galleryImages.length}`}</div>
+
+        {galleryImages.length > 1 ? (
+          <>
+            <button
+              type="button"
+              className={`${styles.arrowButton} ${styles.arrowLeft}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setActiveIndex((current) => (current === 0 ? galleryImages.length - 1 : current - 1));
+              }}
+              aria-label={isRu ? "Предыдущее фото" : "Previous photo"}
+            >
+              <IconArrowRight size={18} className={styles.arrowLeftIcon} />
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.arrowButton} ${styles.arrowRight}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setActiveIndex((current) => (current === galleryImages.length - 1 ? 0 : current + 1));
+              }}
+              aria-label={isRu ? "Следующее фото" : "Next photo"}
+            >
+              <IconArrowRight size={18} />
+            </button>
+          </>
+        ) : null}
       </div>
 
-      {/* ── Thumbnails ── */}
-      {imgs.length > 1 && (
-        <div
-          className={styles.thumbs}
-          role="list"
-          aria-label="Image thumbnails"
-        >
-          {imgs.map((src, i) => (
+      {galleryImages.length > 1 ? (
+        <div className={styles.thumbnailRow} role="list" aria-label={isRu ? "Миниатюры" : "Thumbnails"}>
+          {galleryImages.map((src, index) => (
             <button
-              key={src + i}
-              role="listitem"
-              className={`${styles.thumb} ${i === active ? styles.thumbActive : ''}`}
-              onClick={() => setActive(i)}
-              aria-label={`View photo ${i + 1}`}
-              aria-current={i === active ? 'true' : undefined}
+              key={`${src}-${index}`}
+              type="button"
+              className={`${styles.thumbnailButton} ${index === safeIndex ? styles.thumbnailButtonActive : ""}`}
+              onClick={() => setActiveIndex(index)}
+              aria-current={index === safeIndex ? "true" : undefined}
             >
               <Image
                 src={src}
                 alt=""
                 fill
-                sizes="88px"
-                style={{ objectFit: 'cover' }}
+                sizes="68px"
+                className={styles.thumbnailImage}
               />
             </button>
           ))}
         </div>
-      )}
-    </div>
+      ) : null}
+
+      <GalleryLightbox
+        isOpen={isLightboxOpen}
+        title={title}
+        photos={photos}
+        activeIndex={safeIndex}
+        onSelect={setActiveIndex}
+        onClose={() => setIsLightboxOpen(false)}
+      />
+    </section>
   );
 }

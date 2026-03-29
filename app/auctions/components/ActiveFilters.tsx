@@ -1,12 +1,15 @@
 "use client";
 
 import type { DisplaySettings } from "@/src/lib/money";
-import { formatInteger, formatMoneyFromAed } from "@/src/lib/money";
+import { formatInteger } from "@/src/lib/money";
+import { formatAed } from "@/src/lib/utils";
 
 import styles from "./ActiveFilters.module.css";
 
 const DEFAULT: Record<string, string> = {
   vipEarlyAccess: "",
+  minYear: "",
+  maxYear: "",
   brand: "",
   model: "",
   status: "",
@@ -16,7 +19,6 @@ const DEFAULT: Record<string, string> = {
   bodyType: "",
   fuelType: "",
   maxMileage: "",
-  minYear: "",
   sort: "ending_soon",
 };
 
@@ -33,6 +35,7 @@ function getLabels(isRu: boolean): Record<string, string> {
     fuelType: isRu ? "Топливо" : "Fuel",
     maxMileage: isRu ? "Пробег до" : "Max km",
     minYear: isRu ? "Год от" : "From year",
+    maxYear: isRu ? "Год до" : "To year",
   };
 }
 
@@ -52,15 +55,11 @@ function formatValue(key: string, value: string, display: DisplaySettings): stri
   }
 
   if (key === "minPrice") {
-    return isRu
-      ? `от ${formatMoneyFromAed(Number(value), display)}`
-      : `from ${formatMoneyFromAed(Number(value), display)}`;
+    return isRu ? `от ${formatAed(Number(value))}` : `from ${formatAed(Number(value))}`;
   }
 
   if (key === "maxPrice") {
-    return isRu
-      ? `до ${formatMoneyFromAed(Number(value), display)}`
-      : `up to ${formatMoneyFromAed(Number(value), display)}`;
+    return isRu ? `до ${formatAed(Number(value))}` : `up to ${formatAed(Number(value))}`;
   }
 
   if (key === "maxMileage") {
@@ -71,6 +70,10 @@ function formatValue(key: string, value: string, display: DisplaySettings): stri
 
   if (key === "minYear") {
     return `${value}+`;
+  }
+
+  if (key === "maxYear") {
+    return `${value}`;
   }
 
   return value;

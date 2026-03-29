@@ -1,435 +1,338 @@
-/* app/lot/[id]/components/BidPanel.module.css */
+.sidebarStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
-/* ── Panel shell ── */
 .panel {
   background: var(--bg-card);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-card);
-  padding: 22px;
   box-shadow: var(--shadow-lift);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.compact {
-  box-shadow: var(--shadow-soft);
-  padding: 18px;
+  overflow: hidden;
 }
 
-/* ── Status row ── */
-.statusRow {
+.statusBar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-subtle);
+  border-bottom: 0.5px solid var(--line-soft);
 }
-.liveStatus {
-  display: flex;
+
+.statusLeft {
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
-.liveDot {
+
+.statusDot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22c55e;
-  animation: livepulse 1.5s ease-in-out infinite;
-}
-@keyframes livepulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; transform: scale(0.8); }
-}
-.liveLabel {
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--green-600);
-  letter-spacing: 0.08em;
-  font-family: var(--font-mono);
-}
-.schedStatus {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--blue-600, #1d4ed8);
-  letter-spacing: 0.07em;
-  font-family: var(--font-mono);
-}
-.calIcon { font-size: 14px; }
-.closedStatus {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-muted);
 }
 
-/* ── Countdown ── */
-.countdown { }
-.cdLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink-muted);
+.statusDotLive {
+  background: var(--green-600);
+}
+
+.statusDotScheduled {
+  background: var(--blue-600);
+}
+
+.statusDotClosed {
+  background: var(--ink-muted);
+}
+
+.statusLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-.cdTimer {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.cdUnit { text-align: center; min-width: 38px; }
-.cdNum {
-  font-size: 30px;
-  font-weight: 800;
   color: var(--ink-primary);
-  letter-spacing: -0.02em;
-  line-height: 1;
-  font-family: var(--font-mono);
 }
-.cdLbl {
-  font-size: 10px;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 3px;
+
+.statusDate {
+  font-size: 12px;
+  color: var(--ink-secondary);
 }
-.cdColon {
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--line-strong);
-  margin-bottom: 12px;
-  line-height: 1;
-  align-self: flex-start;
-  margin-top: 2px;
-}
-.cdEnded {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink-muted);
-  text-align: center;
-  padding: 12px;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-control);
-}
-.bidMeta {
+
+.panelBody,
+.simplePanelBody {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--ink-muted);
-  margin-top: 8px;
-  margin-bottom: 12px;
-}
-.scheduleMeta {
-  text-align: left;
+  gap: 14px;
+  padding: 16px;
 }
 
-/* ── Price block ── */
-.priceBlock {
-  background: var(--bg-subtle);
-  border-radius: var(--radius-control);
-  padding: 14px 16px;
-  border: 1px solid var(--line-soft);
-}
-.priceRow {
-  display: flex;
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  margin-bottom: 8px;
-  align-items: stretch;
 }
-.priceCell {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.priceLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
-}
-.currentPrice {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--green-600);
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-.minIncrement {
-  font-size: 12px;
-  color: var(--ink-muted);
-  margin-top: 4px;
-}
-.buyNowPrice {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--ink-primary);
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-.marketReference {
+
+.priceHero {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: baseline;
-  font-size: 12px;
-  color: var(--ink-muted);
-  margin-top: 6px;
-  line-height: 1.4;
+  flex-direction: column;
+  gap: 6px;
 }
-.marketReference strong {
-  color: var(--ink-secondary);
-  font-weight: 600;
-}
-.savingBadge {
+
+.summaryLabel {
+  margin: 0;
   font-size: 11px;
   font-weight: 700;
-  color: var(--green-600);
-  margin-top: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
 }
-.nextBid {
-  font-size: 13px;
-  color: var(--ink-secondary);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 8px;
-  border-top: 1px solid var(--line-soft);
-}
-.nextBid strong { color: var(--ink-primary); font-weight: 700; }
 
-/* ── Auth gate ── */
-.authGate {
-  background: var(--bg-subtle);
+.summaryValue,
+.summaryBuyNow {
+  margin: 0;
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.summaryValueLive {
+  color: var(--green-600);
+}
+
+.summaryBuyNow {
+  font-size: 20px;
+}
+
+.summarySub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 0 14px;
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-control);
-  padding: 16px;
-  border: 1px dashed var(--line-strong);
+  background: var(--bg-card);
+  color: var(--ink-primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actionButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.actionButtonPrimary {
+  border-color: var(--green-600);
+  background: var(--green-600);
+  color: #fff;
+}
+
+.bidComposer {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.authIcon { font-size: 20px; }
-.authText {
+
+.bidInput {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-page);
   font-size: 14px;
-  color: var(--ink-secondary);
-  line-height: 1.6;
+  color: var(--ink-primary);
 }
-.authText a { color: var(--green-600); font-weight: 600; }
-.depositNotice {
-  font-size: 13px;
-  color: var(--ink-muted);
-  background: var(--bg-card);
-  border-radius: 10px;
-  padding: 10px 12px;
+
+.depositNote {
+  padding: 12px 14px;
   border: 1px solid var(--line-soft);
-  line-height: 1.5;
-}
-.signInBtn { margin-top: 4px; border-radius: var(--radius-pill) !important; }
-.whoCanBid {
-  font-size: 12px;
-  color: var(--ink-muted);
-  text-align: center;
-  line-height: 1.5;
-}
-.howToBid {
-  margin-top: 20px;
-  padding: 16px;
+  border-radius: 12px;
   background: var(--bg-subtle);
-  border-radius: var(--radius-card);
-  border: 1px solid var(--line-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
 }
+
+.feedback {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.feedbackSuccess {
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.feedbackError {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.feedbackInfo {
+  background: var(--bg-subtle);
+  color: var(--ink-primary);
+}
+
+.closedNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.howToBid {
+  padding-top: 2px;
+  border-top: 0.5px solid var(--line-soft);
+}
+
 .howToBidTitle {
-  font-size: 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--ink-primary);
-  margin-bottom: 12px;
 }
+
 .howToBidList {
-  list-style: none;
-  padding: 0;
   margin: 0;
+  padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.howToBidList li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.howToBidList li strong {
-  font-size: 13px;
-  color: var(--ink-primary);
-}
-.howToBidList li span {
+  gap: 8px;
   font-size: 12px;
-  color: var(--ink-muted);
+  line-height: 1.6;
+  color: var(--ink-secondary);
 }
-.registerLink {
-  display: inline-block;
-  margin-top: 14px;
-  font-size: 13px;
+
+.helperLink {
+  display: inline-flex;
+  margin-top: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--green-600);
   text-decoration: none;
 }
-.registerLink:hover { text-decoration: underline; }
 
-/* ── Actions ── */
-.actions { display: flex; flex-direction: column; gap: 9px; }
-.bidBtn   { width: 100%; border-radius: var(--radius-pill) !important; }
-.manualBidGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.manualBidInput {
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-pill);
-  background: var(--bg-card);
-  color: var(--ink-primary);
-  font-size: 15px;
-  font-family: inherit;
-  box-sizing: border-box;
-}
-.manualBidInput:focus {
-  outline: none;
-  border-color: var(--green-600);
-  box-shadow: 0 0 0 3px rgba(17, 106, 67, 0.12);
-}
-.helperText {
-  font-size: 12px;
-  color: var(--ink-muted);
-  line-height: 1.5;
-}
-.buyNowBtn {
-  width: 100%;
-  padding: 13px 20px;
-  background: transparent;
-  border: 2px solid var(--green-600);
-  border-radius: var(--radius-btn, var(--radius-pill));
-  color: var(--green-600);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  margin-top: 10px;
-}
-.buyNowBtn:hover {
-  background: var(--green-600);
-  color: #fff;
-}
-.buyNowBtn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-/* ── Outcome feedback ── */
-.feedback {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px 14px;
-  border-radius: var(--radius-control);
-  text-align: center;
-  line-height: 1.4;
-}
-.fb_success { background: var(--green-100); color: var(--green-600); }
-.fb_error   { background: var(--red-100);   color: var(--red-600);   }
-.fb_info    { background: var(--blue-100, #eff6ff); color: var(--blue-600, #1d4ed8); }
-
-/* ── Watchlist ── */
-.watchlistBtn {
+.metricRow {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 11px 16px;
-  border: 1.5px solid var(--line-soft);
-  border-radius: var(--radius-pill);
-  background: var(--bg-card);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-  font-family: inherit;
+  justify-content: space-between;
+  gap: 16px;
 }
-.watchlistBtn:hover { border-color: var(--green-600); color: var(--green-600); }
-.watchlistActive { background: var(--green-100); border-color: var(--green-600); color: var(--green-600); }
 
-/* ── Deposit info ── */
-.depositInfo {
-  display: block;
+.metricLabel {
   font-size: 12px;
-  color: var(--ink-muted);
-  line-height: 1.5;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-control);
-  padding: 11px 14px;
+  color: var(--ink-secondary);
+}
+
+.metricValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.progressTrack {
   width: 100%;
-  box-sizing: border-box;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
   overflow: hidden;
 }
-.depositInfoText {
+
+.progressFill {
   display: block;
-  width: 100%;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green-600);
 }
 
-/* ── Seller row ── */
-.sellerRow {
+.metricSub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.sectionHeader {
+  padding: 16px;
+  border-bottom: 0.5px solid var(--line-soft);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.saleRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-top: 4px;
-  border-top: 1px solid var(--line-soft);
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--line-soft);
 }
-.sellerAvatar { font-size: 24px; }
-.sellerLabel {
-  font-size: 11px;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
-}
-.sellerName { font-size: 14px; font-weight: 700; color: var(--ink-primary); margin-top: 2px; }
-.sellerRef  { font-weight: 400; color: var(--ink-muted); }
 
-@media (max-width: 640px) {
+.saleRow:last-child {
+  border-bottom: none;
+}
+
+.saleLabel {
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.saleValue {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  text-align: right;
+}
+
+.saleValuePositive {
+  color: var(--green-600);
+}
+
+@media (max-width: 980px) {
   .panel {
-    padding: 18px;
+    box-shadow: var(--shadow-soft);
+  }
+}
+
+@media (max-width: 600px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
   }
 
-  .cdTimer {
-    gap: 2px;
-  }
-
-  .cdUnit {
-    min-width: 0;
-    flex: 1 1 0;
-  }
-
-  .cdNum {
-    font-size: 24px;
-  }
-
-  .priceRow {
+  .statusBar {
     flex-direction: column;
-    gap: 12px;
+    align-items: flex-start;
   }
 
-  .buyNowBtn {
-    margin-top: 0;
+  .saleRow,
+  .metricRow {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .manualBidGroup {
-    gap: 8px;
+  .saleValue {
+    text-align: left;
   }
 }
