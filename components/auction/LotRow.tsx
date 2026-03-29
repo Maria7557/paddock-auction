@@ -20,7 +20,6 @@ type LotRowProps = {
     state: string;
     title: string;
     lotNumber: string;
-    vin: string;
     year: number;
     mileageKm: number;
     imageUrl: string;
@@ -49,11 +48,6 @@ type LotRowProps = {
   };
   display: DisplaySettings;
 };
-
-function maskVin(vin: string): string {
-  const cleanVin = vin.replace(/\s+/g, "");
-  return cleanVin.length <= 8 ? `•••${cleanVin}` : `•••${cleanVin.slice(-8)}`;
-}
 
 function formatDubaiDate(value: string | null, locale: DisplaySettings["locale"]): string {
   if (!value) {
@@ -115,7 +109,7 @@ export function LotRow({ lot, display }: LotRowProps) {
             src={lot.imageUrl || "/vehicle-photo.svg"}
             alt={lot.title}
             fill
-            sizes="180px"
+            sizes="200px"
             className={styles.photoImage}
           />
 
@@ -129,14 +123,12 @@ export function LotRow({ lot, display }: LotRowProps) {
         </Link>
         <div className={styles.vehicleMetaMono}>
           <span>{`LOT #${lot.lotNumber}`}</span>
-          <span>·</span>
-          <span>{maskVin(lot.vin)}</span>
         </div>
         <div className={styles.vehicleMeta}>
           {`${formatInteger(lot.mileageKm, display.locale)} KM`}
           {lot.vehicle.regionSpec ? ` · ${lot.vehicle.regionSpec}` : ""}
         </div>
-        <div className={styles.badgeRow}>
+        <div className={styles.badges}>
           <span className={`${styles.badge} ${lot.startCode === "Run & Drive" ? styles.badgeGreen : styles.badgeGray}`}>
             {lot.startCode}
           </span>
