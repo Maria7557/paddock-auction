@@ -68,6 +68,7 @@ type AuctionLockRow = {
 
 const SELLER_DECISION_WINDOW_HOURS = 24;
 const PUBLIC_AUCTION_STATES = ["SCHEDULED", "LIVE", "EXTENDED"] as const;
+const PUBLIC_LISTING_ACTIVE_STATES = new Set<(typeof PUBLIC_AUCTION_STATES)[number]>(PUBLIC_AUCTION_STATES);
 
 const placeBidSchema = z.object({
   auctionId: z.string().trim().min(1),
@@ -308,6 +309,36 @@ async function sendValidationError(
 
 function isPublicAuctionState(state: string): state is (typeof PUBLIC_AUCTION_STATES)[number] {
   return PUBLIC_AUCTION_STATES.includes(state as (typeof PUBLIC_AUCTION_STATES)[number]);
+}
+
+function getEffectiveAuctionState(input: {
+  state: string;
+  startsAt: Date;
+  endsAt: Date;
+  now: Date;
+}): string {
+  const state = input.state.trim().toUpperCase();
+  const nowTime = input.now.getTime();
+  const startsAtTime = input.startsAt.getTime();
+  const endsAtTime = input.endsAt.getTime();
+
+  if (state === "SCHEDULED") {
+    if (nowTime >= endsAtTime) {
+      return "ENDED";
+    }
+
+    if (nowTime >= startsAtTime) {
+      return "LIVE";
+    }
+
+    return "SCHEDULED";
+  }
+
+  if ((state === "LIVE" || state === "EXTENDED") && nowTime >= endsAtTime) {
+    return "ENDED";
+  }
+
+  return state;
 }
 
 async function mapBidError(error: unknown): Promise<{
@@ -1016,6 +1047,17 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       const accessibleItems: JsonRecord[] = [];
 
       for (const auction of auctions) {
+        const effectiveState = getEffectiveAuctionState({
+          state: auction.state,
+          startsAt: auction.startsAt,
+          endsAt: auction.endsAt,
+          now,
+        });
+
+        if (!PUBLIC_LISTING_ACTIVE_STATES.has(effectiveState as (typeof PUBLIC_AUCTION_STATES)[number])) {
+          continue;
+        }
+
         const decision = evaluateVipAccess({
           actorBase,
           snapshot: {
@@ -1045,7 +1087,7 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
 
         accessibleItems.push({
           id: auction.id,
-          state: auction.state,
+          state: effectiveState,
           currentPrice: (await toOptionalNumberValue(auction.currentPrice)) ?? 0,
           minIncrement: (await toOptionalNumberValue(auction.minIncrement)) ?? 0,
           startingPrice: (await toOptionalNumberValue(auction.startingPrice)) ?? 0,
@@ -1742,11 +1784,17 @@ export async function bidsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const vehicleOverrideById = await readLatestVehicleOverrideMap([auction.vehicle.id]);
+      const effectiveState = getEffectiveAuctionState({
+        state: auction.state,
+        startsAt: auction.startsAt,
+        endsAt: auction.endsAt,
+        now,
+      });
 
       await reply.code(200).send({
         auction: {
           id: auction.id,
-          state: auction.state,
+          state: effectiveState,
           version: auction.version,
           currentPrice: (await toOptionalNumberValue(auction.currentPrice)) ?? 0,
           minIncrement: (await toOptionalNumberValue(auction.minIncrement)) ?? 0,
