@@ -280,7 +280,11 @@ describe("event orchestrator", () => {
         onBlockAt: data.onBlockAt as Date,
       }),
     );
-    mockTx.auction.findUnique.mockResolvedValue(makeAuction());
+    mockTx.auction.findUnique.mockResolvedValue(
+      makeAuction({
+        endsAt: new Date(Date.now() - 1_000),
+      }),
+    );
 
     await startEvent("event-1");
 
@@ -309,6 +313,19 @@ describe("event orchestrator", () => {
           toState: "LIVE",
         }),
       }),
+    );
+    const auctionUpdateCall = mockTx.auction.update.mock.calls[0]?.[0] as
+      | {
+          data?: {
+            startsAt?: Date;
+            endsAt?: Date;
+          };
+        }
+      | undefined;
+    expect(auctionUpdateCall?.data?.startsAt).toBeInstanceOf(Date);
+    expect(auctionUpdateCall?.data?.endsAt).toBeInstanceOf(Date);
+    expect(auctionUpdateCall?.data?.endsAt?.getTime()).toBeGreaterThan(
+      auctionUpdateCall?.data?.startsAt?.getTime() ?? 0,
     );
 
     const message = getLastPublishedMessage();
@@ -372,6 +389,19 @@ describe("event orchestrator", () => {
           decisionDeadlineAt: expect.any(Date),
         }),
       }),
+    );
+    const nextAuctionUpdateCall = mockTx.auction.update.mock.calls[1]?.[0] as
+      | {
+          data?: {
+            startsAt?: Date;
+            endsAt?: Date;
+          };
+        }
+      | undefined;
+    expect(nextAuctionUpdateCall?.data?.startsAt).toBeInstanceOf(Date);
+    expect(nextAuctionUpdateCall?.data?.endsAt).toBeInstanceOf(Date);
+    expect(nextAuctionUpdateCall?.data?.endsAt?.getTime()).toBeGreaterThan(
+      nextAuctionUpdateCall?.data?.startsAt?.getTime() ?? 0,
     );
 
     const message = getLastPublishedMessage();

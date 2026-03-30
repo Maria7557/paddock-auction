@@ -1,6 +1,6 @@
 import type { SupportedLocale } from "@/src/i18n/routing";
 
-import type { LotDetail } from "../page";
+import type { LotDetail } from "../types";
 import styles from "./Sections.module.css";
 
 type Props = { lot: LotDetail; locale: SupportedLocale };

@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   return {
-    title: `${lot.year} ${lot.make} ${lot.model} — Live Auction | FleetBid`,
+    title: `${lot.title} — Live Auction | FleetBid`,
   };
 }
 

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { usePathname, useRouter } from "next/navigation";
 
 import { LotCard } from "@/components/auction/LotCard";
+import { LotRow } from "@/components/auction/LotRow";
 import { ApiError, api } from "@/src/lib/api-client";
-import { isLiveAuctionState } from "@/src/lib/auction-display";
 import type { DisplaySettings } from "@/src/lib/money";
 
 import { ActiveFilters } from "./components/ActiveFilters";
@@ -28,15 +28,31 @@ interface Lot {
     | "CANCELED"
     | "RELISTED";
   title: string;
+  lotNumber: string;
+  vin: string;
   year: number;
   mileageKm: number;
   imageUrl: string;
+  imageCount: number;
   currentBidAed: number;
   buyNowPrice?: number | null;
-  endsAt: string | null;
   startsAt: string | null;
+  endsAt: string | null;
   totalBids: number;
   showVipEarlyAccessBadge?: boolean;
+  conditionGrade: string;
+  primaryDamage: string;
+  titleStatus: string;
+  tireCondition: number | null;
+  engine: string;
+  transmission: string;
+  driveType: string;
+  fuelType: string;
+  startCode: string;
+  numberOfKeys: number;
+  warrantyStatus: string;
+  serviceHistory: string;
+  estimatedValue: number | null;
   vehicle: {
     brand: string;
     model: string;
@@ -73,10 +89,24 @@ type ApiAuction = {
     model?: string;
     year?: number;
     mileage?: number;
+    vin?: string;
+    series?: string | null;
     bodyType?: string;
     fuelType?: string;
     regionSpec?: string;
     images?: string[];
+    conditionGrade?: string | null;
+    primaryDamage?: string | null;
+    titleStatus?: string | null;
+    tireCondition?: number | null;
+    engine?: string | null;
+    transmission?: string | null;
+    driveType?: string | null;
+    numberOfKeys?: number | null;
+    warrantyStatus?: string | null;
+    serviceHistory?: string | null;
+    startCode?: string | null;
+    estimatedValue?: number | null;
   };
 };
 
@@ -88,6 +118,8 @@ type BuyerDashboardResponse = {
 
 type Filters = {
   vipEarlyAccess: string;
+  minYear: string;
+  maxYear: string;
   brand: string;
   model: string;
   status: string;
@@ -97,12 +129,21 @@ type Filters = {
   bodyType: string;
   fuelType: string;
   maxMileage: string;
-  minYear: string;
   sort: string;
 };
 
+type QuickFilterId =
+  | "RUN_AND_DRIVE"
+  | "GCC_SPEC"
+  | "BUY_NOW"
+  | "GRADE_AB"
+  | "AUCTION_TODAY"
+  | "UNDER_50K";
+
 const DEFAULT_FILTERS: Filters = {
   vipEarlyAccess: "",
+  minYear: "2015",
+  maxYear: "2026",
   brand: "",
   model: "",
   status: "",
@@ -112,9 +153,35 @@ const DEFAULT_FILTERS: Filters = {
   bodyType: "",
   fuelType: "",
   maxMileage: "",
-  minYear: "",
   sort: "ending_soon",
 };
+
+const DEFAULT_QUICK_FILTERS: Record<QuickFilterId, boolean> = {
+  RUN_AND_DRIVE: false,
+  GCC_SPEC: false,
+  BUY_NOW: false,
+  GRADE_AB: false,
+  AUCTION_TODAY: false,
+  UNDER_50K: false,
+};
+
+function getLotNumber(id: string): string {
+  return id.slice(0, 8).toUpperCase();
+}
+
+function sanitizeYear(value: string): string {
+  if (!value.trim()) {
+    return "";
+  }
+
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+
+  return String(Math.min(2026, Math.max(2000, Math.trunc(numeric))));
+}
 
 function sanitizeFilters(
   filters: Filters,
@@ -122,7 +189,11 @@ function sanitizeFilters(
     canUseVipEarlyAccessFilter: boolean;
   },
 ): Filters {
-  const next = { ...filters };
+  const next = {
+    ...filters,
+    minYear: sanitizeYear(filters.minYear),
+    maxYear: sanitizeYear(filters.maxYear),
+  };
 
   if (!options.canUseVipEarlyAccessFilter) {
     next.vipEarlyAccess = "";
@@ -140,6 +211,10 @@ function sanitizeFilters(
     Number(next.minPrice) > Number(next.maxPrice)
   ) {
     next.maxPrice = "";
+  }
+
+  if (next.minYear && next.maxYear && Number(next.minYear) > Number(next.maxYear)) {
+    next.maxYear = "";
   }
 
   return next;
@@ -183,11 +258,7 @@ function serializeFilters(filters: Filters, includeDefaults = true): string {
 }
 
 function buildUrl(pathname: string, queryString: string): string {
-  if (!queryString) {
-    return pathname;
-  }
-
-  return `${pathname}?${queryString}`;
+  return queryString ? `${pathname}?${queryString}` : pathname;
 }
 
 function buildApiQuery(
@@ -196,13 +267,40 @@ function buildApiQuery(
     canUseVipEarlyAccessFilter: boolean;
   },
 ): Record<string, string> | undefined {
+  const query: Record<string, string> = {};
+
   if (options.canUseVipEarlyAccessFilter && filters.vipEarlyAccess === "active") {
-    return {
-      vipEarlyAccess: "active",
-    };
+    query.vipEarlyAccess = "active";
   }
 
-  return undefined;
+  if (filters.maxYear) {
+    query.maxYear = filters.maxYear;
+  }
+
+  return Object.keys(query).length > 0 ? query : undefined;
+}
+
+function normalizeTitlePart(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized && normalized !== "—" && normalized !== "Not specified" ? normalized : "";
+}
+
+function buildVehicleTitle(input: {
+  year: number;
+  brand: string;
+  model: string;
+  engine?: unknown;
+  series?: unknown;
+}): string {
+  return [
+    input.year > 0 ? String(input.year) : "",
+    normalizeTitlePart(input.brand),
+    normalizeTitlePart(input.model),
+    normalizeTitlePart(input.engine),
+    normalizeTitlePart(input.series),
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
@@ -214,23 +312,46 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
   const year = Number(vehicle.year ?? 0);
   const brand = String(vehicle.brand ?? "").trim();
   const model = String(vehicle.model ?? "").trim();
+  const title = buildVehicleTitle({
+    year,
+    brand,
+    model,
+    engine: vehicle.engine,
+    series: vehicle.series,
+  });
 
   return {
-    id: String(auction.id ?? ""),
+    id: String(auction.id),
     state: (auction.state as Lot["state"] | undefined) ?? "SCHEDULED",
-    title: `${brand} ${model} ${year || ""}`.trim() || `Lot ${String(auction.id ?? "").slice(0, 8).toUpperCase()}`,
+    title: title || `Lot ${getLotNumber(String(auction.id))}`,
+    lotNumber: getLotNumber(String(auction.id)),
+    vin: String(vehicle.vin ?? ""),
     year,
     mileageKm: Number(vehicle.mileage ?? 0),
     imageUrl:
       Array.isArray(vehicle.images) && typeof vehicle.images[0] === "string" && vehicle.images[0].trim().length > 0
         ? vehicle.images[0]
         : "/vehicle-photo.svg",
+    imageCount: Array.isArray(vehicle.images) ? vehicle.images.length : 0,
     currentBidAed: Number(auction.currentPrice ?? auction.startingPrice ?? 0),
     buyNowPrice: auction.buyNowPrice === null || auction.buyNowPrice === undefined ? null : Number(auction.buyNowPrice),
-    endsAt: auction.endsAt ?? null,
     startsAt: auction.startsAt ?? null,
+    endsAt: auction.endsAt ?? null,
     totalBids: Number(auction.totalBids ?? 0),
     showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
+    conditionGrade: vehicle.conditionGrade ?? "",
+    primaryDamage: String(vehicle.primaryDamage ?? "None"),
+    titleStatus: String(vehicle.titleStatus ?? "—"),
+    tireCondition: vehicle.tireCondition == null ? null : Number(vehicle.tireCondition),
+    engine: String(vehicle.engine ?? "—"),
+    transmission: String(vehicle.transmission ?? "—"),
+    driveType: String(vehicle.driveType ?? "—"),
+    fuelType: String(vehicle.fuelType ?? "—"),
+    startCode: String(vehicle.startCode ?? "Run & Drive"),
+    numberOfKeys: Number(vehicle.numberOfKeys ?? 0),
+    warrantyStatus: String(vehicle.warrantyStatus ?? "NONE"),
+    serviceHistory: String(vehicle.serviceHistory ?? ""),
+    estimatedValue: vehicle.estimatedValue == null ? null : Number(vehicle.estimatedValue),
     vehicle: {
       brand,
       model,
@@ -248,13 +369,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
   };
 }
 
-function filterAndSortLots(
-  source: Lot[],
-  filters: Filters,
-  options: {
-    prioritizeVipEarlyAccessLots: boolean;
-  },
-): Lot[] {
+function filterAndSortLots(source: Lot[], filters: Filters): Lot[] {
   const filtered = source.filter((lot) => {
     if (filters.vipEarlyAccess === "active" && lot.showVipEarlyAccessBadge !== true) {
       return false;
@@ -300,19 +415,14 @@ function filterAndSortLots(
       return false;
     }
 
+    if (filters.maxYear && lot.year > Number(filters.maxYear)) {
+      return false;
+    }
+
     return true;
   });
 
-  const sortedFullLots = filtered.sort((left, right) => {
-    if (options.prioritizeVipEarlyAccessLots) {
-      const leftVipPriority = left.showVipEarlyAccessBadge === true ? 1 : 0;
-      const rightVipPriority = right.showVipEarlyAccessBadge === true ? 1 : 0;
-
-      if (leftVipPriority !== rightVipPriority) {
-        return rightVipPriority - leftVipPriority;
-      }
-    }
-
+  return filtered.sort((left, right) => {
     if (filters.sort === "newest") {
       return new Date(right.startsAt ?? 0).getTime() - new Date(left.startsAt ?? 0).getTime();
     }
@@ -325,10 +435,62 @@ function filterAndSortLots(
       return right.currentBidAed - left.currentBidAed;
     }
 
+    if (filters.sort === "mileage_asc") {
+      return left.mileageKm - right.mileageKm;
+    }
+
     return new Date(left.endsAt ?? left.startsAt ?? 0).getTime() - new Date(right.endsAt ?? right.startsAt ?? 0).getTime();
   });
+}
 
-  return sortedFullLots;
+function isSameDubaiDay(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const today = formatter.format(new Date());
+
+  return formatter.format(new Date(value)) === today;
+}
+
+function applyQuickFilters(source: Lot[], quickFilters: Record<QuickFilterId, boolean>): Lot[] {
+  return source.filter((lot) => {
+    if (quickFilters.RUN_AND_DRIVE && lot.startCode !== "Run & Drive") {
+      return false;
+    }
+
+    if (quickFilters.GCC_SPEC && lot.vehicle.regionSpec !== "GCC") {
+      return false;
+    }
+
+    if (quickFilters.BUY_NOW && !(typeof lot.buyNowPrice === "number" && lot.buyNowPrice > 0)) {
+      return false;
+    }
+
+    if (
+      quickFilters.GRADE_AB &&
+      !lot.conditionGrade.trim().toUpperCase().startsWith("A") &&
+      !lot.conditionGrade.trim().toUpperCase().startsWith("B")
+    ) {
+      return false;
+    }
+
+    if (quickFilters.AUCTION_TODAY && !isSameDubaiDay(lot.startsAt)) {
+      return false;
+    }
+
+    if (quickFilters.UNDER_50K && lot.mileageKm > 50_000) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 export function AuctionsClient({
@@ -346,18 +508,16 @@ export function AuctionsClient({
   const [resolvedViewerBuyerTier, setResolvedViewerBuyerTier] = useState<BuyerTier | null>(viewerBuyerTier);
   const canUseVipEarlyAccessFilter = resolvedViewerBuyerTier === "VIP";
   const lastVipFilterCapabilityRef = useRef(canUseVipEarlyAccessFilter);
-
   const [filters, setFilters] = useState<Filters>(() =>
     mergeInitialFilters(initialParams, {
       canUseVipEarlyAccessFilter,
     }),
   );
+  const [quickFilters, setQuickFilters] = useState<Record<QuickFilterId, boolean>>(DEFAULT_QUICK_FILTERS);
   const [lots, setLots] = useState<Lot[]>([]);
   const [catalogLots, setCatalogLots] = useState<Lot[]>([]);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-
   const isRu = display.locale === "ru";
 
   const brandToModels = useMemo(() => {
@@ -389,9 +549,7 @@ export function AuctionsClient({
     return map;
   }, [catalogLots, filters.vipEarlyAccess, lots]);
 
-  const brandOptions = useMemo(() => {
-    return Array.from(brandToModels.keys()).sort((left, right) => left.localeCompare(right));
-  }, [brandToModels]);
+  const brandOptions = useMemo(() => Array.from(brandToModels.keys()).sort((left, right) => left.localeCompare(right)), [brandToModels]);
 
   const modelOptions = useMemo(() => {
     if (!filters.brand) {
@@ -401,42 +559,40 @@ export function AuctionsClient({
     return Array.from(brandToModels.get(filters.brand) ?? []).sort((left, right) => left.localeCompare(right));
   }, [brandToModels, filters.brand]);
 
-  const fetchLots = useCallback(async (nextFilters: Filters) => {
-    setLoading(true);
+  const fetchLots = useCallback(
+    async (nextFilters: Filters) => {
+      setLoading(true);
 
-    try {
-      const query = buildApiQuery(nextFilters, {
-        canUseVipEarlyAccessFilter,
-      });
-      const data = await api.auctions.list<{
-        auctions?: ApiAuction[];
-        lots?: ApiAuction[];
-        total?: number;
-      }>(query, {
-        cache: "no-store",
-      });
-      const mappedLots = (data.auctions ?? data.lots ?? [])
-        .map(mapApiAuctionToLot)
-        .filter((lot): lot is Lot => lot !== null);
-      const filteredLots = filterAndSortLots(mappedLots, nextFilters, {
-        prioritizeVipEarlyAccessLots: canUseVipEarlyAccessFilter,
-      });
+      try {
+        const query = buildApiQuery(nextFilters, {
+          canUseVipEarlyAccessFilter,
+        });
+        const data = await api.auctions.list<{
+          auctions?: ApiAuction[];
+          lots?: ApiAuction[];
+        }>(query, {
+          cache: "no-store",
+        });
+        const mappedLots = (data.auctions ?? data.lots ?? [])
+          .map(mapApiAuctionToLot)
+          .filter((lot): lot is Lot => lot !== null);
 
-      setLots(filteredLots);
-      setTotal(filteredLots.length);
-    } catch {
-      setLots([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [canUseVipEarlyAccessFilter]);
+        setLots(filterAndSortLots(mappedLots, nextFilters));
+      } catch {
+        setLots([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [canUseVipEarlyAccessFilter],
+  );
 
   const fetchCatalogLots = useCallback(async () => {
     try {
       const data = await api.auctions.list<{ auctions?: ApiAuction[]; lots?: ApiAuction[] }>(undefined, {
         cache: "no-store",
       });
+
       setCatalogLots(
         (data.auctions ?? data.lots ?? [])
           .map(mapApiAuctionToLot)
@@ -535,7 +691,7 @@ export function AuctionsClient({
         router.replace(buildUrl(pathname, queryString), { scroll: false });
       });
     },
-    [canUseVipEarlyAccessFilter, fetchLots, pathname, router],
+    [canUseVipEarlyAccessFilter, fetchLots, pathname, router, startTransition],
   );
 
   const updateFilter = useCallback(
@@ -562,6 +718,7 @@ export function AuctionsClient({
   );
 
   const clearAll = useCallback(() => {
+    setQuickFilters(DEFAULT_QUICK_FILTERS);
     applyFilters({ ...DEFAULT_FILTERS });
   }, [applyFilters]);
 
@@ -575,6 +732,17 @@ export function AuctionsClient({
     }).length;
   }, [filters]);
 
+  const visibleLots = useMemo(() => applyQuickFilters(lots, quickFilters), [lots, quickFilters]);
+
+  const quickFilterPills = [
+    { id: "RUN_AND_DRIVE" as const, label: "Run & Drive" },
+    { id: "GCC_SPEC" as const, label: "GCC Spec" },
+    { id: "BUY_NOW" as const, label: "Buy Now" },
+    { id: "GRADE_AB" as const, label: "Grade A-B" },
+    { id: "AUCTION_TODAY" as const, label: "Auction today" },
+    { id: "UNDER_50K" as const, label: "Under 50k km" },
+  ];
+
   return (
     <div className={styles.layout}>
       <button
@@ -585,7 +753,7 @@ export function AuctionsClient({
         {mobileFiltersOpen
           ? isRu
             ? "Скрыть фильтры"
-            : "Close Filters"
+            : "Close filters"
           : isRu
             ? `Фильтры${activeCount > 0 ? ` (${activeCount})` : ""}`
             : `Filters${activeCount > 0 ? ` (${activeCount})` : ""}`}
@@ -607,11 +775,29 @@ export function AuctionsClient({
       <div className={styles.main}>
         <SortBar
           sort={filters.sort}
-          total={total}
+          total={visibleLots.length}
           loading={loading || isPending}
           onChange={(value) => updateFilter("sort", value)}
           locale={display.locale}
         />
+
+        <div className={styles.quickFilterRow}>
+          {quickFilterPills.map((pill) => (
+            <button
+              key={pill.id}
+              type="button"
+              className={`${styles.quickFilterPill} ${quickFilters[pill.id] ? styles.quickFilterPillActive : ""}`}
+              onClick={() =>
+                setQuickFilters((current) => ({
+                  ...current,
+                  [pill.id]: !current[pill.id],
+                }))
+              }
+            >
+              {pill.label}
+            </button>
+          ))}
+        </div>
 
         <ActiveFilters
           filters={filters}
@@ -621,12 +807,31 @@ export function AuctionsClient({
         />
 
         {loading ? (
-          <div className={styles.grid}>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className={styles.skeletonCard} />
-            ))}
-          </div>
-        ) : lots.length === 0 ? (
+          <>
+            <div className={styles.tableWrapper}>
+              <div className={styles.tableShell}>
+                <div className={styles.tableHeader}>
+                  <span>Photo</span>
+                  <span>Vehicle</span>
+                  <span>Condition</span>
+                  <span>Details</span>
+                  <span>Auction / Status</span>
+                </div>
+                <div className={styles.tableSkeletonList}>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <div key={index} className={styles.tableSkeletonRow} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.lotCards}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className={styles.cardSkeleton} />
+              ))}
+            </div>
+          </>
+        ) : visibleLots.length === 0 ? (
           <div className={styles.empty}>
             <p className={styles.emptyTitle}>{isRu ? "Лоты не найдены" : "No lots found"}</p>
             <p className={styles.emptySub}>{isRu ? "Попробуйте изменить фильтры." : "Try adjusting your filters."}</p>
@@ -635,31 +840,48 @@ export function AuctionsClient({
             </button>
           </div>
         ) : (
-          <div className={styles.grid}>
-            {lots.map((lot) => (
-              <LotCard
-                key={lot.id}
-                lotId={lot.id}
-                title={lot.title}
-                year={lot.year}
-                mileage={lot.mileageKm}
-                regionSpec={lot.vehicle.regionSpec}
-                imageUrl={lot.imageUrl}
-                currentBid={lot.currentBidAed}
-                buyNowPrice={lot.buyNowPrice ?? undefined}
-                status={lot.state}
-                totalBids={lot.totalBids}
-                showVipEarlyAccessBadge={lot.showVipEarlyAccessBadge}
-                endTime={
-                  isLiveAuctionState(lot.state)
-                    ? lot.endsAt ?? lot.startsAt ?? new Date().toISOString()
-                    : lot.startsAt ?? lot.endsAt ?? new Date().toISOString()
-                }
-                display={display}
-                showWishlistControl
-              />
-            ))}
-          </div>
+          <>
+            <div className={styles.tableWrapper}>
+              <div className={styles.tableShell}>
+                <div className={styles.tableHeader}>
+                  <span>Photo</span>
+                  <span>Vehicle</span>
+                  <span>Condition</span>
+                  <span>Details</span>
+                  <span>Auction / Status</span>
+                </div>
+
+                <div className={styles.lotTable}>
+                  {visibleLots.map((lot) => (
+                    <LotRow key={lot.id} lot={lot} display={display} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.lotCards}>
+              {visibleLots.map((lot) => (
+                <LotCard
+                  key={lot.id}
+                  lotId={lot.id}
+                  title={lot.title}
+                  year={lot.year}
+                  mileage={lot.mileageKm}
+                  regionSpec={lot.vehicle.regionSpec}
+                  imageUrl={lot.imageUrl}
+                  currentBid={lot.currentBidAed}
+                  marketPrice={lot.estimatedValue ?? undefined}
+                  buyNowPrice={lot.buyNowPrice ?? undefined}
+                  status={lot.state}
+                  totalBids={lot.totalBids}
+                  showVipEarlyAccessBadge={lot.showVipEarlyAccessBadge}
+                  endTime={lot.state === "LIVE" || lot.state === "EXTENDED" ? lot.endsAt ?? new Date().toISOString() : lot.startsAt ?? new Date().toISOString()}
+                  display={display}
+                  showWishlistControl
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

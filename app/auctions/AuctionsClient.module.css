@@ -1,6 +1,6 @@
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
 }
@@ -20,29 +20,107 @@
   min-width: 0;
 }
 
-.grid {
+.quickFilterRow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 16px 0 14px;
+  padding-bottom: 2px;
+}
+
+.quickFilterPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quickFilterPillActive {
+  border-color: var(--green-600);
+  background: var(--green-100);
+  color: var(--green-600);
+}
+
+.tableShell {
+  width: 980px;
+  min-width: 980px;
+}
+
+.tableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tableHeader {
   display: grid;
+  grid-template-columns: 240px 280px 130px 150px 180px;
+  width: 980px;
+  min-width: 980px;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--line-soft);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tableHeader span {
+  padding: 14px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.tableHeader span + span {
+  border-left: 0.5px solid var(--line-soft);
+}
+
+.lotTable {
+  display: block;
+  width: 980px;
+  min-width: 980px;
+  padding-top: 8px;
+}
+
+.lotCards {
+  display: none;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
   margin-top: 16px;
 }
 
-.skeletonCard {
-  height: 320px;
+.tableSkeletonList {
+  display: grid;
+  gap: 8px;
+  width: 980px;
+  min-width: 980px;
+  padding-top: 8px;
+}
+
+.tableSkeletonRow,
+.cardSkeleton {
   border-radius: var(--radius-card);
   background: linear-gradient(90deg, var(--bg-subtle) 25%, #e9ecf0 50%, var(--bg-subtle) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
+.tableSkeletonRow {
+  height: 154px;
+  border: 0.5px solid var(--line-soft);
+  border-radius: 10px;
+}
 
-  100% {
-    background-position: -200% 0;
-  }
+.cardSkeleton {
+  height: 320px;
 }
 
 .empty {
@@ -70,24 +148,22 @@
 
 .clearBtn {
   margin-top: 16px;
-  padding: 10px 20px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--green-600);
+  border-radius: var(--radius-control);
   background: var(--green-600);
   color: #fff;
-  border: none;
-  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.clearBtn:hover {
-  background: var(--green-700);
-}
-
 .mobileFilterBtn {
   display: none;
   width: 100%;
-  padding: 12px 16px;
+  min-height: 42px;
+  padding: 0 16px;
   background: var(--bg-card);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-control);
@@ -98,7 +174,17 @@
   margin-bottom: 16px;
 }
 
-@media (max-width: 900px) {
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;
   }
@@ -115,5 +201,15 @@
 
   .sidebarOpen {
     display: block;
+  }
+}
+
+@media (max-width: 740px) {
+  .tableWrapper {
+    display: none;
+  }
+
+  .lotCards {
+    display: grid;
   }
 }
