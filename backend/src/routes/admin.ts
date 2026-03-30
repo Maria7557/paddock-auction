@@ -642,7 +642,7 @@ async function readAdminVehicleDetail(
     airbags: string | null;
     damage: string | null;
     damageMap: Prisma.JsonValue | null;
-    features: null;
+    features: JsonRecord | null;
     startCode: string | null;
     numberOfKeys: number | null;
     warrantyStatus: string | null;
@@ -820,7 +820,7 @@ async function readAdminVehicleDetail(
       series: readJsonString(latestChanges, "series"),
       mileage: vehicle.mileage,
       vin: vehicle.vin,
-      marketPriceAed: vehicle.estimatedValue === null ? null : await toNumberValue(vehicle.estimatedValue),
+      marketPriceAed: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
       status: await resolveVehicleStatus(
         latestAuction?.state ?? null,
         hasVehicleApprovalTransition(latestTransitions),
@@ -964,7 +964,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
         model: true,
         year: true,
         vin: true,
-        estimatedValue: true,
+        marketPrice: true,
         images: true,
         media: {
           orderBy: {
@@ -1019,7 +1019,7 @@ async function loadAdminVehicleListRows(): Promise<AdminVehicleListRow[]> {
       model: vehicle.model,
       year: vehicle.year,
       vin: vehicle.vin,
-      marketPrice: vehicle.estimatedValue,
+      marketPrice: vehicle.marketPrice,
       imageUrl: vehicle.media[0]?.url ?? vehicle.images[0] ?? null,
       latestAuctionId: vehicle.auctions[0]?.id ?? null,
       latestAuctionState: vehicle.auctions[0]?.state ?? null,
@@ -1948,7 +1948,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
         },
         select: {
           id: true,
-          estimatedValue: true,
+          marketPrice: true,
         },
       });
 
@@ -1965,7 +1965,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             id,
           },
           data: {
-            estimatedValue: parsedBody.data.priceAed,
+            marketPrice: parsedBody.data.priceAed,
           },
         });
 
@@ -1977,7 +1977,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           payload: {
             vehicleId: id,
             previousMarketPrice:
-              vehicle.estimatedValue === null ? null : await toNumberValue(vehicle.estimatedValue),
+              vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
             nextMarketPrice: parsedBody.data.priceAed,
           },
         });
@@ -4086,7 +4086,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
             model: true,
             year: true,
             vin: true,
-            estimatedValue: true,
+            marketPrice: true,
             images: true,
           },
         },
@@ -4123,7 +4123,7 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
           vehicleId: lot.vehicleId,
           title: `${lot.vehicle.brand} ${lot.vehicle.model} ${lot.vehicle.year}`,
           vin: lot.vehicle.vin,
-          marketPriceAed: lot.vehicle.estimatedValue === null ? null : await toNumberValue(lot.vehicle.estimatedValue),
+          marketPriceAed: lot.vehicle.marketPrice === null ? null : await toNumberValue(lot.vehicle.marketPrice),
           imageUrl: lot.vehicle.images[0] ?? null,
         })),
       ),

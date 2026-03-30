@@ -804,12 +804,12 @@ async function findSellerVehicle(
   year: number;
   mileage: number;
   vin: string;
-  estimatedValue: DecimalLike | null;
+  marketPrice: DecimalLike | null;
   fuelType: string | null;
   transmission: string | null;
   bodyType: string | null;
   regionSpec: string | null;
-  conditionGrade: string | null;
+  condition: string | null;
   serviceHistory: string | null;
   description: string | null;
   engine: string | null;
@@ -1598,12 +1598,12 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             year: payload.year,
             mileage: payload.mileage,
             vin: await normalizeVin(payload.vin),
-            estimatedValue: payload.marketPrice ?? null,
+            marketPrice: payload.marketPrice ?? null,
             fuelType: payload.fuelType,
             transmission: payload.transmission,
             bodyType: payload.bodyType,
             regionSpec: payload.regionSpec,
-            conditionGrade: payload.condition,
+            condition: payload.condition,
             serviceHistory: payload.serviceHistory,
             description: payload.description,
             engine: payload.engine,
@@ -1686,9 +1686,9 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
           mileage: createdVehicle.vehicle.mileage,
           vin: createdVehicle.vehicle.vin,
           marketPrice:
-            createdVehicle.vehicle.estimatedValue === null
+            createdVehicle.vehicle.marketPrice === null
               ? null
-              : await toNumberValue(createdVehicle.vehicle.estimatedValue),
+              : await toNumberValue(createdVehicle.vehicle.marketPrice),
         },
         vehicleId: createdVehicle.vehicle.id,
         auctionId: createdVehicle.auction.id,
@@ -1746,12 +1746,12 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
         mileage: vehicle.mileage,
         mileageKm: vehicle.mileage,
         vin: vehicle.vin,
-        marketPrice: vehicle.estimatedValue === null ? null : await toNumberValue(vehicle.estimatedValue),
+        marketPrice: vehicle.marketPrice === null ? null : await toNumberValue(vehicle.marketPrice),
         fuelType: vehicle.fuelType,
         transmission: vehicle.transmission,
         bodyType: vehicle.bodyType,
         regionSpec: vehicle.regionSpec,
-        condition: vehicle.conditionGrade,
+        condition: vehicle.condition,
         serviceHistory: vehicle.serviceHistory,
         description: vehicle.description,
         engine: vehicle.engine,
@@ -1859,12 +1859,12 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
               year: payload.year,
               mileage: payload.mileage,
               vin: payload.vin ? await normalizeVin(payload.vin) : undefined,
-              estimatedValue: payload.marketPrice === undefined ? undefined : payload.marketPrice,
+              marketPrice: payload.marketPrice === undefined ? undefined : payload.marketPrice,
               fuelType: payload.fuelType,
               transmission: payload.transmission,
               bodyType: payload.bodyType,
               regionSpec: payload.regionSpec,
-              conditionGrade: payload.condition,
+              condition: payload.condition,
               serviceHistory: payload.serviceHistory,
               description: payload.description,
               engine: payload.engine,
@@ -1912,7 +1912,7 @@ export async function sellerRoutes(fastify: FastifyInstance): Promise<void> {
             mileage: updatedVehicle.mileage,
             vin: updatedVehicle.vin,
             marketPrice:
-              updatedVehicle.estimatedValue === null ? null : await toNumberValue(updatedVehicle.estimatedValue),
+              updatedVehicle.marketPrice === null ? null : await toNumberValue(updatedVehicle.marketPrice),
           },
         });
       } catch (error) {

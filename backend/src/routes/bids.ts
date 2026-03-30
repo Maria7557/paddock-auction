@@ -626,6 +626,10 @@ function getStartCode(input: {
   return "Run & Drive";
 }
 
+function normalizeStartCode(value: string | null | undefined): "Run & Drive" | "Stationary" {
+  return value === "Stationary" ? "Stationary" : "Run & Drive";
+}
+
 function getTitleStatus(damage: string | null | undefined): string {
   const normalized = normalizeText(damage).toLowerCase();
 
@@ -870,14 +874,15 @@ async function serializeVehicle(vehicle: {
     (typeof vehicle.primaryDamage === "string" && vehicle.primaryDamage.trim().length > 0
       ? vehicle.primaryDamage
       : getPrimaryDamage(vehicle.damage));
-  const startCode =
+  const startCode = normalizeStartCode(
     readJsonString(adminOverride, "startCode") ??
-    (typeof vehicle.startCode === "string" && vehicle.startCode.trim().length > 0
-      ? vehicle.startCode
-      : getStartCode({
-          damage: vehicle.damage,
-          condition: vehicle.condition,
-        }));
+      (typeof vehicle.startCode === "string" && vehicle.startCode.trim().length > 0
+        ? vehicle.startCode
+        : getStartCode({
+            damage: vehicle.damage,
+            condition: vehicle.condition,
+          })),
+  );
   const titleStatus =
     readJsonString(adminOverride, "titleStatus") ??
     (typeof vehicle.titleStatus === "string" && vehicle.titleStatus.trim().length > 0

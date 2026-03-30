@@ -486,7 +486,7 @@ async function serializeLotSummary(
       model: string;
       year: number;
       mileage: number;
-      estimatedValue?: DecimalLike | null;
+      marketPrice?: DecimalLike | null;
       fuelType: string | null;
       transmission: string | null;
       bodyType: string | null;
@@ -523,7 +523,7 @@ async function serializeLotSummary(
       model: auction.vehicle.model,
       year: auction.vehicle.year,
       mileage: auction.vehicle.mileage,
-      marketPrice: await toOptionalNumberValue(auction.vehicle.estimatedValue),
+      marketPrice: await toOptionalNumberValue(auction.vehicle.marketPrice),
       fuelType: auction.vehicle.fuelType,
       transmission: auction.vehicle.transmission,
       bodyType: auction.vehicle.bodyType,
