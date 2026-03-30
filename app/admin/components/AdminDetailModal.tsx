@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { getAdminCopy } from "@/app/admin/i18n";
@@ -9,15 +9,6 @@ import { EMPTY_VEHICLE_FEATURES, type SellerVehicleFeatures } from "@/components
 import { IconCar, IconShield, IconTag, IconZap } from "@/components/ui/icons";
 import { api, getApiErrorMessage } from "@/src/lib/api-client";
 import { toIntlLocale, type SupportedLocale } from "@/src/i18n/routing";
-import {
-  BODY_TYPES,
-  COLORS,
-  FUEL_TYPES,
-  REGION_SPECS,
-  SERVICE_HISTORY_OPTIONS,
-  TRANSMISSION_TYPES,
-  UAE_BRANDS,
-} from "@/src/lib/vehicle_data";
 import { formatAed } from "@/src/lib/utils";
 
 import styles from "./AdminDetailModal.module.css";
@@ -105,6 +96,7 @@ type VehicleDetailResponse = {
     series: string | null;
     mileage: number;
     vin: string;
+    marketPriceAed: number | null;
     status: string;
     photoUrls: string[];
     mulkiyaFrontUrl: string | null;
@@ -113,6 +105,7 @@ type VehicleDetailResponse = {
     transmission: string | null;
     bodyType: string | null;
     regionSpec: string | null;
+    condition: string | null;
     serviceHistory: string | null;
     description: string | null;
     internalNotes: string | null;
@@ -174,14 +167,12 @@ type FeedbackState =
   | null;
 
 type VehicleEditState = {
-  photoUrls: string[];
-  mulkiyaFrontUrl: string;
-  mulkiyaBackUrl: string;
   brand: string;
   model: string;
   year: string;
   series: string;
   vin: string;
+  marketPriceAed: string;
   mileage: string;
   cylinders: string;
   engine: string;
@@ -196,6 +187,7 @@ type VehicleEditState = {
   numberOfKeys: string;
   warrantyStatus: string;
   startCode: string;
+  condition: string;
   airbags: string;
   serviceHistory: string;
   description: string;
@@ -223,90 +215,21 @@ type SectionProps = {
   tone?: "default" | "subtle";
 };
 
-type UploadMediaResponse = {
-  photos?: string[];
-  mulkiyaFrontUrl?: string | null;
-  mulkiyaBackUrl?: string | null;
-  error?: string;
-  message?: string;
+type FeatureSummaryGroup = {
+  key: "comfort" | "safety" | "technology" | "exterior";
+  title: string;
+  icon: ReactNode;
+  items: string[];
 };
 
 const START_CODE_OPTIONS = ["Run and Drive", "Stationary", "Does Not Start"] as const;
 const NUMBER_OF_KEYS_OPTIONS = ["0", "1", "2", "3"] as const;
 const WARRANTY_STATUS_OPTIONS = ["", "Active", "Expired", "None"] as const;
-const CONDITION_GRADE_OPTIONS = ["", "A", "A+", "A++", "B", "B+", "C", "C+", "D", "D+"] as const;
+const CONDITION_GRADE_OPTIONS = ["", "A", "B", "C", "D"] as const;
 const TITLE_STATUS_OPTIONS = ["", "Clean", "Salvage", "Flood", "Fire"] as const;
 const PRIMARY_DAMAGE_OPTIONS = ["", "None", "Front End", "Rear End", "Side", "Roof", "Undercarriage", "All Over"] as const;
 const LOSS_TYPE_OPTIONS = ["", "None", "Collision", "Flood", "Fire", "Theft", "Other"] as const;
 const CYLINDER_OPTIONS = ["", "3", "4", "5", "6", "8", "10", "12"] as const;
-const DRIVE_TYPE_OPTIONS = ["", "FWD", "RWD", "AWD", "4WD"] as const;
-const AIRBAG_OPTIONS = [
-  { value: "", label: "Select airbags" },
-  { value: "NO_AIRBAGS", label: "No airbags" },
-  { value: "2", label: "2 — Driver + Passenger" },
-  { value: "4", label: "4 — Front + Side" },
-  { value: "6", label: "6 — Front, Side + Curtain" },
-  { value: "8", label: "8 — Full set" },
-  { value: "10_PLUS", label: "10+ — Full + Knee airbags" },
-  { value: "UNKNOWN", label: "Unknown" },
-] as const;
-const INTERIOR_MATERIAL_OPTIONS = ["Leather", "Fabric", "Alcantara", "Partial Leather"] as const;
-const SOUND_BRAND_OPTIONS = ["", "B&O", "Bose", "Harman Kardon", "JBL", "Burmester", "Other"] as const;
-const MANUFACTURED_IN_OPTIONS = [
-  "Japan",
-  "Germany",
-  "United States",
-  "South Korea",
-  "United Kingdom",
-  "China",
-  "Italy",
-  "Slovakia",
-  "Mexico",
-  "India",
-  "Thailand",
-  "Czech Republic",
-  "Hungary",
-  "Spain",
-  "South Africa",
-  "Canada",
-] as const;
-const DAMAGE_SUMMARY_OPTIONS = [
-  "No visible damage",
-  "Minor cosmetic wear",
-  "Front-end damage",
-  "Rear-end damage",
-  "Side damage",
-  "Multi-panel damage",
-  "Roof damage",
-  "Undercarriage damage",
-] as const;
-const SERIES_OPTIONS = [
-  "Base",
-  "Standard",
-  "S",
-  "SE",
-  "SEL",
-  "LE",
-  "XLE",
-  "EX",
-  "EX-L",
-  "GT",
-  "Sport",
-  "Luxury",
-  "Premium",
-  "Premium Plus",
-  "Platinum",
-  "Prestige",
-  "Competition",
-  "M Sport",
-  "AMG Line",
-] as const;
-type FeatureSectionKey = "comfortInterior" | "safety" | "technology" | "exterior";
-type FeatureSectionGroup = Pick<SellerVehicleFeatures, FeatureSectionKey>;
-type FeatureOption<K extends FeatureSectionKey> = {
-  key: keyof FeatureSectionGroup[K];
-  label: string;
-};
 
 const DAMAGE_ZONE_LABELS: Record<string, string> = {
   front_bumper: "Front Bumper",
@@ -376,96 +299,6 @@ const EXTERIOR_FEATURE_LABELS: Record<keyof SellerVehicleFeatures["exterior"], s
   selfClosingDoors: "Self-closing doors",
 };
 
-const COMFORT_INTERIOR_OPTIONS = [
-  { key: "heatedFrontSeats", label: "Heated front seats" },
-  { key: "heatedRearSeats", label: "Heated rear seats" },
-  { key: "ventilatedSeats", label: "Ventilated seats" },
-  { key: "heatedSteeringWheel", label: "Heated steering wheel" },
-  { key: "memorySeats", label: "Memory seats" },
-  { key: "powerSeats", label: "Power seats" },
-  { key: "massageSeats", label: "Massage seats" },
-  { key: "sunroof", label: "Sunroof" },
-  { key: "panoramicRoof", label: "Panoramic roof" },
-  { key: "thirdRowSeats", label: "Third-row seats" },
-  { key: "rearEntertainment", label: "Rear entertainment" },
-  { key: "ambientLighting", label: "Ambient lighting" },
-] as const satisfies ReadonlyArray<FeatureOption<"comfortInterior">>;
-
-const SAFETY_OPTIONS = [
-  { key: "blindSpotMonitoring", label: "Blind spot monitoring" },
-  { key: "laneDepatureWarning", label: "Lane departure warning" },
-  { key: "frontParkingSensors", label: "Front parking sensors" },
-  { key: "rearParkingSensors", label: "Rear parking sensors" },
-  { key: "rearCamera", label: "Rear camera" },
-  { key: "surroundCamera", label: "Surround camera" },
-  { key: "adaptiveCruiseControl", label: "Adaptive cruise control" },
-  { key: "automaticEmergencyBraking", label: "Automatic emergency braking" },
-  { key: "nightVision", label: "Night vision" },
-  { key: "headUpDisplay", label: "Head-up display" },
-] as const satisfies ReadonlyArray<FeatureOption<"safety">>;
-
-const TECHNOLOGY_OPTIONS = [
-  { key: "appleCarPlay", label: "Apple CarPlay" },
-  { key: "androidAuto", label: "Android Auto" },
-  { key: "navigationSystem", label: "Navigation system" },
-  { key: "wirelessCharging", label: "Wireless charging" },
-  { key: "premiumSound", label: "Premium sound" },
-  { key: "digitalInstrumentCluster", label: "Digital instrument cluster" },
-  { key: "otaUpdates", label: "OTA updates" },
-  { key: "wifiHotspot", label: "Wi-Fi hotspot" },
-] as const satisfies ReadonlyArray<FeatureOption<"technology">>;
-
-const EXTERIOR_OPTIONS = [
-  { key: "towHitch", label: "Tow hitch" },
-  { key: "runningBoards", label: "Running boards" },
-  { key: "roofRails", label: "Roof rails" },
-  { key: "sportExhaust", label: "Sport exhaust" },
-  { key: "wheels20plus", label: "20-inch+ wheels" },
-  { key: "wheels21plus", label: "21-inch+ wheels" },
-  { key: "spareTire", label: "Spare tire" },
-  { key: "selfClosingDoors", label: "Self-closing doors" },
-] as const satisfies ReadonlyArray<FeatureOption<"exterior">>;
-
-function cleanLabel(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function toBrandLabel(value: string): string {
-  return value.replaceAll("_", " ");
-}
-
-function findUaeBrandKey(input: string): string | null {
-  const normalized = cleanLabel(input).toLowerCase();
-
-  if (!normalized) {
-    return null;
-  }
-
-  for (const brandKey of Object.keys(UAE_BRANDS)) {
-    const asLabel = toBrandLabel(brandKey).toLowerCase();
-
-    if (brandKey.toLowerCase() === normalized || asLabel === normalized) {
-      return brandKey;
-    }
-  }
-
-  return null;
-}
-
-function withCurrentOption(options: readonly string[], currentValue: string): string[] {
-  const normalizedCurrentValue = cleanLabel(currentValue);
-
-  if (!normalizedCurrentValue) {
-    return [...options];
-  }
-
-  return options.includes(normalizedCurrentValue) ? [...options] : [normalizedCurrentValue, ...options];
-}
-
-function isPdfUrl(url: string | null | undefined): boolean {
-  return Boolean(url?.trim().toLowerCase().includes(".pdf"));
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -478,6 +311,63 @@ function readDamageMap(value: unknown): DamageMapValue {
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, "MINOR" | "MAJOR"] => entry[1] === "MINOR" || entry[1] === "MAJOR"),
   );
+}
+
+function readVehicleFeatures(value: unknown): SellerVehicleFeatures {
+  if (!isRecord(value)) {
+    return EMPTY_VEHICLE_FEATURES;
+  }
+
+  const comfortInterior = isRecord(value.comfortInterior) ? value.comfortInterior : {};
+  const safety = isRecord(value.safety) ? value.safety : {};
+  const technology = isRecord(value.technology) ? value.technology : {};
+  const exterior = isRecord(value.exterior) ? value.exterior : {};
+
+  const normalizedTechnology = {
+    ...EMPTY_VEHICLE_FEATURES.technology,
+    ...Object.fromEntries(
+      Object.keys(EMPTY_VEHICLE_FEATURES.technology).map((key) => [key, technology[key] === true]),
+    ),
+  };
+
+  return {
+    comfortInterior: {
+      ...EMPTY_VEHICLE_FEATURES.comfortInterior,
+      ...Object.fromEntries(
+        Object.keys(EMPTY_VEHICLE_FEATURES.comfortInterior).map((key) => [key, comfortInterior[key] === true]),
+      ),
+    },
+    interiorMaterial:
+      value.interiorMaterial === "Leather" ||
+      value.interiorMaterial === "Fabric" ||
+      value.interiorMaterial === "Alcantara" ||
+      value.interiorMaterial === "Partial Leather"
+        ? value.interiorMaterial
+        : "",
+    safety: {
+      ...EMPTY_VEHICLE_FEATURES.safety,
+      ...Object.fromEntries(
+        Object.keys(EMPTY_VEHICLE_FEATURES.safety).map((key) => [key, safety[key] === true]),
+      ),
+    },
+    technology: normalizedTechnology,
+    soundBrand:
+      normalizedTechnology.premiumSound &&
+      (value.soundBrand === "B&O" ||
+        value.soundBrand === "Bose" ||
+        value.soundBrand === "Harman Kardon" ||
+        value.soundBrand === "JBL" ||
+        value.soundBrand === "Burmester" ||
+        value.soundBrand === "Other")
+        ? value.soundBrand
+        : "",
+    exterior: {
+      ...EMPTY_VEHICLE_FEATURES.exterior,
+      ...Object.fromEntries(
+        Object.keys(EMPTY_VEHICLE_FEATURES.exterior).map((key) => [key, exterior[key] === true]),
+      ),
+    },
+  };
 }
 
 function formatStatusLabel(value: string, locale: SupportedLocale): string {
@@ -579,40 +469,14 @@ function readDamageItems(value: unknown): Array<{ label: string; level: string }
     }));
 }
 
-function buildDamageSummary(vehicle: VehicleDetailResponse["vehicle"]): string {
-  const normalizedDamage = cleanLabel(vehicle.damage ?? "");
-
-  if (normalizedDamage && normalizedDamage.toLowerCase() !== "none") {
-    return normalizedDamage;
-  }
-
-  if (vehicle.primaryDamage && vehicle.primaryDamage !== "None") {
-    return vehicle.primaryDamage;
-  }
-
-  const damageItems = readDamageItems(vehicle.damageMap);
-
-  if (damageItems.length === 0) {
-    return "";
-  }
-
-  if (damageItems.length === 1) {
-    return damageItems[0]?.label ?? "";
-  }
-
-  return `${damageItems[0]?.label ?? "Damage reported"} +${damageItems.length - 1} more`;
-}
-
 function toVehicleEditState(vehicle: VehicleDetailResponse["vehicle"]): VehicleEditState {
   return {
-    photoUrls: [...vehicle.photoUrls],
-    mulkiyaFrontUrl: vehicle.mulkiyaFrontUrl ?? "",
-    mulkiyaBackUrl: vehicle.mulkiyaBackUrl ?? "",
     brand: vehicle.brand,
     model: vehicle.model,
     year: String(vehicle.year),
     series: vehicle.series ?? "",
     vin: vehicle.vin,
+    marketPriceAed: vehicle.marketPriceAed == null ? "" : String(vehicle.marketPriceAed),
     mileage: String(vehicle.mileage),
     cylinders: vehicle.cylinders == null ? "" : String(vehicle.cylinders),
     engine: vehicle.engine ?? "",
@@ -627,10 +491,11 @@ function toVehicleEditState(vehicle: VehicleDetailResponse["vehicle"]): VehicleE
     numberOfKeys: vehicle.numberOfKeys == null ? "1" : String(vehicle.numberOfKeys),
     warrantyStatus: vehicle.warrantyStatus ?? "",
     startCode: vehicle.startCode ?? "",
+    condition: vehicle.condition ?? "",
     airbags: vehicle.airbags ?? "",
     serviceHistory: vehicle.serviceHistory ?? "",
     description: vehicle.description ?? "",
-    damage: buildDamageSummary(vehicle),
+    damage: vehicle.damage ?? "",
     damageMap: readDamageMap(vehicle.damageMap),
     conditionGrade: vehicle.conditionGrade ?? "",
     estimatedValueAed: vehicle.estimatedValueAed == null ? "" : String(vehicle.estimatedValueAed),
@@ -639,7 +504,7 @@ function toVehicleEditState(vehicle: VehicleDetailResponse["vehicle"]): VehicleE
     lossType: vehicle.lossType ?? "",
     tireCondition: vehicle.tireCondition == null ? "" : String(vehicle.tireCondition),
     internalNotes: vehicle.internalNotes ?? "",
-    features: vehicle.features ?? EMPTY_VEHICLE_FEATURES,
+    features: readVehicleFeatures(vehicle.features),
   };
 }
 
@@ -654,14 +519,12 @@ function toOptionalNumber(value: string): number | null {
 
 function toVehicleUpdatePayload(draft: VehicleEditState): Record<string, unknown> {
   return {
-    photoUrls: draft.photoUrls.map((url) => url.trim()).filter((url) => url.length > 0),
-    mulkiyaFrontUrl: draft.mulkiyaFrontUrl.trim() || null,
-    mulkiyaBackUrl: draft.mulkiyaBackUrl.trim() || null,
     brand: draft.brand.trim(),
     model: draft.model.trim(),
     year: Number(draft.year),
     series: draft.series.trim() || null,
     vin: draft.vin.trim().toUpperCase(),
+    marketPriceAed: toOptionalNumber(draft.marketPriceAed),
     mileage: Number(draft.mileage),
     cylinders: toOptionalNumber(draft.cylinders),
     engine: draft.engine.trim() || null,
@@ -676,6 +539,7 @@ function toVehicleUpdatePayload(draft: VehicleEditState): Record<string, unknown
     numberOfKeys: draft.numberOfKeys ? Number(draft.numberOfKeys) : null,
     warrantyStatus: draft.warrantyStatus || null,
     startCode: draft.startCode || null,
+    condition: draft.condition.trim() || null,
     airbags: draft.airbags.trim() || null,
     serviceHistory: draft.serviceHistory.trim() || null,
     description: draft.description.trim() || null,
@@ -696,6 +560,46 @@ function collectFeatureLabels(source: Record<string, boolean>, labels: Record<st
   return Object.entries(source)
     .filter(([, enabled]) => enabled === true)
     .map(([key]) => labels[key] ?? key);
+}
+
+function getFeatureSummaryGroups(features: SellerVehicleFeatures): FeatureSummaryGroup[] {
+  const comfort = collectFeatureLabels(features.comfortInterior, COMFORT_FEATURE_LABELS);
+  if (features.interiorMaterial) {
+    comfort.push(`Interior material: ${features.interiorMaterial}`);
+  }
+
+  const safety = collectFeatureLabels(features.safety, SAFETY_FEATURE_LABELS);
+  const technology = collectFeatureLabels(features.technology, TECHNOLOGY_FEATURE_LABELS);
+  if (features.technology.premiumSound && features.soundBrand) {
+    technology.push(`Sound brand: ${features.soundBrand}`);
+  }
+
+  return [
+    {
+      key: "comfort",
+      title: "Comfort",
+      icon: <IconTag size={16} />,
+      items: comfort,
+    },
+    {
+      key: "safety",
+      title: "Safety",
+      icon: <IconShield size={16} />,
+      items: safety,
+    },
+    {
+      key: "technology",
+      title: "Technology",
+      icon: <IconZap size={16} />,
+      items: technology,
+    },
+    {
+      key: "exterior",
+      title: "Exterior",
+      icon: <IconCar size={16} />,
+      items: collectFeatureLabels(features.exterior, EXTERIOR_FEATURE_LABELS),
+    },
+  ];
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -850,196 +754,22 @@ function VehicleDetailPanel({
   const router = useRouter();
   const [draft, setDraft] = useState<VehicleEditState>(() => toVehicleEditState(payload.vehicle));
   const [saving, setSaving] = useState(false);
-  const [uploadingTarget, setUploadingTarget] = useState<"photos" | "mulkiya-front" | "mulkiya-back" | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
-  const mulkiyaFrontInputRef = useRef<HTMLInputElement | null>(null);
-  const mulkiyaBackInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraft(toVehicleEditState(payload.vehicle));
   }, [payload]);
 
   const vehicle = payload.vehicle;
+  const featureGroups = useMemo(() => getFeatureSummaryGroups(readVehicleFeatures(vehicle.features)), [vehicle.features]);
   const damageItems = useMemo(() => readDamageItems(draft.damageMap), [draft.damageMap]);
   const latestAuctionState = vehicle.latestAuction?.state?.toUpperCase() ?? null;
   const hasScheduledWindow = latestAuctionState !== "DRAFT";
-  const matchedBrandKey = useMemo(() => findUaeBrandKey(draft.brand), [draft.brand]);
-  const brandOptions = useMemo(() => Object.keys(UAE_BRANDS).map((key) => toBrandLabel(key)), []);
-  const modelOptions = useMemo(() => {
-    const nextOptions = matchedBrandKey ? UAE_BRANDS[matchedBrandKey] ?? [] : [];
-    return withCurrentOption(nextOptions, draft.model);
-  }, [draft.model, matchedBrandKey]);
-  const seriesOptions = useMemo(() => withCurrentOption(SERIES_OPTIONS, draft.series), [draft.series]);
-  const manufacturedInOptions = useMemo(
-    () => withCurrentOption(MANUFACTURED_IN_OPTIONS, draft.manufacturedIn),
-    [draft.manufacturedIn],
-  );
-  const damageSummaryOptions = useMemo(() => withCurrentOption(DAMAGE_SUMMARY_OPTIONS, draft.damage), [draft.damage]);
-  const comfortInteriorFeatures = draft.features?.comfortInterior ?? {};
-  const safetyFeatures = draft.features?.safety ?? {};
-  const technologyFeatures = draft.features?.technology ?? {};
-  const exteriorFeatures = draft.features?.exterior ?? {};
-  const interiorMaterial = draft.features?.interiorMaterial ?? "";
-  const soundBrand = draft.features?.soundBrand ?? "";
 
   function updateDraft<K extends keyof VehicleEditState>(key: K, value: VehicleEditState[K]): void {
     setDraft((previous) => ({
       ...previous,
       [key]: value,
-    }));
-  }
-
-  function removePhotoUrl(index: number): void {
-    setDraft((previous) => ({
-      ...previous,
-      photoUrls: previous.photoUrls.filter((_, currentIndex) => currentIndex !== index),
-    }));
-  }
-
-  async function uploadVehicleMedia(formData: FormData): Promise<UploadMediaResponse> {
-    const response = await fetch("/api/seller/vehicles/upload-photos", {
-      method: "POST",
-      body: formData,
-    });
-
-    const payload = (await response.json().catch(() => null)) as UploadMediaResponse | null;
-
-    if (!response.ok || !payload) {
-      throw new Error(payload?.message ?? payload?.error ?? "Failed to upload media.");
-    }
-
-    return payload;
-  }
-
-  async function handlePhotoUpload(files: FileList | null): Promise<void> {
-    if (!files || files.length === 0) {
-      return;
-    }
-
-    const formData = new FormData();
-
-    for (const file of Array.from(files)) {
-      formData.append("photos", file);
-    }
-
-    setUploadingTarget("photos");
-    setFeedback(null);
-
-    try {
-      const payload = await uploadVehicleMedia(formData);
-      const uploadedPhotos = payload.photos ?? [];
-
-      if (uploadedPhotos.length === 0) {
-        throw new Error("No photos were uploaded.");
-      }
-
-      setDraft((previous) => ({
-        ...previous,
-        photoUrls: [...previous.photoUrls, ...uploadedPhotos],
-      }));
-      setFeedback({
-        tone: "success",
-        message: `${uploadedPhotos.length} photo${uploadedPhotos.length === 1 ? "" : "s"} uploaded.`,
-      });
-    } catch (error) {
-      setFeedback({
-        tone: "error",
-        message: getApiErrorMessage(error, "Failed to upload photos."),
-      });
-    } finally {
-      setUploadingTarget(null);
-
-      if (photoInputRef.current) {
-        photoInputRef.current.value = "";
-      }
-    }
-  }
-
-  async function handleMulkiyaUpload(
-    side: "mulkiya-front" | "mulkiya-back",
-    file: File | null,
-  ): Promise<void> {
-    if (!file) {
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append(side === "mulkiya-front" ? "mulkiyaFront" : "mulkiyaBack", file);
-    setUploadingTarget(side);
-    setFeedback(null);
-
-    try {
-      const payload = await uploadVehicleMedia(formData);
-      const nextUrl = side === "mulkiya-front" ? payload.mulkiyaFrontUrl : payload.mulkiyaBackUrl;
-
-      if (!nextUrl) {
-        throw new Error("Uploaded document URL was not returned.");
-      }
-
-      updateDraft(side === "mulkiya-front" ? "mulkiyaFrontUrl" : "mulkiyaBackUrl", nextUrl);
-      setFeedback({
-        tone: "success",
-        message: side === "mulkiya-front" ? "Mulkiya front uploaded." : "Mulkiya back uploaded.",
-      });
-    } catch (error) {
-      setFeedback({
-        tone: "error",
-        message: getApiErrorMessage(error, "Failed to upload Mulkiya."),
-      });
-    } finally {
-      setUploadingTarget(null);
-
-      const targetRef = side === "mulkiya-front" ? mulkiyaFrontInputRef : mulkiyaBackInputRef;
-
-      if (targetRef.current) {
-        targetRef.current.value = "";
-      }
-    }
-  }
-
-  function updateFeatureFlag<
-    K extends FeatureSectionKey,
-    T extends keyof FeatureSectionGroup[K],
-  >(section: K, featureKey: T, checked: boolean): void {
-    setDraft((previous) => {
-      const nextSection = {
-        ...(previous.features?.[section] ?? {}),
-        [featureKey]: checked,
-      } as FeatureSectionGroup[K];
-      const nextFeatures: SellerVehicleFeatures = {
-        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
-        [section]: nextSection,
-      };
-
-      if (section === "technology" && featureKey === "premiumSound" && !checked) {
-        nextFeatures.soundBrand = "";
-      }
-
-      return {
-        ...previous,
-        features: nextFeatures,
-      };
-    });
-  }
-
-  function updateInteriorMaterial(value: SellerVehicleFeatures["interiorMaterial"]): void {
-    setDraft((previous) => ({
-      ...previous,
-      features: {
-        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
-        interiorMaterial: value,
-      },
-    }));
-  }
-
-  function updateSoundBrand(value: SellerVehicleFeatures["soundBrand"]): void {
-    setDraft((previous) => ({
-      ...previous,
-      features: {
-        ...(previous.features ?? EMPTY_VEHICLE_FEATURES),
-        soundBrand: value,
-      },
     }));
   }
 
@@ -1086,202 +816,65 @@ function VehicleDetailPanel({
       </Section>
 
       <Section title="Photos & Documents">
-        <div className={styles.formStack}>
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/jpeg,image/png"
-            multiple
-            className={styles.hiddenFileInput}
-            onChange={(event) => void handlePhotoUpload(event.target.files)}
-          />
-          <input
-            ref={mulkiyaFrontInputRef}
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            className={styles.hiddenFileInput}
-            onChange={(event) => void handleMulkiyaUpload("mulkiya-front", event.target.files?.[0] ?? null)}
-          />
-          <input
-            ref={mulkiyaBackInputRef}
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            className={styles.hiddenFileInput}
-            onChange={(event) => void handleMulkiyaUpload("mulkiya-back", event.target.files?.[0] ?? null)}
-          />
-
-          <div className={styles.toolbarRow}>
-            <div>
-              <span className={styles.fieldLabel}>Vehicle Photos</span>
-              <p className={styles.helperText}>Upload photos from your computer, then remove any outdated images.</p>
-            </div>
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={uploadingTarget === "photos"}
-              onClick={() => photoInputRef.current?.click()}
-            >
-              {uploadingTarget === "photos" ? "Uploading..." : "Add Photos From Computer"}
-            </button>
+        {vehicle.photoUrls.length > 0 ? (
+          <div className={styles.photoGrid}>
+            {vehicle.photoUrls.map((url, index) => (
+              <img key={`${url}-${index}`} src={url} alt={`${vehicle.label} ${index + 1}`} className={styles.photo} />
+            ))}
           </div>
-
-          {draft.photoUrls.length > 0 ? (
-            <div className={styles.mediaCards}>
-              {draft.photoUrls.map((url, index) => (
-                <article key={`${url}-${index}`} className={styles.mediaCard}>
-                  {url ? isPdfUrl(url) ? (
-                    <div className={styles.documentPreview}>
-                      <span className={styles.documentType}>PDF</span>
-                      <a href={url} target="_blank" rel="noreferrer" className={styles.documentLink}>
-                        Open uploaded file
-                      </a>
-                    </div>
-                  ) : (
-                    <img src={url} alt={`${vehicle.label} ${index + 1}`} className={styles.photo} />
-                  ) : (
-                    <div className={styles.photoPlaceholder}>Photo preview</div>
-                  )}
-                  <div className={styles.mediaCardBody}>
-                    <span className={styles.fieldLabel}>Photo {index + 1}</span>
-                    <div className={styles.previewActions}>
-                      <a href={url} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
-                        Open
-                      </a>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => removePhotoUrl(index)}>
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.state}>No photos added yet.</div>
-          )}
-
-          <div className={styles.formGridTwo}>
-            <article className={styles.documentCard}>
-              <span className={styles.fieldLabel}>Mulkiya Front</span>
-              {draft.mulkiyaFrontUrl ? (
-                isPdfUrl(draft.mulkiyaFrontUrl) ? (
-                  <div className={styles.documentPreview}>
-                    <span className={styles.documentType}>PDF</span>
-                    <a href={draft.mulkiyaFrontUrl} target="_blank" rel="noreferrer" className={styles.documentLink}>
-                      View front document
-                    </a>
-                  </div>
-                ) : (
-                  <img src={draft.mulkiyaFrontUrl} alt="Mulkiya front" className={styles.photo} />
-                )
-              ) : (
-                <div className={styles.photoPlaceholder}>Front side not uploaded</div>
-              )}
-              <div className={styles.previewActions}>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  disabled={uploadingTarget === "mulkiya-front"}
-                  onClick={() => mulkiyaFrontInputRef.current?.click()}
-                >
-                  {uploadingTarget === "mulkiya-front" ? "Uploading..." : draft.mulkiyaFrontUrl ? "Replace" : "Upload"}
-                </button>
-                {draft.mulkiyaFrontUrl ? (
-                  <>
-                    <a href={draft.mulkiyaFrontUrl} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
-                      Open
-                    </a>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => updateDraft("mulkiyaFrontUrl", "")}
-                    >
-                      Clear
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </article>
-
-            <article className={styles.documentCard}>
-              <span className={styles.fieldLabel}>Mulkiya Back</span>
-              {draft.mulkiyaBackUrl ? (
-                isPdfUrl(draft.mulkiyaBackUrl) ? (
-                  <div className={styles.documentPreview}>
-                    <span className={styles.documentType}>PDF</span>
-                    <a href={draft.mulkiyaBackUrl} target="_blank" rel="noreferrer" className={styles.documentLink}>
-                      View back document
-                    </a>
-                  </div>
-                ) : (
-                  <img src={draft.mulkiyaBackUrl} alt="Mulkiya back" className={styles.photo} />
-                )
-              ) : (
-                <div className={styles.photoPlaceholder}>Back side not uploaded</div>
-              )}
-              <div className={styles.previewActions}>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  disabled={uploadingTarget === "mulkiya-back"}
-                  onClick={() => mulkiyaBackInputRef.current?.click()}
-                >
-                  {uploadingTarget === "mulkiya-back" ? "Uploading..." : draft.mulkiyaBackUrl ? "Replace" : "Upload"}
-                </button>
-                {draft.mulkiyaBackUrl ? (
-                  <>
-                    <a href={draft.mulkiyaBackUrl} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
-                      Open
-                    </a>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => updateDraft("mulkiyaBackUrl", "")}
-                    >
-                      Clear
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </article>
+        ) : (
+          <div className={styles.state}>No photos uploaded.</div>
+        )}
+        {vehicle.mulkiyaFrontUrl || vehicle.mulkiyaBackUrl ? (
+          <div className={styles.docLinks}>
+            {vehicle.mulkiyaFrontUrl ? (
+              <a href={vehicle.mulkiyaFrontUrl} target="_blank" rel="noreferrer" className={styles.docLink}>
+                Mulkiya Front
+              </a>
+            ) : null}
+            {vehicle.mulkiyaBackUrl ? (
+              <a href={vehicle.mulkiyaBackUrl} target="_blank" rel="noreferrer" className={styles.docLink}>
+                Mulkiya Back
+              </a>
+            ) : null}
           </div>
-        </div>
+        ) : null}
       </Section>
 
       <Section title="Vehicle Information">
         <div className={styles.formStack}>
           <div className={styles.formGridFour}>
+            <EditableField label="VIN">
+              <input value={draft.vin} onChange={(event) => updateDraft("vin", event.target.value.toUpperCase())} />
+            </EditableField>
+            <EditableField label="Market Price AED">
+              <input
+                type="number"
+                min={0}
+                value={draft.marketPriceAed}
+                onChange={(event) => updateDraft("marketPriceAed", event.target.value)}
+              />
+            </EditableField>
+            <EditableField label="Condition">
+              <input value={draft.condition} onChange={(event) => updateDraft("condition", event.target.value)} />
+            </EditableField>
+            <EditableField label="Airbags">
+              <input value={draft.airbags} onChange={(event) => updateDraft("airbags", event.target.value)} />
+            </EditableField>
+          </div>
+
+          <div className={styles.formGridFour}>
             <EditableField label="Brand">
-              <select value={draft.brand} onChange={(event) => updateDraft("brand", event.target.value)}>
-                <option value="">Select brand</option>
-                {withCurrentOption(brandOptions, draft.brand).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.brand} onChange={(event) => updateDraft("brand", event.target.value)} />
             </EditableField>
             <EditableField label="Model">
-              <select value={draft.model} onChange={(event) => updateDraft("model", event.target.value)}>
-                <option value="">Select model</option>
-                {modelOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.model} onChange={(event) => updateDraft("model", event.target.value)} />
             </EditableField>
             <EditableField label="Year">
               <input type="number" min={1886} value={draft.year} onChange={(event) => updateDraft("year", event.target.value)} />
             </EditableField>
             <EditableField label="Series / Trim">
-              <select value={draft.series} onChange={(event) => updateDraft("series", event.target.value)}>
-                <option value="">Select series / trim</option>
-                {seriesOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.series} onChange={(event) => updateDraft("series", event.target.value)} />
             </EditableField>
           </div>
 
@@ -1302,102 +895,38 @@ function VehicleDetailPanel({
               <input value={draft.engine} onChange={(event) => updateDraft("engine", event.target.value)} />
             </EditableField>
             <EditableField label="Drive Type">
-              <select value={draft.driveType} onChange={(event) => updateDraft("driveType", event.target.value)}>
-                {DRIVE_TYPE_OPTIONS.map((option) => (
-                  <option key={option || "empty"} value={option}>
-                    {option || "Select drive type"}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.driveType} onChange={(event) => updateDraft("driveType", event.target.value)} />
             </EditableField>
           </div>
 
           <div className={styles.formGridFour}>
             <EditableField label="Fuel Type">
-              <select value={draft.fuelType} onChange={(event) => updateDraft("fuelType", event.target.value)}>
-                <option value="">Select fuel type</option>
-                {withCurrentOption(FUEL_TYPES, draft.fuelType).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.fuelType} onChange={(event) => updateDraft("fuelType", event.target.value)} />
             </EditableField>
             <EditableField label="Transmission">
-              <select value={draft.transmission} onChange={(event) => updateDraft("transmission", event.target.value)}>
-                <option value="">Select transmission</option>
-                {withCurrentOption(TRANSMISSION_TYPES, draft.transmission).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.transmission} onChange={(event) => updateDraft("transmission", event.target.value)} />
             </EditableField>
             <EditableField label="Body Type">
-              <select value={draft.bodyType} onChange={(event) => updateDraft("bodyType", event.target.value)}>
-                <option value="">Select body type</option>
-                {withCurrentOption(BODY_TYPES, draft.bodyType).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.bodyType} onChange={(event) => updateDraft("bodyType", event.target.value)} />
             </EditableField>
             <EditableField label="Region Spec">
-              <select value={draft.regionSpec} onChange={(event) => updateDraft("regionSpec", event.target.value)}>
-                <option value="">Select region spec</option>
-                {withCurrentOption(REGION_SPECS, draft.regionSpec).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.regionSpec} onChange={(event) => updateDraft("regionSpec", event.target.value)} />
             </EditableField>
           </div>
 
-          <div className={styles.formGridFour}>
+          <div className={styles.formGridThree}>
             <EditableField label="Exterior Color">
-              <select value={draft.exteriorColor} onChange={(event) => updateDraft("exteriorColor", event.target.value)}>
-                <option value="">Select exterior color</option>
-                {withCurrentOption(COLORS, draft.exteriorColor).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.exteriorColor} onChange={(event) => updateDraft("exteriorColor", event.target.value)} />
             </EditableField>
             <EditableField label="Interior Color">
-              <select value={draft.interiorColor} onChange={(event) => updateDraft("interiorColor", event.target.value)}>
-                <option value="">Select interior color</option>
-                {withCurrentOption(COLORS, draft.interiorColor).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.interiorColor} onChange={(event) => updateDraft("interiorColor", event.target.value)} />
             </EditableField>
             <EditableField label="Manufactured In">
-              <select value={draft.manufacturedIn} onChange={(event) => updateDraft("manufacturedIn", event.target.value)}>
-                <option value="">Select country</option>
-                {manufacturedInOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </EditableField>
-            <EditableField label="Airbags">
-              <select value={draft.airbags} onChange={(event) => updateDraft("airbags", event.target.value)}>
-                {AIRBAG_OPTIONS.map((option) => (
-                  <option key={option.value || "empty"} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <input value={draft.manufacturedIn} onChange={(event) => updateDraft("manufacturedIn", event.target.value)} />
             </EditableField>
           </div>
 
-          <div className={styles.formGridFour}>
+          <div className={styles.formGridThree}>
             <EditableField label="Number of Keys">
               <select value={draft.numberOfKeys} onChange={(event) => updateDraft("numberOfKeys", event.target.value)}>
                 {NUMBER_OF_KEYS_OPTIONS.map((option) => (
@@ -1426,36 +955,23 @@ function VehicleDetailPanel({
                 ))}
               </select>
             </EditableField>
-            <EditableField label="VIN">
-              <input value={draft.vin} onChange={(event) => updateDraft("vin", event.target.value.toUpperCase())} />
-            </EditableField>
           </div>
 
           <div className={styles.formGridTwo}>
-            <EditableField label="Service History">
-              <select value={draft.serviceHistory} onChange={(event) => updateDraft("serviceHistory", event.target.value)}>
-                <option value="">Select service history</option>
-                {withCurrentOption(SERVICE_HISTORY_OPTIONS, draft.serviceHistory).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+            <EditableField label="Service History" full>
+              <textarea
+                rows={4}
+                value={draft.serviceHistory}
+                onChange={(event) => updateDraft("serviceHistory", event.target.value)}
+              />
             </EditableField>
-            <EditableField label="Description">
+            <EditableField label="Description" full>
               <textarea rows={4} value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
             </EditableField>
           </div>
 
           <EditableField label="Damage Summary" full>
-            <select value={draft.damage} onChange={(event) => updateDraft("damage", event.target.value)}>
-              <option value="">Select damage summary</option>
-                {damageSummaryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-            </select>
+            <textarea rows={3} value={draft.damage} onChange={(event) => updateDraft("damage", event.target.value)} />
           </EditableField>
 
           <div className={styles.damageSection}>
@@ -1550,153 +1066,26 @@ function VehicleDetailPanel({
       </Section>
 
       <Section title="Features">
-        <div className={styles.featureEditorGrid}>
-          <article className={styles.featureEditorCard}>
-            <div className={styles.featureGroupHeader}>
-              <span className={styles.featureIcon}>
-                <IconTag size={16} />
-              </span>
-              <div>
-                <h4 className={styles.featureGroupTitle}>Comfort</h4>
-                <p className={styles.helperText}>Seats, roof and interior appointments.</p>
+        <div className={styles.featureGroups}>
+          {featureGroups.map((group) => (
+            <article key={group.key} className={styles.featureGroup}>
+              <div className={styles.featureGroupHeader}>
+                <span className={styles.featureIcon}>{group.icon}</span>
+                <h4 className={styles.featureGroupTitle}>{group.title}</h4>
               </div>
-            </div>
-            <div className={styles.featureOptionGrid}>
-              {COMFORT_INTERIOR_OPTIONS.map((item) => (
-                <label
-                  key={item.key}
-                  className={`${styles.checkboxItem} ${comfortInteriorFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={comfortInteriorFeatures[item.key] ?? false}
-                    onChange={(event) => updateFeatureFlag("comfortInterior", item.key, event.target.checked)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
-            </div>
-          </article>
-
-          <article className={styles.featureEditorCard}>
-            <div className={styles.featureGroupHeader}>
-              <span className={styles.featureIcon}>
-                <IconShield size={16} />
-              </span>
-              <div>
-                <h4 className={styles.featureGroupTitle}>Safety</h4>
-                <p className={styles.helperText}>Driver assistance, cameras and parking systems.</p>
-              </div>
-            </div>
-            <div className={styles.featureOptionGrid}>
-              {SAFETY_OPTIONS.map((item) => (
-                <label
-                  key={item.key}
-                  className={`${styles.checkboxItem} ${safetyFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={safetyFeatures[item.key] ?? false}
-                    onChange={(event) => updateFeatureFlag("safety", item.key, event.target.checked)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
-            </div>
-          </article>
-
-          <article className={styles.featureEditorCard}>
-            <div className={styles.featureGroupHeader}>
-              <span className={styles.featureIcon}>
-                <IconTag size={16} />
-              </span>
-              <div>
-                <h4 className={styles.featureGroupTitle}>Interior Material</h4>
-                <p className={styles.helperText}>Keep upholstery separate from the comfort equipment checklist.</p>
-              </div>
-            </div>
-            <div className={styles.radioGroup}>
-              {INTERIOR_MATERIAL_OPTIONS.map((item) => (
-                <label
-                  key={item}
-                  className={`${styles.radioCard} ${interiorMaterial === item ? styles.radioCardActive : ""}`.trim()}
-                >
-                  <input
-                    type="radio"
-                    name="admin-interior-material"
-                    checked={interiorMaterial === item}
-                    onChange={() => updateInteriorMaterial(item)}
-                  />
-                  <span>{item}</span>
-                </label>
-              ))}
-            </div>
-          </article>
-
-          <article className={styles.featureEditorCard}>
-            <div className={styles.featureGroupHeader}>
-              <span className={styles.featureIcon}>
-                <IconZap size={16} />
-              </span>
-              <div>
-                <h4 className={styles.featureGroupTitle}>Technology</h4>
-                <p className={styles.helperText}>Infotainment, connectivity and premium electronics.</p>
-              </div>
-            </div>
-            <div className={styles.featureOptionGrid}>
-              {TECHNOLOGY_OPTIONS.map((item) => (
-                <label
-                  key={item.key}
-                  className={`${styles.checkboxItem} ${technologyFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={technologyFeatures[item.key] ?? false}
-                    onChange={(event) => updateFeatureFlag("technology", item.key, event.target.checked)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
-            </div>
-            {technologyFeatures.premiumSound ? (
-              <EditableField label="Premium Sound Brand">
-                <select value={soundBrand} onChange={(event) => updateSoundBrand(event.target.value as SellerVehicleFeatures["soundBrand"])}>
-                  {SOUND_BRAND_OPTIONS.map((option) => (
-                    <option key={option || "empty"} value={option}>
-                      {option || "Select sound brand"}
-                    </option>
+              {group.items.length > 0 ? (
+                <div className={styles.badgeList}>
+                  {group.items.map((item) => (
+                    <span key={item} className={styles.badge}>
+                      {item}
+                    </span>
                   ))}
-                </select>
-              </EditableField>
-            ) : null}
-          </article>
-
-          <article className={styles.featureEditorCard}>
-            <div className={styles.featureGroupHeader}>
-              <span className={styles.featureIcon}>
-                <IconCar size={16} />
-              </span>
-              <div>
-                <h4 className={styles.featureGroupTitle}>Exterior</h4>
-                <p className={styles.helperText}>Utility, wheels and body accessories.</p>
-              </div>
-            </div>
-            <div className={styles.featureOptionGrid}>
-              {EXTERIOR_OPTIONS.map((item) => (
-                <label
-                  key={item.key}
-                  className={`${styles.checkboxItem} ${exteriorFeatures[item.key] ? styles.checkboxItemChecked : ""}`.trim()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={exteriorFeatures[item.key] ?? false}
-                    onChange={(event) => updateFeatureFlag("exterior", item.key, event.target.checked)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
-            </div>
-          </article>
+                </div>
+              ) : (
+                <p className={styles.helperText}>No seller selections recorded.</p>
+              )}
+            </article>
+          ))}
         </div>
       </Section>
 
