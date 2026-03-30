@@ -137,6 +137,7 @@ type OrchestratorTx = Prisma.TransactionClient;
 
 const CALL_DURATION_MS = 20_000;
 const LAST_CHANCE_DURATION_MS = 10_000;
+const EVENT_AUCTION_WINDOW_HOURS = 2;
 const orchestratorActorId = "system:event-orchestrator";
 const EVENT_CHANNEL_PREFIX = "event:live:";
 
@@ -249,6 +250,10 @@ async function createAuctionTransition(
 
 function addMilliseconds(base: Date, milliseconds: number): Date {
   return new Date(base.getTime() + milliseconds);
+}
+
+function resolveLiveAuctionEndsAt(currentEndsAt: Date, now: Date): Date {
+  return currentEndsAt.getTime() > now.getTime() ? currentEndsAt : addHours(now, EVENT_AUCTION_WINDOW_HOURS);
 }
 
 function toNumberValue(value: DecimalLike): number {
@@ -545,6 +550,7 @@ export async function startEvent(eventId: string): Promise<void> {
     });
 
     const firstAuction = await loadAuction(tx, resolvedFirstLot.auctionId);
+    const firstAuctionEndsAt = resolveLiveAuctionEndsAt(firstAuction.endsAt, now);
 
     if (firstAuction.state !== "LIVE") {
       await tx.auction.update({
@@ -552,6 +558,7 @@ export async function startEvent(eventId: string): Promise<void> {
         data: {
           state: "LIVE",
           startsAt: now,
+          endsAt: firstAuctionEndsAt,
         },
       });
 
@@ -662,6 +669,7 @@ export async function advanceToNextLot(eventId: string): Promise<void> {
     });
 
     const nextAuction = await loadAuction(tx, nextLot.auctionId);
+    const nextAuctionEndsAt = resolveLiveAuctionEndsAt(nextAuction.endsAt, now);
 
     if (nextAuction.state !== "LIVE") {
       await tx.auction.update({
@@ -669,6 +677,7 @@ export async function advanceToNextLot(eventId: string): Promise<void> {
         data: {
           state: "LIVE",
           startsAt: now,
+          endsAt: nextAuctionEndsAt,
         },
       });
 
