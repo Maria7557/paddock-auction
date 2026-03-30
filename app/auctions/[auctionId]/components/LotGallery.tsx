@@ -167,6 +167,18 @@ export function LotGallery({ images, title, locale }: Props) {
     };
   }, [closeLightbox, galleryImages.length, lightboxOpen, navigateLightbox]);
 
+  useEffect(() => {
+    const element = document.getElementById(`lb-thumb-${lightboxIndex}`);
+
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [lightboxIndex]);
+
   const handleStageKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -392,6 +404,32 @@ export function LotGallery({ images, title, locale }: Props) {
               </div>
             </div>
           </div>
+
+          {galleryImages.length > 1 ? (
+            <div className={styles.lightboxThumbs} role="list" aria-label={isRu ? "Фото в HD-галерее" : "HD gallery thumbnails"}>
+              {galleryImages.map((src, index) => (
+                <button
+                  key={`lightbox-thumb-${src}-${index}`}
+                  id={`lb-thumb-${index}`}
+                  type="button"
+                  className={`${styles.lightboxThumbButton} ${index === safeLightboxIndex ? styles.lightboxThumbButtonActive : ""}`}
+                  onClick={() => {
+                    syncGalleryIndex(index);
+                    resetLightboxView();
+                  }}
+                  aria-current={index === safeLightboxIndex ? "true" : undefined}
+                >
+                  <Image
+                    src={src}
+                    alt=""
+                    fill
+                    sizes="96px"
+                    className={styles.lightboxThumbImage}
+                  />
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
