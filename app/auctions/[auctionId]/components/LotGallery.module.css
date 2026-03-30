@@ -8,15 +8,19 @@
 
 .stage {
   position: relative;
-  height: 360px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 14px;
-  background: var(--bg-subtle);
+  border-radius: 10px 10px 0 0;
+  background: #000;
   cursor: zoom-in;
 }
 
 .stageImage {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .photoBadge,
@@ -329,10 +333,6 @@
 @media (max-width: 600px) {
   .section {
     padding: 12px;
-  }
-
-  .stage {
-    height: 280px;
   }
 
   .photoBadge,
