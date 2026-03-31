@@ -3,6 +3,7 @@ import type { DamageMapValue } from "@/components/seller/DamageDiagram";
 import { api } from "@/src/lib/api-client";
 import { withServerCookies } from "@/src/lib/server-api-options";
 
+import { normalizeLotFeatures } from "./feature-catalog";
 import type { LotConditionGrade, LotDetail, LotStartCode, LotWarrantyStatus } from "./types";
 
 const NOT_SPECIFIED = "Not specified";
@@ -432,31 +433,6 @@ function getInteriorMaterial(input: {
   return "Fabric";
 }
 
-function humanizeFeatureKey(value: string): string {
-  return value
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function getFeatures(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      .map((item) => item.trim());
-  }
-
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .filter(([, enabled]) => enabled === true)
-      .map(([feature]) => humanizeFeatureKey(feature));
-  }
-
-  return [];
-}
-
 function buildSeries(input: { explicit: unknown; model: string }): string {
   const explicit = normalizeText(input.explicit);
 
@@ -590,7 +566,7 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       cylinders: getCylinders(asString(vehicle.engine, "")),
       vehicleClass: getVehicleClass(bodyStyle, brand),
       lossType: getLossType(primaryDamage),
-      features: getFeatures(vehicle.features),
+      features: normalizeLotFeatures(vehicle.features),
       description: String(vehicle.description ?? DEFAULT_DESCRIPTION),
       highlights: Array.isArray(vehicle.highlights) ? (vehicle.highlights as string[]) : [],
       sellerName: String(auction.sellerName ?? data.sellerName ?? NOT_SPECIFIED),

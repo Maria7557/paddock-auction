@@ -1,4 +1,5 @@
 import type { DamageMapValue } from "@/components/seller/DamageDiagram";
+import type { SellerVehicleFeatures } from "@/components/seller/vehicle-form-state";
 
 export type LotAuctionState =
   | "DRAFT"
@@ -76,7 +77,7 @@ export type LotDetail = {
   cylinders: string;
   vehicleClass: string;
   lossType: string;
-  features: string[];
+  features: SellerVehicleFeatures;
   description: string;
   highlights: string[];
   sellerName: string;
