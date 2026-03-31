@@ -246,6 +246,19 @@
   color: var(--ink-primary);
 }
 
+.damageLink {
+  color: #116a43;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.damageLink:hover {
+  color: #0d5a39;
+}
+
 .statusCell {
   display: flex;
   flex-direction: column;

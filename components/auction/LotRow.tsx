@@ -68,6 +68,7 @@ export function LotRow({ lot, display }: LotRowProps) {
   const router = useRouter();
   const [saved, setSaved] = useState(false);
   const detailHref = withLocalePath(`/auctions/${lot.id}`, display.locale);
+  const damageHref = `/en/auctions/${lot.id}#damage`;
   const isLive = lot.state === "LIVE" || lot.state === "EXTENDED";
   const hasBuyNow = typeof lot.buyNowPrice === "number" && lot.buyNowPrice > 0;
   const hasCurrentBid = Number(lot.currentBidAed) > 0;
@@ -76,6 +77,8 @@ export function LotRow({ lot, display }: LotRowProps) {
   const showWarrantyBadge = normalizedWarrantyStatus === "ACTIVE" || normalizedWarrantyStatus === "EXPIRED";
   const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
   const hasConditionGrade = normalizedConditionGrade.length > 0;
+  const normalizedPrimaryDamage = (lot.primaryDamage ?? "").trim();
+  const hasPrimaryDamageLink = normalizedPrimaryDamage.length > 0 && normalizedPrimaryDamage.toLowerCase() !== "none";
   const gradeToneClass =
     normalizedConditionGrade.startsWith("A")
       ? styles.gradeA
@@ -164,7 +167,18 @@ export function LotRow({ lot, display }: LotRowProps) {
         </div>
         <div className={styles.metaLine}>
           <span>Damage</span>
-          <strong>{lot.primaryDamage || "None"}</strong>
+          {hasPrimaryDamageLink ? (
+            <a
+              href={damageHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.damageLink}
+            >
+              {normalizedPrimaryDamage}
+            </a>
+          ) : (
+            <strong>None</strong>
+          )}
         </div>
         <div className={styles.metaLine}>
           <span>Title</span>
