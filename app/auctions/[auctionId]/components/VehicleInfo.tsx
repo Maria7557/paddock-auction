@@ -23,6 +23,11 @@ type InfoRow = {
   tone?: RowTone;
 };
 
+type InfoRowPair = {
+  left: InfoRow;
+  right: InfoRow;
+};
+
 function maskVin(vin: string): string {
   const cleanVin = vin.replace(/\s+/g, "");
   return cleanVin.length <= 8 ? `•••${cleanVin}` : `•••${cleanVin.slice(-8)}`;
@@ -172,6 +177,10 @@ export function VehicleInfo({ lot, locale }: Props) {
       value: `${lot.colorInterior} · ${lot.interiorMaterial}`,
     },
   ];
+  const rowPairs: InfoRowPair[] = leftRows.map((row, index) => ({
+    left: row,
+    right: rightRows[index],
+  }));
 
   useEffect(() => {
     if (!isDamageOpen) {
@@ -208,47 +217,43 @@ export function VehicleInfo({ lot, locale }: Props) {
       </div>
 
       <div className={styles.infoGrid}>
-        <div className={styles.infoColumn}>
-          {leftRows.map((row) => (
-            <div key={row.label} className={styles.infoRow}>
-              <span className={styles.infoLabel}>{row.label}</span>
+        {rowPairs.map((pair) => (
+          <div key={`${pair.left.label}-${pair.right.label}`} className={styles.infoPairRow}>
+            <div className={styles.infoPairCell}>
+              <span className={styles.infoLabel}>{pair.left.label}</span>
               <span
-                className={`${styles.infoValue} ${row.mono ? styles.infoValueMono : ""} ${
-                  row.tone === "positive"
+                className={`${styles.infoValue} ${pair.left.mono ? styles.infoValueMono : ""} ${
+                  pair.left.tone === "positive"
                     ? styles.valuePositive
-                    : row.tone === "warning"
+                    : pair.left.tone === "warning"
                       ? styles.valueWarning
-                      : row.tone === "muted"
+                      : pair.left.tone === "muted"
                         ? styles.valueMuted
                         : ""
                 }`.trim()}
               >
-                {row.value}
+                {pair.left.value}
               </span>
             </div>
-          ))}
-        </div>
 
-        <div className={styles.infoColumn}>
-          {rightRows.map((row) => (
-            <div key={row.label} className={styles.infoRow}>
-              <span className={styles.infoLabel}>{row.label}</span>
+            <div className={`${styles.infoPairCell} ${styles.infoPairCellRight}`}>
+              <span className={styles.infoLabel}>{pair.right.label}</span>
               <span
-                className={`${styles.infoValue} ${
-                  row.tone === "positive"
+                className={`${styles.infoValue} ${pair.right.mono ? styles.infoValueMono : ""} ${
+                  pair.right.tone === "positive"
                     ? styles.valuePositive
-                    : row.tone === "warning"
+                    : pair.right.tone === "warning"
                       ? styles.valueWarning
-                      : row.tone === "muted"
+                      : pair.right.tone === "muted"
                         ? styles.valueMuted
                         : ""
                 }`.trim()}
               >
-                {row.value}
+                {pair.right.value}
               </span>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
       <div className={styles.damageBlock}>
