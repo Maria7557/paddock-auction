@@ -206,10 +206,21 @@
 
 @media (max-width: 740px) {
   .tableWrapper {
+    overflow-x: unset;
+  }
+
+  .tableShell,
+  .tableSkeletonList {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .tableHeader {
     display: none;
   }
 
-  .lotCards {
-    display: grid;
+  .lotTable {
+    width: 100%;
+    min-width: unset;
   }
 }

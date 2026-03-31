@@ -31,36 +31,6 @@
 
 .pillTl { position: absolute; top: 10px; left: 10px; }
 .pillTr { position: absolute; top: 10px; right: 10px; }
-.badgeStack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.vipBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--vip-early-access-gold-border);
-  background-image: var(--vip-early-access-badge-gold-bg);
-  background-size: var(--vip-early-access-badge-gold-bg-size);
-  background-position: var(--vip-early-access-badge-gold-bg-position);
-  background-repeat: var(--vip-early-access-badge-gold-bg-repeat);
-  color: #fdf2cc;
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: 0 10px 20px rgba(62, 39, 10, 0.18);
-  white-space: nowrap;
-}
-
-.vipBadgeIcon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
 
 .actionButtons {
   position: absolute;
@@ -156,11 +126,17 @@
 
 .divider { width: 1px; background: var(--line-soft); }
 
+.marketPrice,
 .buyNowStripPrice {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1;
+}
+
+.marketPrice {
+  color: var(--ink-muted);
+  text-decoration: line-through;
 }
 
 .buyNowStripPrice {
@@ -216,6 +192,10 @@
   letter-spacing: -0.01em;
 }
 
+.mobCard {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .buyBtn {
     width: 100%;
@@ -228,5 +208,228 @@
   .wishlistBtn {
     width: 40px;
     height: 40px;
+  }
+}
+
+@media (max-width: 740px) {
+  .mobCard {
+    display: block;
+  }
+
+  .cardLink {
+    display: none;
+  }
+
+  .actionButtons {
+    display: none;
+  }
+
+  .mobRow {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: start;
+    padding: var(--space-3);
+    padding-bottom: var(--space-2);
+  }
+
+  .mobThumbLink,
+  .mobSummaryLink,
+  .mobExpandedLink,
+  .mobPreBid,
+  .mobBuyNowLink,
+  .mobExpandedCta {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .mobThumb {
+    position: relative;
+    width: 112px;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background: var(--bg-subtle);
+  }
+
+  .mobThumbImage,
+  .mobExpandedImage {
+    object-fit: cover;
+  }
+
+  .mobSummary {
+    min-width: 0;
+  }
+
+  .mobSummaryLink {
+    display: block;
+  }
+
+  .mobTitle {
+    margin-bottom: 6px;
+    color: var(--ink-primary);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .mobMeta {
+    margin-bottom: 8px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .mobTiming {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .mobTimingValue,
+  .mobTiming .timeVal,
+  .mobTiming .urgent {
+    color: var(--ink-primary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .mobActions {
+    display: flex;
+    min-width: 84px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .mobWishlistBtn {
+    width: 36px;
+    height: 36px;
+    border-color: var(--line-soft);
+    background: var(--bg-card);
+    box-shadow: none;
+  }
+
+  .mobPreBid {
+    display: inline-flex;
+    min-height: 34px;
+    min-width: 84px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-pill);
+    background: var(--green-600);
+    padding: 0 14px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mobPreBid:hover,
+  .mobExpandedCta:hover {
+    background: var(--green-700);
+  }
+
+  .mobBuyNowLink {
+    max-width: 104px;
+    color: var(--green-600);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: right;
+  }
+
+  .mobToggle {
+    display: flex;
+    width: calc(100% - 32px);
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 var(--space-3) var(--space-3);
+    border: none;
+    border-top: 1px solid var(--line-soft);
+    background: transparent;
+    padding: 12px 0 0;
+    color: var(--ink-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mobToggleIcon {
+    color: var(--ink-muted);
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .mobExpanded {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0 var(--space-3) var(--space-3);
+  }
+
+  .mobExpandedPhoto {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background: var(--bg-subtle);
+  }
+
+  .mobDetailsGrid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mobDetailRow {
+    display: grid;
+    grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    border-bottom: 1px solid var(--line-soft);
+    padding-bottom: 10px;
+  }
+
+  .mobDetailRow:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .mobDetailLabel {
+    color: var(--ink-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .mobDetailValue {
+    min-width: 0;
+    color: var(--ink-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .mobExpandedCta {
+    display: inline-flex;
+    min-height: 44px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-pill);
+    background: var(--green-600);
+    padding: 0 var(--space-3);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
   }
 }
