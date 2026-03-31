@@ -358,8 +358,23 @@ function getAirbagCount(input: {
   return 6;
 }
 
-function getCylinders(engine: string): string {
-  const normalized = normalizeText(engine);
+function getCylinders(input: {
+  explicit: unknown;
+  engine: string;
+}): string {
+  const explicitNumber = asNumber(input.explicit);
+
+  if (explicitNumber > 0) {
+    return `${explicitNumber} cylinders`;
+  }
+
+  const explicitText = normalizeText(input.explicit);
+
+  if (explicitText && explicitText !== "—") {
+    return explicitText;
+  }
+
+  const normalized = normalizeText(input.engine);
 
   if (!normalized || normalized === "—") {
     return "Not specified";
@@ -406,8 +421,17 @@ function getVehicleClass(bodyStyle: string, brand: string): string {
   return normalizeText(bodyStyle) || "Passenger vehicle";
 }
 
-function getLossType(primaryDamage: string): string {
-  return primaryDamage === "None" ? "Normal wear" : "Collision";
+function getLossType(input: {
+  explicit: unknown;
+  primaryDamage: string;
+}): string {
+  const explicit = normalizeText(input.explicit);
+
+  if (explicit) {
+    return explicit;
+  }
+
+  return input.primaryDamage === "None" ? "Normal wear" : "Collision";
 }
 
 function getInteriorMaterial(input: {
@@ -563,9 +587,15 @@ export async function getLot(auctionId: string): Promise<LotDetail | null> {
       transmission: asString(vehicle.transmission),
       driveType: asString(vehicle.driveType ?? vehicle.drivetrain),
       fuelType: asString(vehicle.fuelType),
-      cylinders: getCylinders(asString(vehicle.engine, "")),
+      cylinders: getCylinders({
+        explicit: vehicle.cylinders,
+        engine: asString(vehicle.engine, ""),
+      }),
       vehicleClass: getVehicleClass(bodyStyle, brand),
-      lossType: getLossType(primaryDamage),
+      lossType: getLossType({
+        explicit: vehicle.lossType,
+        primaryDamage,
+      }),
       features: normalizeLotFeatures(vehicle.features),
       description: String(vehicle.description ?? DEFAULT_DESCRIPTION),
       highlights: Array.isArray(vehicle.highlights) ? (vehicle.highlights as string[]) : [],
