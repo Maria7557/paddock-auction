@@ -103,7 +103,6 @@ type LotFeatureDisplayGroup = {
   label: string;
   items: Array<{
     label: string;
-    present: boolean;
   }>;
 };
 
@@ -231,9 +230,8 @@ export function getLotFeatureDisplayGroups(
   features: SellerVehicleFeatures,
   locale: SupportedLocale,
 ): LotFeatureDisplayGroup[] {
-  return LOT_FEATURE_GROUPS.map((group) => ({
-    label: group.label[locale],
-    items: group.items.map((item) => {
+  return LOT_FEATURE_GROUPS.map((group) => {
+    const items = group.items.reduce<Array<{ label: string }>>((acc, item) => {
       const present =
         group.key === "comfortInterior"
           ? features.comfortInterior[item.key as keyof SellerVehicleFeatures["comfortInterior"]]
@@ -243,10 +241,30 @@ export function getLotFeatureDisplayGroups(
               ? features.technology[item.key as keyof SellerVehicleFeatures["technology"]]
               : features.exterior[item.key as keyof SellerVehicleFeatures["exterior"]];
 
-      return {
-        label: item.label,
-        present,
-      };
-    }),
-  }));
+      if (present) {
+        acc.push({
+          label: item.label,
+        });
+      }
+
+      return acc;
+    }, []);
+
+    if (group.key === "comfortInterior" && features.interiorMaterial) {
+      items.unshift({
+        label: `${features.interiorMaterial} interior`,
+      });
+    }
+
+    if (group.key === "technology" && features.soundBrand) {
+      items.push({
+        label: `${features.soundBrand} premium sound`,
+      });
+    }
+
+    return {
+      label: group.label[locale],
+      items,
+    };
+  }).filter((group) => group.items.length > 0);
 }

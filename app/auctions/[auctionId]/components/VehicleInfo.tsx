@@ -204,8 +204,35 @@ export function VehicleInfo({ lot, locale }: Props) {
     };
   }, [isDamageOpen]);
 
+  useEffect(() => {
+    if (!hasDamageZones) {
+      return;
+    }
+
+    const syncDamageModalWithHash = () => {
+      if (window.location.hash === "#damage") {
+        setIsDamageOpen(true);
+      }
+    };
+
+    syncDamageModalWithHash();
+    window.addEventListener("hashchange", syncDamageModalWithHash);
+
+    return () => {
+      window.removeEventListener("hashchange", syncDamageModalWithHash);
+    };
+  }, [hasDamageZones]);
+
   const openDiagram = () => {
     setIsDamageOpen(true);
+  };
+
+  const closeDiagram = () => {
+    setIsDamageOpen(false);
+
+    if (window.location.hash === "#damage") {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
   };
 
   return (
@@ -256,7 +283,7 @@ export function VehicleInfo({ lot, locale }: Props) {
         ))}
       </div>
 
-      <div className={styles.damageBlock}>
+      <div id="damage" className={styles.damageBlock}>
         {hasDamageZones ? (
           <div className={styles.damageAlert}>
             <div className={styles.damageAlertLeft}>
@@ -283,7 +310,7 @@ export function VehicleInfo({ lot, locale }: Props) {
       </div>
 
       {isDamageOpen ? (
-        <div className={styles.modalBackdrop} role="presentation" onClick={() => setIsDamageOpen(false)}>
+        <div className={styles.modalBackdrop} role="presentation" onClick={closeDiagram}>
           <div
             className={styles.modalCard}
             role="dialog"
@@ -306,7 +333,7 @@ export function VehicleInfo({ lot, locale }: Props) {
               <button
                 type="button"
                 className={styles.modalClose}
-                onClick={() => setIsDamageOpen(false)}
+                onClick={closeDiagram}
                 aria-label={isRu ? "Закрыть" : "Close"}
               >
                 ×

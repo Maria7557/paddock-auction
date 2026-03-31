@@ -165,7 +165,6 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             <VehicleDesc lot={lot} locale={display.locale} />
             <VehicleFeatures features={lot.features} locale={display.locale} />
             <InspectionSection
-              auctionId={lot.auctionId}
               startsAt={lot.startsAt}
               location={lot.location}
               locale={display.locale}

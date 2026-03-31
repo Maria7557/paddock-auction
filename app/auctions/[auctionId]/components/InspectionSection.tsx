@@ -8,14 +8,12 @@ import { toIntlLocale } from "@/src/i18n/routing";
 import styles from "./Sections.module.css";
 
 type Props = {
-  auctionId: string;
   startsAt: string;
   location: string;
   locale: SupportedLocale;
 };
 
-export function InspectionSection({ auctionId, startsAt, location, locale }: Props) {
-  const [requested, setRequested] = useState(false);
+export function InspectionSection({ startsAt, location, locale }: Props) {
   const [scheduled, setScheduled] = useState(false);
   const isRu = locale === "ru";
   const viewWindow = useMemo(() => {
@@ -57,27 +55,10 @@ export function InspectionSection({ auctionId, startsAt, location, locale }: Pro
           <button
             type="button"
             className={`${styles.actionButton} ${styles.actionButtonPrimary}`}
-            onClick={() => window.open(`/api/auctions/${auctionId}/inspection-report`, "_blank")}
-          >
-            {isRu ? "Скачать отчёт инспекции" : "Download inspection report"}
-          </button>
-
-          <button
-            type="button"
-            className={styles.actionButton}
-            onClick={() => setRequested(true)}
-            disabled={requested}
-          >
-            {requested ? (isRu ? "Запрос отправлен" : "Inspection requested") : isRu ? "Запросить инспекцию" : "Request inspection"}
-          </button>
-
-          <button
-            type="button"
-            className={styles.actionButton}
             onClick={() => setScheduled(true)}
             disabled={scheduled}
           >
-            {scheduled ? (isRu ? "Просмотр назначен" : "Viewing scheduled") : isRu ? "Запланировать просмотр" : "Schedule viewing"}
+            {scheduled ? "Viewing scheduled" : "Schedule viewing"}
           </button>
         </div>
       </div>

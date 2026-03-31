@@ -7,7 +7,6 @@ import { formatInteger } from "@/src/lib/money";
 
 import styles from "./FilterSidebar.module.css";
 
-const REGIONS = ["GCC", "USDM", "JDM", "European"];
 const BODY_TYPES = ["SUV", "Sedan", "Pickup", "Van", "Hatchback", "Coupe", "Convertible"];
 const FUEL_TYPES = ["Petrol", "Diesel", "Electric", "Hybrid"];
 const PRICE_OPTIONS = ["", "25000", "50000", "75000", "100000", "150000", "200000", "300000", "500000"];
@@ -19,6 +18,7 @@ const DEFAULT_MAX_YEAR = 2026;
 
 type Props = {
   filters: Record<string, string>;
+  regions: string[];
   brands: string[];
   models: string[];
   canUseVipEarlyAccessFilter?: boolean;
@@ -48,6 +48,7 @@ function parseYearValue(value: string, fallback: number): number {
 
 export function FilterSidebar({
   filters,
+  regions,
   brands,
   models,
   canUseVipEarlyAccessFilter = false,
@@ -251,7 +252,7 @@ export function FilterSidebar({
           >
             {isRu ? "Любая" : "Any"}
           </button>
-          {REGIONS.map((region) => (
+          {regions.map((region) => (
             <button
               key={region}
               type="button"

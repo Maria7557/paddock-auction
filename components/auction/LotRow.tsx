@@ -174,7 +174,7 @@ export function LotRow({ lot, display }: LotRowProps) {
               rel="noopener noreferrer"
               className={styles.damageLink}
             >
-              {normalizedPrimaryDamage}
+              Open diagram
             </a>
           ) : (
             <strong>None</strong>

@@ -164,6 +164,8 @@ const DEFAULT_QUICK_FILTERS: Record<QuickFilterId, boolean> = {
   AUCTION_TODAY: false,
   UNDER_50K: false,
 };
+const ACTIVE_REGION_SOURCE_STATES = new Set<Lot["state"]>(["SCHEDULED", "LIVE", "EXTENDED"]);
+const MAX_REGION_OPTIONS_BEFORE_ACTIVE_ONLY = 6;
 
 function getLotNumber(id: string): string {
   return id.slice(0, 8).toUpperCase();
@@ -261,6 +263,48 @@ function buildUrl(pathname: string, queryString: string): string {
   return queryString ? `${pathname}?${queryString}` : pathname;
 }
 
+function normalizeRegionSpec(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function normalizeStartCode(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+
+  if (normalized === "run and drive" || normalized === "run & drive") {
+    return "Run & Drive";
+  }
+
+  if (normalized === "stationary") {
+    return "Stationary";
+  }
+
+  if (normalized === "does not start") {
+    return "Does Not Start";
+  }
+
+  return typeof value === "string" && value.trim() ? value.trim() : "Run & Drive";
+}
+
+function getUniqueRegionSpecs(source: Lot[]): string[] {
+  const byNormalizedValue = new Map<string, string>();
+
+  for (const lot of source) {
+    const regionSpec = normalizeRegionSpec(lot.vehicle.regionSpec);
+
+    if (!regionSpec) {
+      continue;
+    }
+
+    const normalizedKey = regionSpec.toLowerCase();
+
+    if (!byNormalizedValue.has(normalizedKey)) {
+      byNormalizedValue.set(normalizedKey, regionSpec);
+    }
+  }
+
+  return Array.from(byNormalizedValue.values()).sort((left, right) => left.localeCompare(right));
+}
+
 function buildApiQuery(
   filters: Filters,
   options: {
@@ -347,7 +391,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
     transmission: String(vehicle.transmission ?? "—"),
     driveType: String(vehicle.driveType ?? "—"),
     fuelType: String(vehicle.fuelType ?? "—"),
-    startCode: String(vehicle.startCode ?? "Run & Drive"),
+    startCode: normalizeStartCode(vehicle.startCode),
     numberOfKeys: Number(vehicle.numberOfKeys ?? 0),
     warrantyStatus: String(vehicle.warrantyStatus ?? "NONE"),
     serviceHistory: String(vehicle.serviceHistory ?? ""),
@@ -461,7 +505,7 @@ function isSameDubaiDay(value: string | null): boolean {
 
 function applyQuickFilters(source: Lot[], quickFilters: Record<QuickFilterId, boolean>): Lot[] {
   return source.filter((lot) => {
-    if (quickFilters.RUN_AND_DRIVE && lot.startCode !== "Run & Drive") {
+    if (quickFilters.RUN_AND_DRIVE && normalizeStartCode(lot.startCode) !== "Run & Drive") {
       return false;
     }
 
@@ -558,6 +602,32 @@ export function AuctionsClient({
 
     return Array.from(brandToModels.get(filters.brand) ?? []).sort((left, right) => left.localeCompare(right));
   }, [brandToModels, filters.brand]);
+
+  const regionOptions = useMemo(() => {
+    const sourceLots = catalogLots.length > 0 ? catalogLots : lots;
+    const allRegionOptions = getUniqueRegionSpecs(sourceLots);
+
+    if (allRegionOptions.length === 0) {
+      return [];
+    }
+
+    const activeRegionOptions = getUniqueRegionSpecs(
+      sourceLots.filter((lot) => ACTIVE_REGION_SOURCE_STATES.has(lot.state)),
+    );
+    const baseOptions =
+      allRegionOptions.length > MAX_REGION_OPTIONS_BEFORE_ACTIVE_ONLY && activeRegionOptions.length > 0
+        ? activeRegionOptions
+        : allRegionOptions;
+    const selectedRegion = normalizeRegionSpec(filters.region);
+
+    if (!selectedRegion) {
+      return baseOptions;
+    }
+
+    return baseOptions.includes(selectedRegion)
+      ? baseOptions
+      : [...baseOptions, selectedRegion].sort((left, right) => left.localeCompare(right));
+  }, [catalogLots, filters.region, lots]);
 
   const fetchLots = useCallback(
     async (nextFilters: Filters) => {
@@ -762,6 +832,7 @@ export function AuctionsClient({
       <aside className={`${styles.sidebar} ${mobileFiltersOpen ? styles.sidebarOpen : ""}`}>
         <FilterSidebar
           filters={filters}
+          regions={regionOptions}
           brands={brandOptions}
           models={modelOptions}
           canUseVipEarlyAccessFilter={canUseVipEarlyAccessFilter}

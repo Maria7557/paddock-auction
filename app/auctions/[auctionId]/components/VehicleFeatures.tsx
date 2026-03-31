@@ -19,6 +19,10 @@ export function VehicleFeatures({ features, locale }: Props) {
   const groups = useMemo(() => getLotFeatureDisplayGroups(features, locale), [features, locale]);
   const isRu = locale === "ru";
 
+  if (groups.length === 0) {
+    return null;
+  }
+
   return (
     <section className={styles.section} aria-labelledby="vehicle-features-title">
       <button
@@ -45,11 +49,8 @@ export function VehicleFeatures({ features, locale }: Props) {
               <div className={styles.featureList}>
                 {group.items.map((item) => (
                   <div key={item.label} className={styles.featureItem}>
-                    <span
-                      className={`${styles.featureDot} ${item.present ? styles.featureDotPresent : styles.featureDotAbsent}`}
-                      aria-hidden
-                    />
-                    <span className={item.present ? styles.featureTextPresent : styles.featureTextAbsent}>{item.label}</span>
+                    <span className={`${styles.featureDot} ${styles.featureDotPresent}`} aria-hidden />
+                    <span className={styles.featureTextPresent}>{item.label}</span>
                   </div>
                 ))}
               </div>
