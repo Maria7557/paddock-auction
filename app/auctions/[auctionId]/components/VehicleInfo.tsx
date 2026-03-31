@@ -251,29 +251,31 @@ export function VehicleInfo({ lot, locale }: Props) {
         </div>
       </div>
 
-      {hasDamageZones ? (
-        <div className={styles.damageAlert}>
-          <div className={styles.damageAlertLeft}>
-            <span className={styles.damageAlertIcon}>⚠</span>
-            <div>
-              <div className={styles.damageAlertTitle}>{isRu ? "Повреждения отмечены" : "Damage reported"}</div>
-              <div className={styles.damageAlertSub}>
-                {isRu
-                  ? "На схеме автомобиля доступны отмеченные зоны повреждений"
-                  : "Marked damage zones available on the vehicle diagram"}
+      <div className={styles.damageBlock}>
+        {hasDamageZones ? (
+          <div className={styles.damageAlert}>
+            <div className={styles.damageAlertLeft}>
+              <span className={styles.damageAlertIcon}>⚠</span>
+              <div>
+                <div className={styles.damageAlertTitle}>{isRu ? "Повреждения отмечены" : "Damage reported"}</div>
+                <div className={styles.damageAlertSub}>
+                  {isRu
+                    ? "На схеме автомобиля доступны отмеченные зоны повреждений"
+                    : "Marked damage zones available on the vehicle diagram"}
+                </div>
               </div>
             </div>
+            <button type="button" className={styles.damageAlertBtn} onClick={openDiagram}>
+              {isRu ? "Открыть схему" : "Open diagram"}
+            </button>
           </div>
-          <button type="button" className={styles.damageAlertBtn} onClick={openDiagram}>
-            {isRu ? "Открыть схему" : "Open diagram"}
-          </button>
-        </div>
-      ) : (
-        <div className={styles.damageNone}>
-          <span className={styles.damageNoneIcon}>✓</span>
-          <span>{isRu ? "Повреждений нет" : "No damage"}</span>
-        </div>
-      )}
+        ) : (
+          <div className={styles.damageNone}>
+            <span className={styles.damageNoneIcon}>✓</span>
+            <span>{isRu ? "Повреждений нет" : "No damage"}</span>
+          </div>
+        )}
+      </div>
 
       {isDamageOpen ? (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setIsDamageOpen(false)}>
