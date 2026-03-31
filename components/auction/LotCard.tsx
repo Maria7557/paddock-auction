@@ -31,6 +31,7 @@ type LotCardProps = {
   marketPrice?: number;
   buyNowPrice?: number | null;
   totalBids?: number;
+  showVipEarlyAccessBadge?: boolean;
   display?: DisplaySettings;
   showWishlistControl?: boolean;
   defaultWatchlisted?: boolean;
