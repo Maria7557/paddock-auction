@@ -28,6 +28,10 @@ function maskVin(vin: string): string {
   return cleanVin.length <= 8 ? `•••${cleanVin}` : `•••${cleanVin.slice(-8)}`;
 }
 
+function formatAirbags(val: string | null | undefined): string {
+  return val ? val.replace("_PLUS", "+") : "—";
+}
+
 function getGradeLabel(grade: LotDetail["conditionGrade"], locale: SupportedLocale): string {
   const isRu = locale === "ru";
   const normalized = grade.trim().toUpperCase();
@@ -51,6 +55,7 @@ export function VehicleInfo({ lot, locale }: Props) {
   const isRu = locale === "ru";
   const [isDamageOpen, setIsDamageOpen] = useState(false);
   const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
+  const hasDamageZones = lot.damageItems.length > 0;
   const damageLevelLabels = useMemo(
     () =>
       ({
@@ -93,7 +98,9 @@ export function VehicleInfo({ lot, locale }: Props) {
     },
     {
       label: isRu ? "Подушки безопасности" : "Airbags",
-      value: lot.airbagCount ? `${lot.airbags} · ${lot.airbagCount}` : lot.airbags,
+      value: lot.airbagCount
+        ? `${formatAirbags(lot.airbags)} · ${lot.airbagCount}`
+        : formatAirbags(lot.airbags),
     },
   ];
   const rightRows: InfoRow[] = [
@@ -188,6 +195,10 @@ export function VehicleInfo({ lot, locale }: Props) {
     };
   }, [isDamageOpen]);
 
+  const openDiagram = () => {
+    setIsDamageOpen(true);
+  };
+
   return (
     <section className={styles.section} aria-labelledby="vehicle-info-title">
       <div className={styles.sectionHeader}>
@@ -240,19 +251,29 @@ export function VehicleInfo({ lot, locale }: Props) {
         </div>
       </div>
 
-      <div className={styles.damageFooter}>
-        <span className={styles.damageLabel}>{isRu ? "Схема повреждений" : "Damage diagram"}</span>
-        {lot.damageItems.length > 0 ? (
-          <span className={styles.damageValue}>
-            <span>{isRu ? "Есть отмеченные зоны" : "Marked zones available"}</span>
-            <button type="button" className={styles.inlineLink} onClick={() => setIsDamageOpen(true)}>
-              {isRu ? "Открыть" : "Open"}
-            </button>
-          </span>
-        ) : (
-          <span className={styles.damageValue}>{isRu ? "Повреждения: нет" : "Damage: None"}</span>
-        )}
-      </div>
+      {hasDamageZones ? (
+        <div className={styles.damageAlert}>
+          <div className={styles.damageAlertLeft}>
+            <span className={styles.damageAlertIcon}>⚠</span>
+            <div>
+              <div className={styles.damageAlertTitle}>{isRu ? "Повреждения отмечены" : "Damage reported"}</div>
+              <div className={styles.damageAlertSub}>
+                {isRu
+                  ? "На схеме автомобиля доступны отмеченные зоны повреждений"
+                  : "Marked damage zones available on the vehicle diagram"}
+              </div>
+            </div>
+          </div>
+          <button type="button" className={styles.damageAlertBtn} onClick={openDiagram}>
+            {isRu ? "Открыть схему" : "Open diagram"}
+          </button>
+        </div>
+      ) : (
+        <div className={styles.damageNone}>
+          <span className={styles.damageNoneIcon}>✓</span>
+          <span>{isRu ? "Повреждений нет" : "No damage"}</span>
+        </div>
+      )}
 
       {isDamageOpen ? (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setIsDamageOpen(false)}>
