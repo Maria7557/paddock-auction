@@ -42,6 +42,7 @@ interface Lot {
   showVipEarlyAccessBadge?: boolean;
   conditionGrade: string;
   primaryDamage: string;
+  hasDamageDiagram: boolean;
   titleStatus: string;
   tireCondition: number | null;
   engine: string;
@@ -97,6 +98,7 @@ type ApiAuction = {
     images?: string[];
     conditionGrade?: string | null;
     primaryDamage?: string | null;
+    damageMap?: unknown;
     titleStatus?: string | null;
     tireCondition?: number | null;
     engine?: string | null;
@@ -285,6 +287,21 @@ function normalizeStartCode(value: unknown): string {
   return typeof value === "string" && value.trim() ? value.trim() : "Run & Drive";
 }
 
+function hasMarkedDamageZones(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value as Record<string, unknown>).some((level) => {
+    if (typeof level !== "string") {
+      return false;
+    }
+
+    const normalized = level.trim().toUpperCase();
+    return normalized.length > 0 && normalized !== "NONE";
+  });
+}
+
 function getUniqueRegionSpecs(source: Lot[]): string[] {
   const byNormalizedValue = new Map<string, string>();
 
@@ -385,6 +402,7 @@ function mapApiAuctionToLot(auction: ApiAuction): Lot | null {
     showVipEarlyAccessBadge: auction.showVipEarlyAccessBadge === true,
     conditionGrade: vehicle.conditionGrade ?? "",
     primaryDamage: String(vehicle.primaryDamage ?? "None"),
+    hasDamageDiagram: hasMarkedDamageZones(vehicle.damageMap),
     titleStatus: String(vehicle.titleStatus ?? "—"),
     tireCondition: vehicle.tireCondition == null ? null : Number(vehicle.tireCondition),
     engine: String(vehicle.engine ?? "—"),

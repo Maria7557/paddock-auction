@@ -30,6 +30,7 @@ type LotRowProps = {
     endsAt: string | null;
     conditionGrade: string;
     primaryDamage: string;
+    hasDamageDiagram: boolean;
     titleStatus: string;
     tireCondition: number | null;
     engine: string;
@@ -78,7 +79,7 @@ export function LotRow({ lot, display }: LotRowProps) {
   const normalizedConditionGrade = lot.conditionGrade.trim().toUpperCase();
   const hasConditionGrade = normalizedConditionGrade.length > 0;
   const normalizedPrimaryDamage = (lot.primaryDamage ?? "").trim();
-  const hasPrimaryDamageLink = normalizedPrimaryDamage.length > 0 && normalizedPrimaryDamage.toLowerCase() !== "none";
+  const hasPrimaryDamage = normalizedPrimaryDamage.length > 0 && normalizedPrimaryDamage.toLowerCase() !== "none";
   const gradeToneClass =
     normalizedConditionGrade.startsWith("A")
       ? styles.gradeA
@@ -167,7 +168,7 @@ export function LotRow({ lot, display }: LotRowProps) {
         </div>
         <div className={styles.metaLine}>
           <span>Damage</span>
-          {hasPrimaryDamageLink ? (
+          {lot.hasDamageDiagram ? (
             <a
               href={damageHref}
               target="_blank"
@@ -176,6 +177,8 @@ export function LotRow({ lot, display }: LotRowProps) {
             >
               Open diagram
             </a>
+          ) : hasPrimaryDamage ? (
+            <strong>{normalizedPrimaryDamage}</strong>
           ) : (
             <strong>None</strong>
           )}

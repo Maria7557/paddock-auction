@@ -472,10 +472,19 @@ async function serializeVehicle(vehicle: {
   year: number;
   mileage: number;
   vin: string;
+  series: string | null;
   fuelType: string | null;
   transmission: string | null;
   bodyType: string | null;
   regionSpec: string | null;
+  conditionGrade: string | null;
+  primaryDamage: string | null;
+  titleStatus: string | null;
+  tireCondition: number | null;
+  startCode: string | null;
+  numberOfKeys: number | null;
+  warrantyStatus: string | null;
+  estimatedValue: Prisma.Decimal | null;
   serviceHistory: string | null;
   description: string | null;
   engine: string | null;
@@ -494,10 +503,19 @@ async function serializeVehicle(vehicle: {
     year: vehicle.year,
     mileage: vehicle.mileage,
     vin: vehicle.vin,
+    series: vehicle.series,
     fuelType: vehicle.fuelType,
     transmission: vehicle.transmission,
     bodyType: vehicle.bodyType,
     regionSpec: vehicle.regionSpec,
+    conditionGrade: vehicle.conditionGrade,
+    primaryDamage: vehicle.primaryDamage,
+    titleStatus: vehicle.titleStatus,
+    tireCondition: vehicle.tireCondition,
+    startCode: vehicle.startCode,
+    numberOfKeys: vehicle.numberOfKeys,
+    warrantyStatus: vehicle.warrantyStatus,
+    estimatedValue: await serializeBuyNowPrice(vehicle.estimatedValue),
     serviceHistory: vehicle.serviceHistory,
     description: vehicle.description,
     engine: vehicle.engine,
